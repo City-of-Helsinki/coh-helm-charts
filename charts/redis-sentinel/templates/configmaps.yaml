@@ -1,0 +1,29 @@
+{{- if not .Values.redis.password.existingSecret }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "redis-sentinel.fullname" . }}-scripts
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "redis-sentinel.labels" . | nindent 4 }}
+data:
+  redis_init.sh: |
+    {{- .Values.scripts.redisInitScript | nindent 4 }}
+  sentinel_init.sh: |
+    {{- .Values.scripts.sentinelInitScript | nindent 4 }}
+{{- end }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "redis-sentinel.fullname" . }}-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "redis-sentinel.labels" . | nindent 4 }}
+data:
+  redis.conf: |
+    {{- include "redis-sentinel.redis.config" . | nindent 4 }}
+  sentinel.conf: |
+    {{- include "redis-sentinel.sentinel.config" . | nindent 4 }}
+  REDIS_NODES: "{{ include "redis-sentinel.fullname" . }}-0.{{ include "redis-sentinel.fullname" . }}-headless,{{ include "redis-sentinel.fullname" . }}-1.{{ include "redis-sentinel.fullname" . }}-headless,{{ include "redis-sentinel.fullname" . }}-2.{{ include "redis-sentinel.fullname" . }}-headless"

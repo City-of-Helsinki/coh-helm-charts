@@ -1,0 +1,24 @@
+{{- if .Values.sentinel.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "redis-sentinel.fullname" . }}-sentinel
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "redis-sentinel.sentinel.labels" . | nindent 4 }}
+  {{- with .Values.sentinel.pdb.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.sentinel.pdb.minAvailable }}
+  minAvailable: {{ .Values.sentinel.pdb.minAvailable }}
+  {{- else if .Values.sentinel.pdb.maxUnavailable }}
+  maxUnavailable: {{ .Values.sentinel.pdb.maxUnavailable }}
+  {{- else }}
+  minAvailable: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "redis-sentinel.sentinel.selectorLabels" . | nindent 6 }}
+{{- end }}

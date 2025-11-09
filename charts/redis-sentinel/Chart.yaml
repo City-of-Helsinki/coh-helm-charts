@@ -1,0 +1,8 @@
+apiVersion: v2
+name: redis-sentinel
+description: A highly available Redis cluster with Sentinel for automatic failover
+type: application
+version: 1.0.0
+appVersion: "7.0"
+
+dependencies: []

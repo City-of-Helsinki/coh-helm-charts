@@ -1,0 +1,148 @@
+{{- $fullname := include "redis-sentinel.fullname" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}-redis
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "redis-sentinel.redis.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ $fullname }}-headless
+  replicas: {{ .Values.redis.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "redis-sentinel.redis.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "redis-sentinel.redis.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: "app.kubernetes.io/name"
+                  operator: In
+                  values:
+                  - "redis-sentinel"
+                - key: "app.kubernetes.io/component"
+                  operator: In
+                  values:
+                  - "redis"
+              topologyKey: "kubernetes.io/hostname"
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: config
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "redis-sentinel.redis.passwordSecret" . }}
+                  key: {{ include "redis-sentinel.redis.passwordKey" . }}
+          command: ["sh", "-c", "/scripts/redis_init.sh"]
+          volumeMounts:
+            - name: initial-config
+              mountPath: /tmp/redis/
+            - name: redis-config
+              mountPath: /etc/redis/
+            - name: init-script
+              mountPath: /scripts/
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          command:
+            - "sh"
+            - "-c"
+            - |
+              echo "maxmemory $(( ($( cat /sys/fs/cgroup/memory/memory.limit_in_bytes )/5)*4))" >> /etc/redis/redis.conf
+              redis-server /etc/redis/redis.conf
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - '-c'
+                  - 'redis-cli -a $$REDIS_PASSWORD --no-auth-warning shutdown'
+          livenessProbe:
+            exec:
+              command:
+                - "sh"
+                - "-c"
+                - "redis-cli -a $$REDIS_PASSWORD --no-auth-warning ping | grep PONG"
+            initialDelaySeconds: {{ .Values.probes.redis.liveness.initialDelaySeconds | default 10 }}
+            timeoutSeconds: {{ .Values.probes.redis.liveness.timeoutSeconds | default 5 }}
+            periodSeconds: {{ .Values.probes.redis.liveness.periodSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.redis.liveness.failureThreshold | default 10 }}
+            successThreshold: 1
+          readinessProbe:
+            exec:
+              command:
+                - "sh"
+                - "-c"
+                - "redis-cli -a $$REDIS_PASSWORD --no-auth-warning ping | grep PONG"
+            initialDelaySeconds: {{ .Values.probes.redis.readiness.initialDelaySeconds | default 5 }}
+            timeoutSeconds: {{ .Values.probes.redis.readiness.timeoutSeconds | default 15 }}
+            periodSeconds: {{ .Values.probes.redis.readiness.periodSeconds | default 2 }}
+            successThreshold: {{ .Values.probes.redis.readiness.successThreshold | default 2 }}
+            failureThreshold: {{ .Values.probes.redis.readiness.failureThreshold | default 40 }}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "redis-sentinel.redis.passwordSecret" . }}
+                  key: {{ include "redis-sentinel.redis.passwordKey" . }}
+          ports:
+            - containerPort: 6379
+              name: redis
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: redis-config
+              mountPath: /etc/redis/
+      volumes:
+        - name: redis-config
+          emptyDir: {}
+        - name: init-script
+          configMap:
+            name: {{ $fullname }}-scripts
+            defaultMode: 511
+            items:
+              - key: redis_init.sh
+                path: redis_init.sh
+        - name: initial-config
+          configMap:
+            name: {{ $fullname }}-config
+            items:
+              - key: redis.conf
+                path: redis.conf
+  {{- if .Values.redis.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: 
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: {{ .Values.redis.persistence.size }}
+        {{- if .Values.redis.persistence.storageClass }}
+        storageClassName: {{ .Values.redis.persistence.storageClass }}
+        {{- end }}
+  {{- end }}

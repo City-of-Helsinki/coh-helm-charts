@@ -1,0 +1,34 @@
+# Headless service for Redis StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "redis-sentinel.fullname" . }}-headless
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "redis-sentinel.redis.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - port: {{ .Values.redis.service.port }}
+      targetPort: {{ .Values.redis.service.port }}
+      name: redis
+  selector:
+    {{- include "redis-sentinel.redis.selectorLabels" . | nindent 4 }}
+---
+# Sentinel service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "redis-sentinel.fullname" . }}-sentinel
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "redis-sentinel.sentinel.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.sentinel.service.type }}
+  sessionAffinity: None
+  ports:
+    - port: {{ .Values.sentinel.service.port }}
+      targetPort: {{ .Values.sentinel.service.port }}
+      name: sentinel
+  selector:
+    {{- include "redis-sentinel.sentinel.selectorLabels" . | nindent 4 }}

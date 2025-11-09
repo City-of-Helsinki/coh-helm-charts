@@ -1,0 +1,129 @@
+{{- $fullname := include "redis-sentinel.fullname" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}-sentinel
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "redis-sentinel.sentinel.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ $fullname }}-sentinel
+  replicas: {{ .Values.sentinel.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "redis-sentinel.sentinel.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "redis-sentinel.sentinel.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: "app.kubernetes.io/name"
+                  operator: In
+                  values:
+                  - "redis-sentinel"
+                - key: "app.kubernetes.io/component"
+                  operator: In
+                  values:
+                  - "sentinel"
+              topologyKey: "kubernetes.io/hostname"
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: config
+          image: "{{ .Values.sentinel.image.repository }}:{{ .Values.sentinel.image.tag }}"
+          imagePullPolicy: {{ .Values.sentinel.image.pullPolicy }}
+          env:
+            - name: REDIS_NODES
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: REDIS_NODES
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "redis-sentinel.redis.passwordSecret" . }}
+                  key: {{ include "redis-sentinel.redis.passwordKey" . }}
+          command: ["sh", "-c", "/scripts/sentinel_init.sh"]
+          volumeMounts:
+            - name: sentinel-config
+              mountPath: /etc/redis/
+            - name: init-script
+              mountPath: /scripts/
+      containers:
+        - name: sentinel
+          image: "{{ .Values.sentinel.image.repository }}:{{ .Values.sentinel.image.tag }}"
+          imagePullPolicy: {{ .Values.sentinel.image.pullPolicy }}
+          command: ["redis-sentinel"]
+          args: ["/etc/redis/sentinel.conf"]
+          resources:
+            {{- toYaml .Values.sentinel.resources | nindent 12 }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - "sh"
+                  - "-c"
+                  - "redis-cli -a $$REDIS_PASSWORD -p {{ .Values.sentinel.config.port }} --no-auth-warning shutdown"
+          livenessProbe:
+            exec:
+              command:
+                - "sh"
+                - "-c"
+                - "redis-cli -a $$REDIS_PASSWORD -p {{ .Values.sentinel.config.port }} --no-auth-warning ping | grep PONG"
+            initialDelaySeconds: {{ .Values.probes.sentinel.liveness.initialDelaySeconds | default 10 }}
+            timeoutSeconds: {{ .Values.probes.sentinel.liveness.timeoutSeconds | default 5 }}
+            periodSeconds: {{ .Values.probes.sentinel.liveness.periodSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.sentinel.liveness.failureThreshold | default 10 }}
+            successThreshold: 1
+          readinessProbe:
+            exec:
+              command:
+                - "sh"
+                - "-c"
+                - "redis-cli -a $$REDIS_PASSWORD -p {{ .Values.sentinel.config.port }} --no-auth-warning ping | grep PONG"
+            initialDelaySeconds: {{ .Values.probes.sentinel.readiness.initialDelaySeconds | default 5 }}
+            timeoutSeconds: {{ .Values.probes.sentinel.readiness.timeoutSeconds | default 10 }}
+            periodSeconds: {{ .Values.probes.sentinel.readiness.periodSeconds | default 2 }}
+            failureThreshold: {{ .Values.probes.sentinel.readiness.failureThreshold | default 20 }}
+            successThreshold: 1
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "redis-sentinel.redis.passwordSecret" . }}
+                  key: {{ include "redis-sentinel.redis.passwordKey" . }}
+          ports:
+            - containerPort: {{ .Values.sentinel.config.port }}
+              name: sentinel
+          volumeMounts:
+            - name: sentinel-config
+              mountPath: /etc/redis/
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: init-script
+          configMap:
+            name: {{ $fullname }}-scripts
+            defaultMode: 0777
+            items:
+              - key: sentinel_init.sh
+                path: sentinel_init.sh
+        - name: sentinel-config
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
