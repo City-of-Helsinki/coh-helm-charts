@@ -8,9 +8,9 @@ metadata:
     {{- include "redis-sentinel.labels" . | nindent 4 }}
 data:
   redis_init.sh: |
-    {{- .Values.scripts.redisInitScript | nindent 4 }}
+{{ .Files.Get "scripts/redis_init.sh" | nindent 4 }}
   sentinel_init.sh: |
-    {{- .Values.scripts.sentinelInitScript | nindent 4 }}
+{{ .Files.Get "scripts/sentinel_init.sh" | nindent 4 }}
 {{- end }}
 
 ---

@@ -32,11 +32,11 @@ spec:
                 - key: "app.kubernetes.io/name"
                   operator: In
                   values:
-                  - "redis-sentinel"
+                - "redis-sentinel"
                 - key: "app.kubernetes.io/component"
                   operator: In
                   values:
-                  - "sentinel"
+                - "sentinel"
               topologyKey: "kubernetes.io/hostname"
       {{- end }}
       {{- with .Values.tolerations }}
@@ -45,8 +45,8 @@ spec:
       {{- end }}
       initContainers:
         - name: config
-          image: "{{ .Values.sentinel.image.repository }}:{{ .Values.sentinel.image.tag }}"
-          imagePullPolicy: {{ .Values.sentinel.image.pullPolicy }}
+          image: {{ include "redis-sentinel.sentinel.image" . }}
+          imagePullPolicy: IfNotPresent
           env:
             - name: REDIS_NODES
               valueFrom:
@@ -66,8 +66,8 @@ spec:
               mountPath: /scripts/
       containers:
         - name: sentinel
-          image: "{{ .Values.sentinel.image.repository }}:{{ .Values.sentinel.image.tag }}"
-          imagePullPolicy: {{ .Values.sentinel.image.pullPolicy }}
+          image: {{ include "redis-sentinel.sentinel.image" . }}
+          imagePullPolicy: IfNotPresent
           command: ["redis-sentinel"]
           args: ["/etc/redis/sentinel.conf"]
           resources:
@@ -78,28 +78,28 @@ spec:
                 command:
                   - "sh"
                   - "-c"
-                  - "redis-cli -a $$REDIS_PASSWORD -p {{ .Values.sentinel.config.port }} --no-auth-warning shutdown"
+                  - "redis-cli -a $$REDIS_PASSWORD -p {{ if .Values.sentinel }}{{ if .Values.sentinel.config }}{{ .Values.sentinel.config.port | default 26379 }}{{ else }}26379{{ end }}{{ else }}26379{{ end }} --no-auth-warning shutdown"
           livenessProbe:
             exec:
               command:
                 - "sh"
                 - "-c"
-                - "redis-cli -a $$REDIS_PASSWORD -p {{ .Values.sentinel.config.port }} --no-auth-warning ping | grep PONG"
-            initialDelaySeconds: {{ .Values.probes.sentinel.liveness.initialDelaySeconds | default 10 }}
-            timeoutSeconds: {{ .Values.probes.sentinel.liveness.timeoutSeconds | default 5 }}
-            periodSeconds: {{ .Values.probes.sentinel.liveness.periodSeconds | default 5 }}
-            failureThreshold: {{ .Values.probes.sentinel.liveness.failureThreshold | default 10 }}
+                - "redis-cli -a $$REDIS_PASSWORD -p {{ if .Values.sentinel }}{{ if .Values.sentinel.config }}{{ .Values.sentinel.config.port | default 26379 }}{{ else }}26379{{ end }}{{ else }}26379{{ end }} --no-auth-warning ping | grep PONG"
+            initialDelaySeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.liveness.initialDelaySeconds | default 10 }}{{ else }}10{{ end }}{{ else }}10{{ end }}
+            timeoutSeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.liveness.timeoutSeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
+            periodSeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.liveness.periodSeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
+            failureThreshold: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.liveness.failureThreshold | default 10 }}{{ else }}10{{ end }}{{ else }}10{{ end }}
             successThreshold: 1
           readinessProbe:
             exec:
               command:
                 - "sh"
                 - "-c"
-                - "redis-cli -a $$REDIS_PASSWORD -p {{ .Values.sentinel.config.port }} --no-auth-warning ping | grep PONG"
-            initialDelaySeconds: {{ .Values.probes.sentinel.readiness.initialDelaySeconds | default 5 }}
-            timeoutSeconds: {{ .Values.probes.sentinel.readiness.timeoutSeconds | default 10 }}
-            periodSeconds: {{ .Values.probes.sentinel.readiness.periodSeconds | default 2 }}
-            failureThreshold: {{ .Values.probes.sentinel.readiness.failureThreshold | default 20 }}
+                - "redis-cli -a $$REDIS_PASSWORD -p {{ if .Values.sentinel }}{{ if .Values.sentinel.config }}{{ .Values.sentinel.config.port | default 26379 }}{{ else }}26379{{ end }}{{ else }}26379{{ end }} --no-auth-warning ping | grep PONG"
+            initialDelaySeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.readiness.initialDelaySeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
+            timeoutSeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.readiness.timeoutSeconds | default 10 }}{{ else }}10{{ end }}{{ else }}10{{ end }}
+            periodSeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.readiness.periodSeconds | default 2 }}{{ else }}2{{ end }}{{ else }}2{{ end }}
+            failureThreshold: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.readiness.failureThreshold | default 20 }}{{ else }}20{{ end }}{{ else }}20{{ end }}
             successThreshold: 1
           env:
             - name: REDIS_PASSWORD
@@ -108,7 +108,7 @@ spec:
                   name: {{ include "redis-sentinel.redis.passwordSecret" . }}
                   key: {{ include "redis-sentinel.redis.passwordKey" . }}
           ports:
-            - containerPort: {{ .Values.sentinel.config.port }}
+            - containerPort: {{ if .Values.sentinel }}{{ if .Values.sentinel.config }}{{ .Values.sentinel.config.port | default 26379 }}{{ else }}26379{{ end }}{{ else }}26379{{ end }}
               name: sentinel
           volumeMounts:
             - name: sentinel-config

@@ -1,3 +1,17 @@
+{{- $redisPort := 6379 }}
+{{- $sentinelPort := 26379 }}
+{{- $masterName := "mymaster" }}
+{{- if .Values.redis }}
+{{- if .Values.redis.config }}
+{{- $redisPort = .Values.redis.config.port | default $redisPort }}
+{{- end }}
+{{- end }}
+{{- if .Values.sentinel }}
+{{- if .Values.sentinel.config }}
+{{- $sentinelPort = .Values.sentinel.config.port | default $sentinelPort }}
+{{- $masterName = .Values.sentinel.config.masterName | default $masterName }}
+{{- end }}
+{{- end }}
 Redis Sentinel has been deployed!
 
 {{- if .Values.redis.password.existingSecret }}
@@ -12,15 +26,15 @@ Redis Sentinel has been deployed!
    kubectl exec -it {{ include "redis-sentinel.fullname" . }}-redis-0 -n {{ .Values.global.namespace }} -- redis-cli -a $REDIS_PASSWORD
 
 3. Connect to Sentinel:
-   kubectl exec -it {{ include "redis-sentinel.fullname" . }}-sentinel-0 -n {{ .Values.global.namespace }} -- redis-cli -p {{ .Values.sentinel.config.port }} -a $REDIS_PASSWORD
+   kubectl exec -it {{ include "redis-sentinel.fullname" . }}-sentinel-0 -n {{ .Values.global.namespace }} -- redis-cli -p {{ $sentinelPort }} -a $REDIS_PASSWORD
 
 4. Check Sentinel info:
-   kubectl exec -it {{ include "redis-sentinel.fullname" . }}-sentinel-0 -n {{ .Values.global.namespace }} -- redis-cli -p {{ .Values.sentinel.config.port }} -a $REDIS_PASSWORD sentinel masters
+   kubectl exec -it {{ include "redis-sentinel.fullname" . }}-sentinel-0 -n {{ .Values.global.namespace }} -- redis-cli -p {{ $sentinelPort }} -a $REDIS_PASSWORD sentinel masters
 
 5. Services:
-   Redis: {{ include "redis-sentinel.fullname" . }}-headless:{{ .Values.redis.config.port }}
-   Sentinel: {{ include "redis-sentinel.fullname" . }}-sentinel:{{ .Values.sentinel.config.port }}
+   Redis: {{ include "redis-sentinel.fullname" . }}-headless:{{ $redisPort }}
+   Sentinel: {{ include "redis-sentinel.fullname" . }}-sentinel:{{ $sentinelPort }}
 
 For Drupal configuration, use:
-   $settings['redis.connection']['host'] = ['{{ include "redis-sentinel.fullname" . }}-sentinel:{{ .Values.sentinel.config.port }}']
-   $settings['redis.connection']['instance'] = '{{ .Values.sentinel.config.masterName }}'
+   $settings['redis.connection']['host'] = ['{{ include "redis-sentinel.fullname" . }}-sentinel:{{ $sentinelPort }}']
+   $settings['redis.connection']['instance'] = '{{ $masterName }}'

@@ -45,8 +45,8 @@ spec:
       {{- end }}
       initContainers:
         - name: config
-          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
-          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          image: {{ include "redis-sentinel.redis.image" . }}
+          imagePullPolicy: IfNotPresent
           env:
             - name: REDIS_PASSWORD
               valueFrom:
@@ -63,8 +63,8 @@ spec:
               mountPath: /scripts/
       containers:
         - name: redis
-          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
-          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          image: {{ include "redis-sentinel.redis.image" . }}
+          imagePullPolicy: IfNotPresent
           command:
             - "sh"
             - "-c"
@@ -86,10 +86,10 @@ spec:
                 - "sh"
                 - "-c"
                 - "redis-cli -a $$REDIS_PASSWORD --no-auth-warning ping | grep PONG"
-            initialDelaySeconds: {{ .Values.probes.redis.liveness.initialDelaySeconds | default 10 }}
-            timeoutSeconds: {{ .Values.probes.redis.liveness.timeoutSeconds | default 5 }}
-            periodSeconds: {{ .Values.probes.redis.liveness.periodSeconds | default 5 }}
-            failureThreshold: {{ .Values.probes.redis.liveness.failureThreshold | default 10 }}
+            initialDelaySeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.liveness.initialDelaySeconds | default 10 }}{{ else }}10{{ end }}{{ else }}10{{ end }}
+            timeoutSeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.liveness.timeoutSeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
+            periodSeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.liveness.periodSeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
+            failureThreshold: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.liveness.failureThreshold | default 10 }}{{ else }}10{{ end }}{{ else }}10{{ end }}
             successThreshold: 1
           readinessProbe:
             exec:
@@ -97,11 +97,11 @@ spec:
                 - "sh"
                 - "-c"
                 - "redis-cli -a $$REDIS_PASSWORD --no-auth-warning ping | grep PONG"
-            initialDelaySeconds: {{ .Values.probes.redis.readiness.initialDelaySeconds | default 5 }}
-            timeoutSeconds: {{ .Values.probes.redis.readiness.timeoutSeconds | default 15 }}
-            periodSeconds: {{ .Values.probes.redis.readiness.periodSeconds | default 2 }}
-            successThreshold: {{ .Values.probes.redis.readiness.successThreshold | default 2 }}
-            failureThreshold: {{ .Values.probes.redis.readiness.failureThreshold | default 40 }}
+            initialDelaySeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.readiness.initialDelaySeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
+            timeoutSeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.readiness.timeoutSeconds | default 15 }}{{ else }}15{{ end }}{{ else }}15{{ end }}
+            periodSeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.readiness.periodSeconds | default 2 }}{{ else }}2{{ end }}{{ else }}2{{ end }}
+            successThreshold: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.readiness.successThreshold | default 2 }}{{ else }}2{{ end }}{{ else }}2{{ end }}
+            failureThreshold: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.readiness.failureThreshold | default 40 }}{{ else }}40{{ end }}{{ else }}40{{ end }}
           env:
             - name: REDIS_PASSWORD
               valueFrom:

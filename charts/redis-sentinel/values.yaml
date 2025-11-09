@@ -1,54 +1,202 @@
+# Default values for redis-sentinel.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
 global:
-  namespace: "redis"
-  project: "redis"
+  # Kubernetes namespace where resources will be deployed
+  namespace: default
 
+# Name overrides
+nameOverride: ""
+fullnameOverride: ""
+
+# Redis configuration
 redis:
+  # Number of Redis replicas
   replicaCount: 3
-  image:
-    repository: "registry.redhat.io/rhel9/redis-7"
-    tag: "latest"
-    pullPolicy: "IfNotPresent"
-  resources:
-    limits:
-      memory: "512Mi"
-    requests:
-      cpu: "100m"
-      memory: "256Mi"
-  persistence:
-    enabled: true
-    size: "10Gi"
-    storageClass: ""
+  
+  # Redis password configuration
   password:
+    # Use an existing secret for Redis password
     existingSecret: ""
+    # Key in the existing secret that contains the password
+    secretKey: "redis-password"
+    # Password to use (only if existingSecret is not set)
+    # If not provided, a random 32-character password will be generated
+    password: ""
+  
+  # Service configuration for Redis
+  service:
+    # Port for Redis service
+    port: 6379
+  
+  # Pod Disruption Budget for Redis
   pdb:
-    enabled: false
+    # Enable PDB for Redis pods
+    enabled: true
+    # Minimum number of pods that must be available
     minAvailable: 1
-
-sentinel:
-  replicaCount: 3
-  image:
-    repository: "registry.redhat.io/rhel9/redis-7"
-    tag: "latest"
-    pullPolicy: "IfNotPresent"
+    # Maximum number of pods that can be unavailable (alternative to minAvailable)
+    # maxUnavailable: 1
+    # Annotations for PDB
+    annotations: {}
+  
+  # Redis server configuration
+  config:
+    # Bind address (0.0.0.0 for all interfaces)
+    bind: "0.0.0.0"
+    # Protected mode (yes/no)
+    protectedMode: "yes"
+    # Redis port
+    port: 6379
+    # Connection timeout in seconds (0 = no timeout)
+    timeout: 0
+    # TCP keepalive in seconds
+    tcpKeepalive: 300
+    # Log level (debug, verbose, notice, warning)
+    loglevel: "notice"
+    # Number of databases
+    databases: 16
+    # Maxmemory eviction policy
+    # Options: noeviction, allkeys-lru, allkeys-lfu, volatile-lru, volatile-lfu, 
+    #          allkeys-random, volatile-random, volatile-ttl
+    maxmemoryPolicy: "allkeys-lru"
+    # Additional Redis configuration parameters
+    extraConfig: {}
+      # Example:
+      # maxmemory: "2gb"
+      # maxmemory-samples: "5"
+  
+  # Resource limits and requests
   resources:
     limits:
-      memory: "256Mi"
+      cpu: 500m
+      memory: 512Mi
     requests:
-      cpu: "50m"
-      memory: "128Mi"
-  config:
-    port: 5000
-    masterName: "mymaster"
-    downAfterMilliseconds: 1000
-    failoverTimeout: 10000
-    parallelSyncs: 1
-    quorum: 2
-  pdb:
-    enabled: false
-    minAvailable: 1
+      cpu: 100m
+      memory: 128Mi
+  
+  # Persistence configuration
+  persistence:
+    # Enable persistence using PVC
+    enabled: true
+    # Storage class for PVC (leave empty for default)
+    storageClass: ""
+    # Size of the persistent volume
+    size: 8Gi
 
-nodeSelector: 
-  env: "prod"
+# Sentinel configuration
+sentinel:
+  # Number of Sentinel replicas (should be odd number, minimum 3 for quorum)
+  replicaCount: 3
+  
+  # Service configuration for Sentinel
+  service:
+    # Service type (ClusterIP, NodePort, LoadBalancer)
+    type: ClusterIP
+    # Port for Sentinel service
+    port: 26379
+  
+  # Pod Disruption Budget for Sentinel
+  pdb:
+    # Enable PDB for Sentinel pods
+    enabled: true
+    # Minimum number of pods that must be available
+    minAvailable: 2
+    # Maximum number of pods that can be unavailable (alternative to minAvailable)
+    # maxUnavailable: 1
+    # Annotations for PDB
+    annotations: {}
+  
+  # Sentinel configuration
+  config:
+    # Sentinel port
+    port: 26379
+    # Master name (used by Sentinel to identify the master)
+    masterName: "mymaster"
+    # Quorum - minimum number of Sentinels that need to agree
+    # about the fact the master is not reachable for failover
+    quorum: 2
+    # Time in milliseconds after which master is considered down
+    downAfterMilliseconds: 5000
+    # Failover timeout in milliseconds
+    failoverTimeout: 10000
+    # Number of replicas that can be reconfigured in parallel during failover
+    parallelSyncs: 1
+    # Additional Sentinel configuration parameters
+    extraConfig: {}
+      # Example:
+      # sentinel announce-ip: "10.0.0.1"
+  
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# Health check probes configuration
+probes:
+  redis:
+    liveness:
+      # Initial delay before liveness probe starts
+      initialDelaySeconds: 10
+      # Timeout for each probe
+      timeoutSeconds: 5
+      # How often to perform the probe
+      periodSeconds: 5
+      # Number of failures before marking unhealthy
+      failureThreshold: 10
+    readiness:
+      # Initial delay before readiness probe starts
+      initialDelaySeconds: 5
+      # Timeout for each probe
+      timeoutSeconds: 15
+      # How often to perform the probe
+      periodSeconds: 2
+      # Number of consecutive successes required
+      successThreshold: 2
+      # Number of failures before marking not ready
+      failureThreshold: 40
+  
+  sentinel:
+    liveness:
+      # Initial delay before liveness probe starts
+      initialDelaySeconds: 10
+      # Timeout for each probe
+      timeoutSeconds: 5
+      # How often to perform the probe
+      periodSeconds: 5
+      # Number of failures before marking unhealthy
+      failureThreshold: 10
+    readiness:
+      # Initial delay before readiness probe starts
+      initialDelaySeconds: 5
+      # Timeout for each probe
+      timeoutSeconds: 10
+      # How often to perform the probe
+      periodSeconds: 2
+      # Number of failures before marking not ready
+      failureThreshold: 20
+
+# Pod scheduling configuration
 affinity:
+  # Enable pod anti-affinity to spread pods across nodes
   enabled: true
-scripts: {}
+
+# Node selector for pod assignment
+nodeSelector: {}
+  # Example:
+  # disktype: ssd
+  # environment: production
+
+# Tolerations for pod assignment
+tolerations: []
+  # Example:
+  # - key: "dedicated"
+  #   operator: "Equal"
+  #   value: "redis"
+  #   effect: "NoSchedule"
