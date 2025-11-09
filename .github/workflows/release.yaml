@@ -57,7 +57,7 @@ jobs:
 
       - name: Publish to Helm Repository
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           # Clone the artifacts repository using token
           git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git artifacts-repo
