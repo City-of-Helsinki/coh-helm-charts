@@ -33,11 +33,11 @@ spec:
                 - key: "app.kubernetes.io/name"
                   operator: In
                   values:
-                - "redis-sentinel"
+                  - "redis-sentinel"
                 - key: "app.kubernetes.io/component"
                   operator: In
                   values:
-                - "sentinel"
+                  - "sentinel"
               topologyKey: "kubernetes.io/hostname"
       {{- end }}
       {{- with .Values.tolerations }}

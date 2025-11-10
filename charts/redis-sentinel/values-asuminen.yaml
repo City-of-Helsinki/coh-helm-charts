@@ -1,7 +1,3 @@
-global:
-  namespace: "redis"
-  project: "redis"
-
 # Redis Configuration
 redis:
   replicaCount: 3
