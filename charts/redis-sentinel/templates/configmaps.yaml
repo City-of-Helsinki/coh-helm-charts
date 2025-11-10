@@ -2,35 +2,37 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "redis-sentinel.fullname" . }}-scripts
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "redis-sentinel.labels" . | nindent 4 }}
 data:
   redis_init.sh: |
-{{- .Files.Get "scripts/redis_init.sh" | nindent 4}}
+{{ .Files.Get "scripts/redis_init.sh" | nindent 4 }}
   sentinel_init.sh: |
-{{- .Files.Get "scripts/sentinel_init.sh" | nindent 4}}
+{{ .Files.Get "scripts/sentinel_init.sh" | nindent 4 }}
 
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "redis-sentinel.fullname" . }}-config
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "redis-sentinel.labels" . | nindent 4 }}
 data:
-  redis.conf: |-
-{{ include "redis-sentinel.redis.config" . | indent 4 }}
-  sentinel.conf: |-
-{{ include "redis-sentinel.sentinel.config" . | indent 4 }}
-  REDIS_NODES: "{{ include "redis-sentinel.fullname" . }}-0.{{ include "redis-sentinel.fullname" . }}-headless,{{ include "redis-sentinel.fullname" . }}-1.{{ include "redis-sentinel.fullname" . }}-headless,{{ include "redis-sentinel.fullname" . }}-2.{{ include "redis-sentinel.fullname" . }}-headless"
-  SENTINEL_MASTER_NAME: "{{ .Values.sentinel.config.masterName }}"
-  SENTINEL_QUORUM: "{{ .Values.sentinel.config.quorum }}"
-  SENTINEL_PORT: "{{ .Values.sentinel.config.port }}"
-  SENTINEL_DOWN_AFTER_MS: "{{ .Values.sentinel.config.downAfterMilliseconds }}"
-  SENTINEL_FAILOVER_TIMEOUT: "{{ .Values.sentinel.config.failoverTimeout }}"
-  SENTINEL_PARALLEL_SYNCS: "{{ .Values.sentinel.config.parallelSyncs }}"
-  SENTINEL_SERVICE: "{{ include "redis-sentinel.fullname" . }}-sentinel"
+  redis.conf: |
+    {{- include "redis-sentinel.redis.config" . | nindent 4 }}
+  sentinel.conf: |
+    {{- include "redis-sentinel.sentinel.config" . | nindent 4 }}
+    requirepass ${REDIS_PASSWORD}
+    sentinel auth-pass mymaster ${REDIS_PASSWORD}
+  REDIS_NODES: "{{ include "redis-sentinel.fullname" . }}-redis-0.{{ include "redis-sentinel.fullname" . }}-headless,{{ include "redis-sentinel.fullname" . }}-redis-1.{{ include "redis-sentinel.fullname" . }}-headless,{{ include "redis-sentinel.fullname" . }}-redis-2.{{ include "redis-sentinel.fullname" . }}-headless"
+  SENTINEL_MASTER_NAME: "{{ .Values.sentinel.config.masterName | default "mymaster" }}"
+  SENTINEL_QUORUM: "{{ .Values.sentinel.config.quorum | default 2 }}"
+  SENTINEL_PORT: "{{ .Values.sentinel.config.port | default 5000 }}"
+  SENTINEL_DOWN_AFTER_MS: "{{ .Values.sentinel.config.downAfterMilliseconds | default 5000 }}"
+  SENTINEL_FAILOVER_TIMEOUT: "{{ .Values.sentinel.config.failoverTimeout | default 10000 }}"
+  SENTINEL_PARALLEL_SYNCS: "{{ .Values.sentinel.config.parallelSyncs | default 1 }}"
+  SENTINEL_SERVICE: "{{ include "redis-sentinel.fullname" . }}-sentinel-headless"
   REDIS_SERVICE: "{{ include "redis-sentinel.fullname" . }}-redis"
   REDIS_HEADLESS_SERVICE: "{{ include "redis-sentinel.fullname" . }}-headless"

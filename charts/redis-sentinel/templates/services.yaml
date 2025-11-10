@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "redis-sentinel.fullname" . }}-headless
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "redis-sentinel.redis.labels" . | nindent 4 }}
 spec:
@@ -20,7 +20,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "redis-sentinel.fullname" . }}-sentinel
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "redis-sentinel.sentinel.labels" . | nindent 4 }}
 spec:
@@ -30,5 +30,20 @@ spec:
     - port: {{ .Values.sentinel.service.port }}
       targetPort: {{ .Values.sentinel.service.port }}
       name: sentinel
+  selector:
+    {{- include "redis-sentinel.sentinel.selectorLabels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "redis-sentinel.fullname" . }}-sentinel-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "redis-sentinel.sentinel.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+  - port: {{ .Values.sentinel.service.port }}
+    name: sentinel
   selector:
     {{- include "redis-sentinel.sentinel.selectorLabels" . | nindent 4 }}

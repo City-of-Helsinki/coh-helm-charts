@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ $fullname }}-redis
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "redis-sentinel.redis.labels" . | nindent 4 }}
 spec:
@@ -53,6 +53,31 @@ spec:
                 secretKeyRef:
                   name: {{ include "redis-sentinel.redis.passwordSecret" . }}
                   key: {{ include "redis-sentinel.redis.passwordKey" . }}
+            - name: SENTINEL_SERVICE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: SENTINEL_SERVICE
+            - name: SENTINEL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: SENTINEL_PORT
+            - name: SENTINEL_MASTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: SENTINEL_MASTER_NAME
+            - name: REDIS_SERVICE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: REDIS_SERVICE
+            - name: REDIS_HEADLESS_SERVICE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: REDIS_HEADLESS_SERVICE
           command: ["sh", "-c", "/scripts/redis_init.sh"]
           volumeMounts:
             - name: initial-config
@@ -79,13 +104,13 @@ spec:
                 command:
                   - sh
                   - '-c'
-                  - 'redis-cli -a $$REDIS_PASSWORD --no-auth-warning shutdown'
+                  - 'redis-cli -a $REDIS_PASSWORD --no-auth-warning shutdown'
           livenessProbe:
             exec:
               command:
                 - "sh"
                 - "-c"
-                - "redis-cli -a $$REDIS_PASSWORD --no-auth-warning ping | grep PONG"
+                - "redis-cli -a $REDIS_PASSWORD --no-auth-warning ping | grep PONG"
             initialDelaySeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.liveness.initialDelaySeconds | default 10 }}{{ else }}10{{ end }}{{ else }}10{{ end }}
             timeoutSeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.liveness.timeoutSeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
             periodSeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.liveness.periodSeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
@@ -96,7 +121,7 @@ spec:
               command:
                 - "sh"
                 - "-c"
-                - "redis-cli -a $$REDIS_PASSWORD --no-auth-warning ping | grep PONG"
+                - "redis-cli -a $REDIS_PASSWORD --no-auth-warning ping | grep PONG"
             initialDelaySeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.readiness.initialDelaySeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
             timeoutSeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.readiness.timeoutSeconds | default 15 }}{{ else }}15{{ end }}{{ else }}15{{ end }}
             periodSeconds: {{ if .Values.probes }}{{ if .Values.probes.redis }}{{ .Values.probes.redis.readiness.periodSeconds | default 2 }}{{ else }}2{{ end }}{{ else }}2{{ end }}
@@ -122,7 +147,7 @@ spec:
         - name: init-script
           configMap:
             name: {{ $fullname }}-scripts
-            defaultMode: 0777
+            defaultMode: 511
             items:
               - key: redis_init.sh
                 path: redis_init.sh

@@ -1,14 +1,19 @@
-{{- if .Values.sentinel.enabled }}
 {{- $fullname := include "redis-sentinel.fullname" . }}
+{{- $sentinelPort := 26379 }}
+{{- if .Values.sentinel }}
+{{- if .Values.sentinel.config }}
+{{- $sentinelPort = .Values.sentinel.config.port | default 26379 }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ $fullname }}-sentinel
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "redis-sentinel.sentinel.labels" . | nindent 4 }}
 spec:
-  serviceName: {{ $fullname }}-sentinel
+  serviceName: {{ $fullname }}-sentinel-headless
   replicas: {{ .Values.sentinel.replicaCount }}
   selector:
     matchLabels:
@@ -47,7 +52,7 @@ spec:
       initContainers:
         - name: config
           image: {{ include "redis-sentinel.sentinel.image" . }}
-          imagePullPolicy: {{ .Values.sentinel.image.pullPolicy }}
+          imagePullPolicy: IfNotPresent
           env:
             - name: REDIS_NODES
               valueFrom:
@@ -59,8 +64,45 @@ spec:
                 secretKeyRef:
                   name: {{ include "redis-sentinel.redis.passwordSecret" . }}
                   key: {{ include "redis-sentinel.redis.passwordKey" . }}
+            - name: SENTINEL_MASTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: SENTINEL_MASTER_NAME
+            - name: SENTINEL_QUORUM
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: SENTINEL_QUORUM
+            - name: SENTINEL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: SENTINEL_PORT
+            - name: SENTINEL_DOWN_AFTER_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: SENTINEL_DOWN_AFTER_MS
+            - name: SENTINEL_FAILOVER_TIMEOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: SENTINEL_FAILOVER_TIMEOUT
+            - name: SENTINEL_PARALLEL_SYNCS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: SENTINEL_PARALLEL_SYNCS
+            - name: SENTINEL_SERVICE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: SENTINEL_SERVICE
           command: ["sh", "-c", "/scripts/sentinel_init.sh"]
           volumeMounts:
+            - name: initial-config
+              mountPath: /tmp/sentinel/
             - name: sentinel-config
               mountPath: /etc/redis/
             - name: init-script
@@ -68,7 +110,7 @@ spec:
       containers:
         - name: sentinel
           image: {{ include "redis-sentinel.sentinel.image" . }}
-          imagePullPolicy: {{ .Values.sentinel.image.pullPolicy }}
+          imagePullPolicy: IfNotPresent
           command: ["redis-sentinel"]
           args: ["/etc/redis/sentinel.conf"]
           resources:
@@ -79,13 +121,13 @@ spec:
                 command:
                   - "sh"
                   - "-c"
-                  - "redis-cli -a $$REDIS_PASSWORD -p {{ if .Values.sentinel }}{{ if .Values.sentinel.config }}{{ .Values.sentinel.config.port | default 26379 }}{{ else }}26379{{ end }}{{ else }}26379{{ end }} --no-auth-warning shutdown"
+                  - "redis-cli -a $REDIS_PASSWORD -p {{ $sentinelPort }} --no-auth-warning shutdown"
           livenessProbe:
             exec:
               command:
                 - "sh"
                 - "-c"
-                - "redis-cli -a $$REDIS_PASSWORD -p {{ if .Values.sentinel }}{{ if .Values.sentinel.config }}{{ .Values.sentinel.config.port | default 26379 }}{{ else }}26379{{ end }}{{ else }}26379{{ end }} --no-auth-warning ping | grep PONG"            
+                - "redis-cli -a $REDIS_PASSWORD -p {{ $sentinelPort }} --no-auth-warning ping | grep PONG"
             initialDelaySeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.liveness.initialDelaySeconds | default 10 }}{{ else }}10{{ end }}{{ else }}10{{ end }}
             timeoutSeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.liveness.timeoutSeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
             periodSeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.liveness.periodSeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
@@ -96,7 +138,7 @@ spec:
               command:
                 - "sh"
                 - "-c"
-                - "redis-cli -a $$REDIS_PASSWORD -p {{ if .Values.sentinel }}{{ if .Values.sentinel.config }}{{ .Values.sentinel.config.port | default 26379 }}{{ else }}26379{{ end }}{{ else }}26379{{ end }} --no-auth-warning ping | grep PONG"
+                - "redis-cli -a $REDIS_PASSWORD -p {{ $sentinelPort }} --no-auth-warning ping | grep PONG"
             initialDelaySeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.readiness.initialDelaySeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
             timeoutSeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.readiness.timeoutSeconds | default 10 }}{{ else }}10{{ end }}{{ else }}10{{ end }}
             periodSeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.readiness.periodSeconds | default 2 }}{{ else }}2{{ end }}{{ else }}2{{ end }}
@@ -109,7 +151,7 @@ spec:
                   name: {{ include "redis-sentinel.redis.passwordSecret" . }}
                   key: {{ include "redis-sentinel.redis.passwordKey" . }}
           ports:
-            - containerPort: {{ if .Values.sentinel }}{{ if .Values.sentinel.config }}{{ .Values.sentinel.config.port | default 26379 }}{{ else }}26379{{ end }}{{ else }}26379{{ end }}
+            - containerPort: {{ $sentinelPort }}
               name: sentinel
           volumeMounts:
             - name: sentinel-config
@@ -124,8 +166,13 @@ spec:
             items:
               - key: sentinel_init.sh
                 path: sentinel_init.sh
+        - name: initial-config
+          configMap:
+            name: {{ $fullname }}-config
+            items:
+              - key: sentinel.conf
+                path: sentinel.conf
         - name: sentinel-config
           emptyDir: {}
         - name: data
           emptyDir: {}
-{{- end }}

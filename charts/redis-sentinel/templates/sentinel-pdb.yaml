@@ -3,7 +3,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "redis-sentinel.fullname" . }}-sentinel
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "redis-sentinel.sentinel.labels" . | nindent 4 }}
   {{- with .Values.sentinel.pdb.annotations }}
