@@ -96,7 +96,7 @@ sentinel:
     # Service type (ClusterIP, NodePort, LoadBalancer)
     type: ClusterIP
     # Port for Sentinel service
-    port: 26379
+    port: 5000
   
   # Pod Disruption Budget for Sentinel
   pdb:
@@ -112,7 +112,7 @@ sentinel:
   # Sentinel configuration
   config:
     # Sentinel port
-    port: 26379
+    port: 5000
     # Master name (used by Sentinel to identify the master)
     masterName: "mymaster"
     # Quorum - minimum number of Sentinels that need to agree

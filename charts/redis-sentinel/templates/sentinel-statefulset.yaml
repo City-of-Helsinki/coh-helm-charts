@@ -1,3 +1,4 @@
+{{- if .Values.sentinel.enabled }}
 {{- $fullname := include "redis-sentinel.fullname" . }}
 apiVersion: apps/v1
 kind: StatefulSet
@@ -46,7 +47,7 @@ spec:
       initContainers:
         - name: config
           image: {{ include "redis-sentinel.sentinel.image" . }}
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: {{ .Values.sentinel.image.pullPolicy }}
           env:
             - name: REDIS_NODES
               valueFrom:
@@ -67,7 +68,7 @@ spec:
       containers:
         - name: sentinel
           image: {{ include "redis-sentinel.sentinel.image" . }}
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: {{ .Values.sentinel.image.pullPolicy }}
           command: ["redis-sentinel"]
           args: ["/etc/redis/sentinel.conf"]
           resources:
@@ -84,7 +85,7 @@ spec:
               command:
                 - "sh"
                 - "-c"
-                - "redis-cli -a $$REDIS_PASSWORD -p {{ if .Values.sentinel }}{{ if .Values.sentinel.config }}{{ .Values.sentinel.config.port | default 26379 }}{{ else }}26379{{ end }}{{ else }}26379{{ end }} --no-auth-warning ping | grep PONG"
+                - "redis-cli -a $$REDIS_PASSWORD -p {{ if .Values.sentinel }}{{ if .Values.sentinel.config }}{{ .Values.sentinel.config.port | default 26379 }}{{ else }}26379{{ end }}{{ else }}26379{{ end }} --no-auth-warning ping | grep PONG"            
             initialDelaySeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.liveness.initialDelaySeconds | default 10 }}{{ else }}10{{ end }}{{ else }}10{{ end }}
             timeoutSeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.liveness.timeoutSeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
             periodSeconds: {{ if .Values.probes }}{{ if .Values.probes.sentinel }}{{ .Values.probes.sentinel.liveness.periodSeconds | default 5 }}{{ else }}5{{ end }}{{ else }}5{{ end }}
@@ -127,3 +128,4 @@ spec:
           emptyDir: {}
         - name: data
           emptyDir: {}
+{{- end }}

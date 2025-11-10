@@ -38,6 +38,13 @@ helm.sh/chart: {{ include "redis-sentinel.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- if .Values.labels }}
+{{- if .Values.labels.common }}
+{{- range $key, $value := .Values.labels.common }}
+{{ $key }}: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -54,6 +61,13 @@ Redis labels
 {{- define "redis-sentinel.redis.labels" -}}
 {{ include "redis-sentinel.labels" . }}
 app.kubernetes.io/component: redis
+{{- if .Values.labels }}
+{{- if .Values.labels.redis }}
+{{- range $key, $value := .Values.labels.redis }}
+{{ $key }}: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -70,6 +84,13 @@ Sentinel labels
 {{- define "redis-sentinel.sentinel.labels" -}}
 {{ include "redis-sentinel.labels" . }}
 app.kubernetes.io/component: sentinel
+{{- if .Values.labels }}
+{{- if .Values.labels.sentinel }}
+{{- range $key, $value := .Values.labels.sentinel }}
+{{ $key }}: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -149,8 +170,8 @@ Generate redis configuration
 {{- $loglevel = .Values.redis.config.loglevel | default $loglevel }}
 {{- $databases = .Values.redis.config.databases | default $databases }}
 {{- $maxmemoryPolicy = .Values.redis.config.maxmemoryPolicy | default $maxmemoryPolicy }}
-{{- end }}
-{{- end }}
+{{- end -}}
+{{- end -}}
 bind {{ $bind }}
 protected-mode {{ $protectedMode }}
 port {{ $port }}
@@ -194,10 +215,10 @@ maxmemory-policy {{ $maxmemoryPolicy }}
 Generate sentinel configuration
 */}}
 {{- define "redis-sentinel.sentinel.config" -}}
-{{- $port := 26379 }}
+{{- $port := 5000 }}
 {{- $masterName := "mymaster" }}
 {{- $quorum := 2 }}
-{{- $downAfterMilliseconds := 5000 }}
+{{- $downAfterMilliseconds := 1000 }}
 {{- $failoverTimeout := 10000 }}
 {{- $parallelSyncs := 1 }}
 {{- if .Values.sentinel }}
@@ -208,8 +229,8 @@ Generate sentinel configuration
 {{- $downAfterMilliseconds = .Values.sentinel.config.downAfterMilliseconds | default $downAfterMilliseconds }}
 {{- $failoverTimeout = .Values.sentinel.config.failoverTimeout | default $failoverTimeout }}
 {{- $parallelSyncs = .Values.sentinel.config.parallelSyncs | default $parallelSyncs }}
-{{- end }}
-{{- end }}
+{{- end -}}
+{{- end -}}
 port {{ $port }}
 sentinel resolve-hostnames yes
 sentinel announce-hostnames yes
@@ -222,8 +243,8 @@ sentinel parallel-syncs {{ $masterName }} {{ $parallelSyncs }}
 {{- if .Values.sentinel.config.extraConfig }}
 {{- range $key, $value := .Values.sentinel.config.extraConfig }}
 {{ $key }} {{ $value }}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

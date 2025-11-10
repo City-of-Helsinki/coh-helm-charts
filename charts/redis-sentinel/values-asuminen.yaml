@@ -1,0 +1,77 @@
+global:
+  namespace: "redis"
+  project: "redis"
+
+# Redis Configuration
+redis:
+  replicaCount: 3
+  image:
+    repository: "registry.redhat.io/rhel9/redis-7"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+  resources:
+    limits:
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+  persistence:
+    enabled: true
+    size: "10Gi"
+    storageClass: ""
+  password:
+    existingSecret: ""
+  pdb:
+    enabled: false
+    minAvailable: 1
+  service:
+    port: 6379
+    type: "ClusterIP"
+    clusterIP: "None"
+
+# Sentinel Configuration
+sentinel:
+  enabled: true 
+  replicaCount: 3
+  image:
+    repository: "registry.redhat.io/rhel9/redis-7"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+  resources:
+    limits:
+      memory: "256Mi"
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+  config:
+    port: 5000
+    masterName: "mymaster"
+    downAfterMilliseconds: 1000
+    failoverTimeout: 10000
+    parallelSyncs: 1
+    quorum: 2
+  pdb:
+    enabled: false
+    minAvailable: 1
+  service:
+    port: 5000
+    type: "ClusterIP"
+
+# Configurable Labels
+labels:
+  common:
+    environment: "production"
+    team: "platform"
+    version: "1.0.0"
+  redis:
+    component: "redis"
+    role: "cache"
+  sentinel:
+    component: "sentinel"
+    role: "monitoring"
+
+nodeSelector: 
+  env: "prod"
+affinity:
+  enabled: true
+scripts: {}

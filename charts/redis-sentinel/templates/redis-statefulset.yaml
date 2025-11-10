@@ -122,7 +122,7 @@ spec:
         - name: init-script
           configMap:
             name: {{ $fullname }}-scripts
-            defaultMode: 511
+            defaultMode: 077
             items:
               - key: redis_init.sh
                 path: redis_init.sh
