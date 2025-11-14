@@ -2,6 +2,12 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+securityContext:
+  enabled: true
+  runAsUser: 1001400000
+  runAsGroup: 1001400000
+  fsGroup: 1001400000
+  fsGroupChangePolicy: "OnRootMismatch"
 # Global settings
 global:
   # Kubernetes namespace where resources will be deployed
@@ -41,6 +47,11 @@ redis:
     # maxUnavailable: 1
     # Annotations for PDB
     annotations: {}
+  
+  securityContext:
+    runAsUser: 1001400000
+    runAsGroup: 1001400000
+    fsGroup: 1001400000
   
   # Redis server configuration
   config:
@@ -108,6 +119,11 @@ sentinel:
     # maxUnavailable: 1
     # Annotations for PDB
     annotations: {}
+  
+  securityContext:
+    runAsUser: 1001400000
+    runAsGroup: 1001400000
+    fsGroup: 1001400000
   
   # Sentinel configuration
   config:
