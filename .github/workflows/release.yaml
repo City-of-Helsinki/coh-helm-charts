@@ -18,11 +18,11 @@ jobs:
 
       - name: Lint chart
         run: |
-          helm lint charts/redis-sentinel/
+          helm lint charts/redis-cluster/
 
       - name: Test template rendering
         run: |
-          helm template test-redis charts/redis-sentinel/ --debug
+          helm template test-redis charts/redis-cluster/ --debug
 
   release:
     needs: test
@@ -49,13 +49,13 @@ jobs:
       - name: Get chart name
         id: chart
         run: |
-          CHART_NAME=$(yq eval '.name' charts/redis-sentinel/Chart.yaml)
+          CHART_NAME=$(yq eval '.name' charts/redis-cluster/Chart.yaml)
           echo "chart_name=$CHART_NAME" >> $GITHUB_OUTPUT
           echo "Chart: $CHART_NAME"
 
       - name: Package chart
         run: |
-          helm package charts/redis-sentinel/ --version ${{ steps.version.outputs.version }}
+          helm package charts/redis-cluster/ --version ${{ steps.version.outputs.version }}
 
       - name: Configure Git
         run: |
