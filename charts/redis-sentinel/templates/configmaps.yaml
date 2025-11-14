@@ -27,6 +27,7 @@ data:
     requirepass ${REDIS_PASSWORD}
     sentinel auth-pass mymaster ${REDIS_PASSWORD}
   REDIS_NODES: "{{ include "redis-sentinel.fullname" . }}-redis-0.{{ include "redis-sentinel.fullname" . }}-headless,{{ include "redis-sentinel.fullname" . }}-redis-1.{{ include "redis-sentinel.fullname" . }}-headless,{{ include "redis-sentinel.fullname" . }}-redis-2.{{ include "redis-sentinel.fullname" . }}-headless"
+  REDIS_PORT: "{{ .Values.redis.config.port | default 6379 }}"
   SENTINEL_MASTER_NAME: "{{ .Values.sentinel.config.masterName | default "mymaster" }}"
   SENTINEL_QUORUM: "{{ .Values.sentinel.config.quorum | default 2 }}"
   SENTINEL_PORT: "{{ .Values.sentinel.config.port | default 26379 }}"

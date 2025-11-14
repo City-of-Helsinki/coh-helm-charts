@@ -30,6 +30,10 @@ redis:
     fsGroup: 1001400000
   config: 
     dir: "/data"
+    port: 6379
+  service:
+    port: 6379
+    targetPort : 6379
   extraConfig: {}
 
 # Sentinel Configuration
@@ -61,7 +65,7 @@ sentinel:
   service:
     port: 5000
     targetPort : 26379
-    type: "ClusterIP"
+  extraConfig: {}
 
 # Configurable Labels
 labels:

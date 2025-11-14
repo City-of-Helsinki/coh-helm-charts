@@ -6,8 +6,7 @@ echo "Starting Sentinel initialization..."
 # Create directory
 mkdir -p /etc/redis
 
-# Hardcode Redis port
-REDIS_PORT="6379"
+REDIS_PORT=${REDIS_PORT}
 
 # Now find the actual master
 n=0

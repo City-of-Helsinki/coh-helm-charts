@@ -66,6 +66,11 @@ spec:
                 configMapKeyRef:
                   name: {{ $fullname }}-config
                   key: REDIS_NODES
+            - name: REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $fullname }}-config
+                  key: REDIS_PORT
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
