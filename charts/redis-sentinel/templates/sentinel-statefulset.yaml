@@ -27,6 +27,13 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.securityContext.enabled }}
+      securityContext:
+        runAsUser: {{ .Values.redis.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.redis.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.redis.securityContext.fsGroup }}
+        fsGroupChangePolicy: {{ .Values.securityContext.fsGroupChangePolicy }}
+      {{- end }}
       {{- if .Values.affinity.enabled }}
       affinity:
         podAntiAffinity:
@@ -94,11 +101,11 @@ spec:
                 configMapKeyRef:
                   name: {{ $fullname }}-config
                   key: SENTINEL_PARALLEL_SYNCS
-            - name: SENTINEL_SERVICE
+            - name: SENTINEL_HEADLESS_SERVICE
               valueFrom:
                 configMapKeyRef:
                   name: {{ $fullname }}-config
-                  key: SENTINEL_SERVICE
+                  key: SENTINEL_HEADLESS_SERVICE
           command: ["sh", "-c", "/scripts/sentinel_init.sh"]
           volumeMounts:
             - name: initial-config
@@ -111,8 +118,11 @@ spec:
         - name: sentinel
           image: {{ include "redis-sentinel.sentinel.image" . }}
           imagePullPolicy: IfNotPresent
-          command: ["redis-sentinel"]
-          args: ["/etc/redis/sentinel.conf"]
+          command:
+          - "sh"
+          - "-c"
+          - |
+            exec redis-sentinel /etc/redis/sentinel.conf
           resources:
             {{- toYaml .Values.sentinel.resources | nindent 12 }}
           lifecycle:

@@ -95,14 +95,22 @@ Create the name of the service account to use
 Get the Redis image
 */}}
 {{- define "redis-sentinel.redis.image" -}}
+{{- if .Values.redis.image -}}
+{{- .Values.redis.image -}}
+{{- else -}}
 registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3
+{{- end -}}
 {{- end }}
 
 {{/*
 Get the Sentinel image
 */}}
 {{- define "redis-sentinel.sentinel.image" -}}
+{{- if .Values.sentinel.image -}}
+{{- .Values.sentinel.image -}}
+{{- else -}}
 registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -128,102 +136,102 @@ Get the redis password key
 {{- end }}
 
 {{/*
-Generate redis configuration
+Generate Redis configuration with auto-merge (extraConfig wins)
 */}}
 {{- define "redis-sentinel.redis.config" -}}
-{{- $bind := "0.0.0.0" }}
-{{- $protectedMode := "yes" }}
-{{- $port := 6379 }}
-{{- $timeout := 0 }}
-{{- $tcpKeepalive := 300 }}
-{{- $loglevel := "notice" }}
-{{- $databases := 16 }}
-{{- $maxmemoryPolicy := "allkeys-lru" }}
-{{- if .Values.redis }}
-{{- if .Values.redis.config }}
-{{- $bind = .Values.redis.config.bind | default $bind }}
-{{- $protectedMode = .Values.redis.config.protectedMode | default $protectedMode }}
-{{- $port = .Values.redis.config.port | default $port }}
-{{- $timeout = .Values.redis.config.timeout | default $timeout }}
-{{- $tcpKeepalive = .Values.redis.config.tcpKeepalive | default $tcpKeepalive }}
-{{- $loglevel = .Values.redis.config.loglevel | default $loglevel }}
-{{- $databases = .Values.redis.config.databases | default $databases }}
-{{- $maxmemoryPolicy = .Values.redis.config.maxmemoryPolicy | default $maxmemoryPolicy }}
+{{- $baseConfig := dict 
+  "bind" (.Values.redis.config.bind | default "0.0.0.0")
+  "protected-mode" (.Values.redis.config.protectedMode | default "yes")
+  "port" (.Values.redis.config.port | default "6379")
+  "timeout" (.Values.redis.config.timeout | default "0")
+  "tcp-keepalive" (.Values.redis.config.tcpKeepalive | default "300")
+  
+  "daemonize" (.Values.redis.config.daemonize | default "no")
+  "supervised" (.Values.redis.config.supervised | default "no")
+  "pidfile" (.Values.redis.config.pidfile | default "/var/run/redis_6379.pid")
+  
+  "loglevel" (.Values.redis.config.loglevel | default "notice")
+  "logfile" (.Values.redis.config.logfile | default "")
+  
+  "databases" (.Values.redis.config.databases | default "16")
+  
+  "save" (.Values.redis.config.save | default "")
+  "stop-writes-on-bgsave-error" (.Values.redis.config.stopWritesOnBgsaveError | default "yes")
+  "rdbcompression" (.Values.redis.config.rdbcompression | default "yes")
+  "rdbchecksum" (.Values.redis.config.rdbchecksum | default "yes")
+  "rdb-del-sync-files" (.Values.redis.config.rdbDelSyncFiles | default "no")
+  
+  "replica-serve-stale-data" (.Values.redis.config.replicaServeStaleData | default "yes")
+  "replica-read-only" (.Values.redis.config.replicaReadOnly | default "yes")
+  "repl-diskless-sync" (.Values.redis.config.replDisklessSync | default "no")
+  "repl-diskless-sync-delay" (.Values.redis.config.replDisklessSyncDelay | default "5")
+  "repl-diskless-load" (.Values.redis.config.replDisklessLoad | default "disabled")
+  "repl-disable-tcp-nodelay" (.Values.redis.config.replDisableTcpNodelay | default "no")
+  "replica-priority" (.Values.redis.config.replicaPriority | default "100")
+  
+  "acllog-max-len" (.Values.redis.config.acllogMaxLen | default "128")
+  
+  "maxmemory-policy" (.Values.redis.config.maxmemoryPolicy | default "allkeys-lru")
+  
+  "tcp-backlog" (.Values.redis.config.tcpBacklog | default "511")
+  "always-show-logo" (.Values.redis.config.alwaysShowLogo | default "yes")
+  "dir" (.Values.redis.config.dir | default "/data")
+-}}
+
+{{- $finalConfig := $baseConfig -}}
+
+{{- if .Values.redis.extraConfig }}
+  {{- range $key, $value := .Values.redis.extraConfig }}
+    {{- if not (empty $value) }}
+      {{- $finalConfig = set $finalConfig $key $value }}
+    {{- end }}
+  {{- end }}
 {{- end }}
-{{- end }}
-bind {{ $bind }}
-protected-mode {{ $protectedMode }}
-port {{ $port }}
-tcp-backlog 511
-timeout {{ $timeout }}
-tcp-keepalive {{ $tcpKeepalive }}
-daemonize no
-supervised no
-pidfile "/var/run/redis_6379.pid"
-loglevel {{ $loglevel }}
-logfile ""
-databases {{ $databases }}
-always-show-logo yes
-save ""
-stop-writes-on-bgsave-error yes
-rdbcompression yes
-rdbchecksum yes
-rdb-del-sync-files no
-dir "/data"
-replica-serve-stale-data yes
-replica-read-only yes
-repl-diskless-sync no
-repl-diskless-sync-delay 5
-repl-diskless-load disabled
-repl-disable-tcp-nodelay no
-replica-priority 100
-acllog-max-len 128
-maxmemory-policy {{ $maxmemoryPolicy }}
-{{- if .Values.redis }}
-{{- if .Values.redis.config }}
-{{- if .Values.redis.config.extraConfig }}
-{{- range $key, $value := .Values.redis.config.extraConfig }}
+
+{{- range $key, $value := $finalConfig }}
+{{- if not (empty $value) }}
 {{ $key }} {{ $value }}
-{{- end }}
-{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
 
 {{/*
-Generate sentinel configuration
+Generate Sentinel configuration with auto-merge (extraConfig wins)
 */}}
 {{- define "redis-sentinel.sentinel.config" -}}
-{{- $port := 26379 }}
-{{- $masterName := "mymaster" }}
-{{- $quorum := 2 }}
-{{- $downAfterMilliseconds := 5000 }}
-{{- $failoverTimeout := 10000 }}
-{{- $parallelSyncs := 1 }}
-{{- if .Values.sentinel }}
-{{- if .Values.sentinel.config }}
-{{- $port = .Values.sentinel.config.port | default $port }}
-{{- $masterName = .Values.sentinel.config.masterName | default $masterName }}
-{{- $quorum = .Values.sentinel.config.quorum | default $quorum }}
-{{- $downAfterMilliseconds = .Values.sentinel.config.downAfterMilliseconds | default $downAfterMilliseconds }}
-{{- $failoverTimeout = .Values.sentinel.config.failoverTimeout | default $failoverTimeout }}
-{{- $parallelSyncs = .Values.sentinel.config.parallelSyncs | default $parallelSyncs }}
+{{- $masterName := .Values.sentinel.config.masterName | default "mymaster" -}}
+{{- $redisMaster := (include "redis-sentinel.fullname" .) -}}
+{{- $redisPort := .Values.redis.config.port | default 6379 | int -}}
+{{- $redisMasterWithPort := printf "%s-0.%s-headless %d" $redisMaster $redisMaster $redisPort -}}
+{{- $quorum := .Values.sentinel.config.quorum | default 2 | int -}}
+{{- $downAfterMs := .Values.sentinel.config.downAfterMilliseconds | default 5000 | int -}}
+{{- $failoverTimeout := .Values.sentinel.config.failoverTimeout | default 10000 | int -}}
+{{- $parallelSyncs := .Values.sentinel.config.parallelSyncs | default 1 | int -}}
+
+{{- $baseConfig := dict 
+  "port" (.Values.sentinel.config.port | default 26379 | int)
+  "sentinel resolve-hostnames" (.Values.sentinel.config.resolveHostnames | default "yes")
+  "sentinel announce-hostnames" (.Values.sentinel.config.announceHostnames | default "yes")
+-}}
+
+{{- $baseConfig = set $baseConfig "sentinel monitor" (printf "%s %s %d" $masterName $redisMasterWithPort $quorum) -}}
+{{- $baseConfig = set $baseConfig "sentinel down-after-milliseconds" (printf "%s %d" $masterName $downAfterMs) -}}
+{{- $baseConfig = set $baseConfig "sentinel failover-timeout" (printf "%s %d" $masterName $failoverTimeout) -}}
+{{- $baseConfig = set $baseConfig "sentinel parallel-syncs" (printf "%s %d" $masterName $parallelSyncs) -}}
+
+{{- $finalConfig := $baseConfig -}}
+
+{{- if .Values.sentinel.extraConfig }}
+  {{- range $key, $value := .Values.sentinel.extraConfig }}
+    {{- if not (empty $value) }}
+      {{- $finalConfig = set $finalConfig $key $value }}
+    {{- end }}
+  {{- end }}
 {{- end }}
-{{- end }}
-port {{ $port }}
-sentinel resolve-hostnames yes
-sentinel announce-hostnames yes
-sentinel monitor {{ $masterName }} {{ include "redis-sentinel.fullname" . }}-0.{{ include "redis-sentinel.fullname" . }}-headless 6379 {{ $quorum }}
-sentinel down-after-milliseconds {{ $masterName }} {{ $downAfterMilliseconds }}
-sentinel failover-timeout {{ $masterName }} {{ $failoverTimeout }}
-sentinel parallel-syncs {{ $masterName }} {{ $parallelSyncs }}
-{{- if .Values.sentinel }}
-{{- if .Values.sentinel.config }}
-{{- if .Values.sentinel.config.extraConfig }}
-{{- range $key, $value := .Values.sentinel.config.extraConfig }}
+
+{{- range $key, $value := $finalConfig }}
+{{- if not (empty $value) }}
 {{ $key }} {{ $value }}
-{{- end }}
-{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

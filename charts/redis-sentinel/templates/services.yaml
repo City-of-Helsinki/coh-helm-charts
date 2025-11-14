@@ -10,7 +10,7 @@ spec:
   clusterIP: None
   ports:
     - port: {{ .Values.redis.service.port }}
-      targetPort: {{ .Values.redis.service.port }}
+      targetPort: {{ .Values.redis.service.targetPort }}
       name: redis
   selector:
     {{- include "redis-sentinel.redis.selectorLabels" . | nindent 4 }}
@@ -28,7 +28,7 @@ spec:
   sessionAffinity: None
   ports:
     - port: {{ .Values.sentinel.service.port }}
-      targetPort: {{ .Values.sentinel.service.port }}
+      targetPort: {{ .Values.sentinel.service.targetPort }}
       name: sentinel
   selector:
     {{- include "redis-sentinel.sentinel.selectorLabels" . | nindent 4 }}

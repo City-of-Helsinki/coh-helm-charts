@@ -17,6 +17,13 @@ spec:
       labels:
         {{- include "redis-sentinel.redis.selectorLabels" . | nindent 8 }}
     spec:
+      {{- if .Values.securityContext.enabled }}
+      securityContext:
+        runAsUser: {{ .Values.redis.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.redis.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.redis.securityContext.fsGroup }}
+        fsGroupChangePolicy: {{ .Values.securityContext.fsGroupChangePolicy }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -94,8 +101,8 @@ spec:
             - "sh"
             - "-c"
             - |
-              echo "maxmemory $(( ($( cat /sys/fs/cgroup/memory/memory.limit_in_bytes )/5)*4))" >> /etc/redis/redis.conf
-              redis-server /etc/redis/redis.conf
+              echo "maxmemory $$(( ($$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes )/5)*4))" >> /etc/redis/redis.conf
+              exec redis-server /etc/redis/redis.conf
           resources:
             {{- toYaml .Values.redis.resources | nindent 12 }}
           lifecycle:

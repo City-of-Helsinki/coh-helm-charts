@@ -1,3 +1,9 @@
+securityContext:
+  enabled: true
+  runAsUser: 1001400000
+  runAsGroup: 1001400000
+  fsGroup: 1001400000
+  fsGroupChangePolicy: "OnRootMismatch"
 # Redis Configuration
 redis:
   replicaCount: 3
@@ -11,14 +17,20 @@ redis:
     enabled: true
     size: "10Gi"
     storageClass: ""
+    mountPath: "/data"
   password:
     existingSecret: "asuminen-secret"
     secretKey: "REDIS_PASSWORD"
   pdb:
     enabled: false
     minAvailable: 1
-  service:
-    port: 6379
+  securityContext:
+    runAsUser: 1001400000
+    runAsGroup: 1001400000
+    fsGroup: 1001400000
+  config: 
+    dir: "/data"
+  extraConfig: {}
 
 # Sentinel Configuration
 sentinel:
@@ -30,6 +42,12 @@ sentinel:
     requests:
       cpu: "50m"
       memory: "128Mi"
+  
+  # Add Sentinel-specific security context
+  securityContext:
+    runAsUser: 1001400000
+    runAsGroup: 1001400000
+    fsGroup: 1001400000
   config:
     port: 26379
     masterName: "mymaster"
@@ -41,7 +59,8 @@ sentinel:
     enabled: false
     minAvailable: 1
   service:
-    port: 26379
+    port: 5000
+    targetPort : 26379
     type: "ClusterIP"
 
 # Configurable Labels

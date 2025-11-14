@@ -20,19 +20,20 @@ metadata:
   labels:
     {{- include "redis-sentinel.labels" . | nindent 4 }}
 data:
-  redis.conf: |
-    {{- include "redis-sentinel.redis.config" . | nindent 4 }}
-  sentinel.conf: |
-    {{- include "redis-sentinel.sentinel.config" . | nindent 4 }}
+  redis.conf: |-
+    {{- include "redis-sentinel.redis.config" . | indent 4 }}
+  sentinel.conf: |-
+    {{- include "redis-sentinel.sentinel.config" . | indent 4 }}
     requirepass ${REDIS_PASSWORD}
     sentinel auth-pass mymaster ${REDIS_PASSWORD}
   REDIS_NODES: "{{ include "redis-sentinel.fullname" . }}-redis-0.{{ include "redis-sentinel.fullname" . }}-headless,{{ include "redis-sentinel.fullname" . }}-redis-1.{{ include "redis-sentinel.fullname" . }}-headless,{{ include "redis-sentinel.fullname" . }}-redis-2.{{ include "redis-sentinel.fullname" . }}-headless"
   SENTINEL_MASTER_NAME: "{{ .Values.sentinel.config.masterName | default "mymaster" }}"
   SENTINEL_QUORUM: "{{ .Values.sentinel.config.quorum | default 2 }}"
-  SENTINEL_PORT: "{{ .Values.sentinel.config.port | default 5000 }}"
+  SENTINEL_PORT: "{{ .Values.sentinel.config.port | default 26379 }}"
   SENTINEL_DOWN_AFTER_MS: "{{ .Values.sentinel.config.downAfterMilliseconds | default 5000 }}"
   SENTINEL_FAILOVER_TIMEOUT: "{{ .Values.sentinel.config.failoverTimeout | default 10000 }}"
   SENTINEL_PARALLEL_SYNCS: "{{ .Values.sentinel.config.parallelSyncs | default 1 }}"
-  SENTINEL_SERVICE: "{{ include "redis-sentinel.fullname" . }}-sentinel-headless"
+  SENTINEL_SERVICE: "{{ include "redis-sentinel.fullname" . }}-sentinel"
   REDIS_SERVICE: "{{ include "redis-sentinel.fullname" . }}-redis"
   REDIS_HEADLESS_SERVICE: "{{ include "redis-sentinel.fullname" . }}-headless"
+  SENTINEL_HEADLESS_SERVICE: "{{ include "redis-sentinel.fullname" . }}-sentinel-headless"

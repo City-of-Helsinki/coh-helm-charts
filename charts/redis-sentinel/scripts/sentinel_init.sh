@@ -1,40 +1,44 @@
 #!/bin/bash
-# Copy the base sentinel configuration first
-cp /tmp/sentinel/sentinel.conf /etc/redis/sentinel.conf
+set -e
 
-# Process environment variables in the config file
-envsubst < /etc/redis/sentinel.conf > /etc/redis/sentinel.conf.tmp
-mv /etc/redis/sentinel.conf.tmp /etc/redis/sentinel.conf
+echo "Starting Sentinel initialization..."
 
-# Then proceed with master discovery and configuration updates
+# Create directory
+mkdir -p /etc/redis
+
+# Hardcode Redis port
+REDIS_PORT="6379"
+
+# Now find the actual master
 n=0
-MASTER=""
+MASTER_HOST=""
+
 while [ $n -ne 10 ]
 do
   n=$(($n+1))
-  for i in ${REDIS_NODES//,/ }
+  for NODE_HOST in ${REDIS_NODES//,/ }
   do
-      echo "finding master at $i"
+      echo "Finding master at $NODE_HOST:$REDIS_PORT"
       
       # Test connection first (with auth)
-      if ! redis-cli --no-auth-warning --raw -h $i -a ${REDIS_PASSWORD} ping 2>/dev/null | grep -q PONG; then
-          echo "  ❌ Cannot connect to $i"
+      if ! redis-cli --no-auth-warning --raw -h $NODE_HOST -p $REDIS_PORT -a ${REDIS_PASSWORD} ping 2>/dev/null | grep -q PONG; then
+          echo "  ❌ Cannot connect to $NODE_HOST:$REDIS_PORT"
           continue
       fi
       
       # Get replication info (with auth)
-      REPLICATION_INFO=$(redis-cli --no-auth-warning --raw -h $i -a ${REDIS_PASSWORD} info replication 2>/dev/null)
+      REPLICATION_INFO=$(redis-cli --no-auth-warning --raw -h $NODE_HOST -p $REDIS_PORT -a ${REDIS_PASSWORD} info replication 2>/dev/null)
       if [ $? -ne 0 ]; then
-          echo "  ❌ Failed to get replication info from $i"
+          echo "  ❌ Failed to get replication info from $NODE_HOST:$REDIS_PORT"
           continue
       fi
       
       ROLE=$(echo "$REPLICATION_INFO" | grep "role:" | cut -d ":" -f2 | tr -d '\r')
-      echo "  ✅ Connected to $i - Role: $ROLE"
+      echo "  ✅ Connected to $NODE_HOST:$REDIS_PORT - Role: $ROLE"
       
       if [ "$ROLE" == "master" ]; then
-          echo "Found master at: $i"
-          MASTER=$i
+          echo "Found actual master at: $NODE_HOST:$REDIS_PORT"
+          MASTER_HOST=$NODE_HOST
           break 2
       fi
   done
@@ -42,19 +46,39 @@ do
   sleep 5
 done
 
-# If no master found after retries, default to first node
-if [ -z "$MASTER" ]; then
+# If no master found after retries, use first node
+if [ -z "$MASTER_HOST" ]; then
     echo "No master found after retries, defaulting to first node"
-    MASTER="${REDIS_NODES%%,*}"
-    echo "Using default master: $MASTER"
+    MASTER_HOST="${REDIS_NODES%%,*}"
+    echo "Using fallback master: $MASTER_HOST:$REDIS_PORT"
 fi
 
-# Remove any existing sentinel monitor line and add the new one
-sed -i '/sentinel monitor .*/d' /etc/redis/sentinel.conf
-echo "sentinel monitor ${SENTINEL_MASTER_NAME} ${MASTER} 6379 ${SENTINEL_QUORUM}" >> /etc/redis/sentinel.conf
+# Create the final sentinel.conf
+cat > /etc/redis/sentinel.conf << EOF
+port 26379
+dir /tmp
+bind 0.0.0.0
+
+# OpenShift compatibility
+sentinel resolve-hostnames yes
+sentinel announce-hostnames yes
+
+# Authentication
+requirepass ${REDIS_PASSWORD}
+
+# Master configuration
+sentinel monitor ${SENTINEL_MASTER_NAME} ${MASTER_HOST} ${REDIS_PORT} ${SENTINEL_QUORUM}
+sentinel down-after-milliseconds ${SENTINEL_MASTER_NAME} ${SENTINEL_DOWN_AFTER_MS}
+sentinel failover-timeout ${SENTINEL_MASTER_NAME} ${SENTINEL_FAILOVER_TIMEOUT}
+sentinel parallel-syncs ${SENTINEL_MASTER_NAME} ${SENTINEL_PARALLEL_SYNCS}
+sentinel auth-pass ${SENTINEL_MASTER_NAME} ${REDIS_PASSWORD}
 
 # Use proper headless service DNS name for announce-ip
-echo "sentinel announce-ip ${HOSTNAME}.${SENTINEL_SERVICE}" >> /etc/redis/sentinel.conf
+sentinel announce-ip ${HOSTNAME}.${SENTINEL_HEADLESS_SERVICE}
+EOF
 
 echo "=== Final Sentinel Config ==="
 cat /etc/redis/sentinel.conf
+
+echo "Sentinel initialization completed successfully"
+echo "Configured master: $MASTER_HOST:$REDIS_PORT"
