@@ -17,12 +17,14 @@ spec:
       labels:
         {{- include "redis-sentinel.redis.selectorLabels" . | nindent 8 }}
     spec:
-      {{- if .Values.securityContext.enabled }}
+      {{- if (.Values.securityContext).enabled | default true }}
       securityContext:
-        runAsUser: {{ .Values.redis.securityContext.runAsUser }}
-        runAsGroup: {{ .Values.redis.securityContext.runAsGroup }}
-        fsGroup: {{ .Values.redis.securityContext.fsGroup }}
+        runAsUser: {{ .Values.securityContext.runAsUser | default 1000 }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup | default 1000 }}
+        fsGroup: {{ .Values.securityContext.fsGroup | default 1000 }}
+        {{- if .Values.securityContext.fsGroupChangePolicy }}
         fsGroupChangePolicy: {{ .Values.securityContext.fsGroupChangePolicy }}
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -95,6 +97,10 @@ spec:
               mountPath: /scripts/
       containers:
         - name: redis
+          {{- if .Values.redis.securityContext }}
+          securityContext:
+            {{- toYaml .Values.redis.securityContext | nindent 12 }}
+          {{- end }}
           image: {{ include "redis-sentinel.redis.image" . }}
           imagePullPolicy: IfNotPresent
           command:
@@ -164,6 +170,10 @@ spec:
             items:
               - key: redis.conf
                 path: redis.conf
+        {{- if not .Values.redis.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
   {{- if .Values.redis.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:

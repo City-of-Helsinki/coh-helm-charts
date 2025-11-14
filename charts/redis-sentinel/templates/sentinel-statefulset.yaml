@@ -23,16 +23,18 @@ spec:
       labels:
         {{- include "redis-sentinel.sentinel.selectorLabels" . | nindent 8 }}
     spec:
+      {{- if (.Values.securityContext).enabled | default true }}
+      securityContext:
+        runAsUser: {{ .Values.securityContext.runAsUser | default 1000 }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup | default 1000 }}
+        fsGroup: {{ .Values.securityContext.fsGroup | default 1000 }}
+        {{- if .Values.securityContext.fsGroupChangePolicy }}
+        fsGroupChangePolicy: {{ .Values.securityContext.fsGroupChangePolicy }}
+        {{- end }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- if .Values.securityContext.enabled }}
-      securityContext:
-        runAsUser: {{ .Values.redis.securityContext.runAsUser }}
-        runAsGroup: {{ .Values.redis.securityContext.runAsGroup }}
-        fsGroup: {{ .Values.redis.securityContext.fsGroup }}
-        fsGroupChangePolicy: {{ .Values.securityContext.fsGroupChangePolicy }}
       {{- end }}
       {{- if .Values.affinity.enabled }}
       affinity:
@@ -121,6 +123,10 @@ spec:
               mountPath: /scripts/
       containers:
         - name: sentinel
+          {{- if .Values.sentinel.securityContext }}
+          securityContext:
+            {{- toYaml .Values.sentinel.securityContext | nindent 12 }}
+          {{- end }}
           image: {{ include "redis-sentinel.sentinel.image" . }}
           imagePullPolicy: IfNotPresent
           command:
