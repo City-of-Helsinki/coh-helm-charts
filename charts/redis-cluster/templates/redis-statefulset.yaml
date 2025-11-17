@@ -17,13 +17,15 @@ spec:
       labels:
         {{- include "redis-sentinel.redis.selectorLabels" . | nindent 8 }}
     spec:
-      {{- if (.Values.securityContext).enabled | default true }}
+      {{- if (.Values.podSecurityContext).enabled | default false }}
       securityContext:
-        runAsUser: {{ .Values.securityContext.runAsUser | default 1000 }}
-        runAsGroup: {{ .Values.securityContext.runAsGroup | default 1000 }}
-        fsGroup: {{ .Values.securityContext.fsGroup | default 1000 }}
-        {{- if .Values.securityContext.fsGroupChangePolicy }}
-        fsGroupChangePolicy: {{ .Values.securityContext.fsGroupChangePolicy }}
+        {{- $ctx := omit .Values.podSecurityContext "enabled" }}
+        {{- range $key, $value := $ctx }}
+        {{- if or (eq $key "runAsUser") (eq $key "runAsGroup") (eq $key "fsGroup") }}
+        {{ $key }}: {{ $value | int }}
+        {{- else }}
+        {{ $key }}: {{ $value }}
+        {{- end }}
         {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
@@ -51,7 +53,7 @@ spec:
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- end }}   
       initContainers:
         - name: config
           image: {{ include "redis-sentinel.redis.image" . }}
@@ -94,12 +96,20 @@ spec:
             - name: redis-config
               mountPath: /etc/redis/
             - name: init-script
-              mountPath: /scripts/
+              mountPath: /scripts/             
       containers:
         - name: redis
-          {{- if .Values.redis.securityContext }}
+          {{- if and .Values.redis.securityContext .Values.redis.securityContext.enabled }}
           securityContext:
-            {{- toYaml .Values.redis.securityContext | nindent 12 }}
+            {{- omit .Values.redis.securityContext "enabled" | toYaml | nindent 12 }}
+          {{- else if (.Values.podSecurityContext).enabled }}
+          securityContext:
+            {{- with .Values.podSecurityContext.runAsUser }}
+            runAsUser: {{ . | int }}
+            {{- end }}
+            {{- with .Values.podSecurityContext.runAsGroup }}
+            runAsGroup: {{ . | int }}
+            {{- end }}
           {{- end }}
           image: {{ include "redis-sentinel.redis.image" . }}
           imagePullPolicy: IfNotPresent
@@ -153,7 +163,7 @@ spec:
             - name: data
               mountPath: /data
             - name: redis-config
-              mountPath: /etc/redis/
+              mountPath: /etc/redis/      
       volumes:
         - name: redis-config
           emptyDir: {}
@@ -173,7 +183,7 @@ spec:
         {{- if not .Values.redis.persistence.enabled }}
         - name: data
           emptyDir: {}
-        {{- end }}
+        {{- end }}  
   {{- if .Values.redis.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:

@@ -23,13 +23,15 @@ spec:
       labels:
         {{- include "redis-sentinel.sentinel.selectorLabels" . | nindent 8 }}
     spec:
-      {{- if (.Values.securityContext).enabled | default true }}
+      {{- if (.Values.podSecurityContext).enabled | default false }}
       securityContext:
-        runAsUser: {{ .Values.securityContext.runAsUser | default 1000 }}
-        runAsGroup: {{ .Values.securityContext.runAsGroup | default 1000 }}
-        fsGroup: {{ .Values.securityContext.fsGroup | default 1000 }}
-        {{- if .Values.securityContext.fsGroupChangePolicy }}
-        fsGroupChangePolicy: {{ .Values.securityContext.fsGroupChangePolicy }}
+        {{- $ctx := omit .Values.podSecurityContext "enabled" }}
+        {{- range $key, $value := $ctx }}
+        {{- if or (eq $key "runAsUser") (eq $key "runAsGroup") (eq $key "fsGroup") }}
+        {{ $key }}: {{ $value | int }}
+        {{- else }}
+        {{ $key }}: {{ $value }}
+        {{- end }}
         {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
@@ -53,11 +55,11 @@ spec:
                   values:
                   - "sentinel"
               topologyKey: "kubernetes.io/hostname"
-      {{- end }}
+      {{- end }} 
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- end }}  
       initContainers:
         - name: config
           image: {{ include "redis-sentinel.sentinel.image" . }}
@@ -120,12 +122,20 @@ spec:
             - name: sentinel-config
               mountPath: /etc/redis/
             - name: init-script
-              mountPath: /scripts/
+              mountPath: /scripts/   
       containers:
         - name: sentinel
-          {{- if .Values.sentinel.securityContext }}
+          {{- if and .Values.sentinel.securityContext .Values.sentinel.securityContext.enabled }}
           securityContext:
-            {{- toYaml .Values.sentinel.securityContext | nindent 12 }}
+            {{- omit .Values.sentinel.securityContext "enabled" | toYaml | nindent 12 }}
+          {{- else if (.Values.podSecurityContext).enabled }}
+          securityContext:
+            {{- with .Values.podSecurityContext.runAsUser }}
+            runAsUser: {{ . | int }}
+            {{- end }}
+            {{- with .Values.podSecurityContext.runAsGroup }}
+            runAsGroup: {{ . | int }}
+            {{- end }}
           {{- end }}
           image: {{ include "redis-sentinel.sentinel.image" . }}
           imagePullPolicy: IfNotPresent

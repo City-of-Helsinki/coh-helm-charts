@@ -1,218 +1,417 @@
-# Default values for redis-sentinel.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
+# Default values for redis-sentinel chart
+# This is a YAML-formatted file with all available configuration options
 
-securityContext:
-  enabled: true
-  runAsUser: 1001400000
-  runAsGroup: 1001400000
-  fsGroup: 1001400000
+# Global pod security context
+# These settings apply at the pod level
+podSecurityContext:
+  enabled: false
+  runAsUser: "1000930000"
+  runAsGroup: "1000930000"
+  fsGroup: "1000930000"
   fsGroupChangePolicy: "OnRootMismatch"
-# Global settings
-global:
-  # Kubernetes namespace where resources will be deployed
-  namespace: default
 
-# Name overrides
-nameOverride: ""
-fullnameOverride: ""
-
-# Redis configuration
+# Redis Configuration
 redis:
-  # Number of Redis replicas
+  # Number of Redis instances (1 master + N-1 replicas)
   replicaCount: 3
   
-  # Redis password configuration
-  password:
-    # Use an existing secret for Redis password
-    existingSecret: ""
-    # Key in the existing secret that contains the password
-    secretKey: "redis-password"
-    # Password to use (only if existingSecret is not set)
-    # If not provided, a random 32-character password will be generated
-    password: ""
+  # Redis container image
+  # If not specified, uses default from _helpers.tpl
+  image: ""
   
-  # Service configuration for Redis
-  service:
-    # Port for Redis service
-    port: 6379
-  
-  # Pod Disruption Budget for Redis
-  pdb:
-    # Enable PDB for Redis pods
-    enabled: true
-    # Minimum number of pods that must be available
-    minAvailable: 1
-    # Maximum number of pods that can be unavailable (alternative to minAvailable)
-    # maxUnavailable: 1
-    # Annotations for PDB
-    annotations: {}
-  
+  # Container-level security context for Redis pods
+  # Set enabled: true to override pod-level security context
   securityContext:
-    runAsUser: 1001400000
-    runAsGroup: 1001400000
-    fsGroup: 1001400000
+    enabled: false
+    # runAsUser: 1000930000
+    # runAsGroup: 1000930000
+    # runAsNonRoot: true
+    # readOnlyRootFilesystem: true
+    # allowPrivilegeEscalation: false
+    # capabilities:
+    #   drop:
+    #     - ALL
   
-  # Redis server configuration
-  config:
-    # Bind address (0.0.0.0 for all interfaces)
-    bind: "0.0.0.0"
-    # Protected mode (yes/no)
-    protectedMode: "yes"
-    # Redis port
-    port: 6379
-    # Connection timeout in seconds (0 = no timeout)
-    timeout: 0
-    # TCP keepalive in seconds
-    tcpKeepalive: 300
-    # Log level (debug, verbose, notice, warning)
-    loglevel: "notice"
-    # Number of databases
-    databases: 16
-    # Maxmemory eviction policy
-    # Options: noeviction, allkeys-lru, allkeys-lfu, volatile-lru, volatile-lfu, 
-    #          allkeys-random, volatile-random, volatile-ttl
-    maxmemoryPolicy: "allkeys-lru"
-    # Additional Redis configuration parameters
-    extraConfig: {}
-      # Example:
-      # maxmemory: "2gb"
-      # maxmemory-samples: "5"
-  
-  # Resource limits and requests
+  # Resource limits and requests for Redis containers
   resources:
     limits:
-      cpu: 500m
-      memory: 512Mi
+      memory: "512Mi"
+      # cpu: "1000m"  # Uncomment to set CPU limit
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: "100m"
+      memory: "256Mi"
   
-  # Persistence configuration
+  # Persistent storage configuration
   persistence:
-    # Enable persistence using PVC
     enabled: true
-    # Storage class for PVC (leave empty for default)
-    storageClass: ""
-    # Size of the persistent volume
     size: 8Gi
-
-# Sentinel configuration
-sentinel:
-  # Number of Sentinel replicas (should be odd number, minimum 3 for quorum)
-  replicaCount: 3
+    storageClass: ""  # Use cluster default storage class
+    # storageClass: "fast-ssd"  # Specify custom storage class
   
-  # Service configuration for Sentinel
-  service:
-    # Service type (ClusterIP, NodePort, LoadBalancer)
-    type: ClusterIP
-    # Port for Sentinel service
-    port: 5000
+  # Password configuration
+  password:
+    # Auto-generate password if not specified
+    password: ""
+    
+    # Use existing secret instead of creating new one
+    # If specified, password field above is ignored
+    existingSecret: ""
+    
+    # Key name in the secret containing the password
+    secretKey: "redis-password"
   
-  # Pod Disruption Budget for Sentinel
+  # Pod Disruption Budget
   pdb:
-    # Enable PDB for Sentinel pods
-    enabled: true
-    # Minimum number of pods that must be available
-    minAvailable: 2
-    # Maximum number of pods that can be unavailable (alternative to minAvailable)
-    # maxUnavailable: 1
-    # Annotations for PDB
+    enabled: false
+    minAvailable: 1
+    # maxUnavailable: 1  # Alternative to minAvailable
     annotations: {}
   
-  securityContext:
-    runAsUser: 1001400000
-    runAsGroup: 1001400000
-    fsGroup: 1001400000
+  # Service configuration
+  service:
+    port: 6379
+    targetPort: 6379
   
-  # Sentinel configuration
+  # Base Redis configuration
+  # These are the default values that will be used
+  config:
+    # Network settings
+    bind: "0.0.0.0"
+    protectedMode: "yes"
+    port: 6379
+    timeout: "500"
+    tcpKeepalive: "300"
+    tcpBacklog: "511"
+    
+    # Authentication
+    requirepass: ""  # Will be set from password secret
+    
+    # Daemon settings
+    daemonize: "no"
+    supervised: "no"
+    pidfile: "/var/run/redis_6379.pid"
+    
+    # Logging
+    loglevel: "notice"
+    logfile: ""
+    
+    # Database
+    databases: "16"
+    
+    # Memory management
+    maxmemory: "900mb"
+    maxmemoryPolicy: "allkeys-lru"
+    
+    # Persistence
+    save: ""  # Disable RDB snapshots (empty string)
+    appendonly: "no"
+    stopWritesOnBgsaveError: "no"
+    rdbcompression: "yes"
+    rdbchecksum: "yes"
+    rdbDelSyncFiles: "no"
+    
+    # Replication
+    replicaServeStaleData: "yes"
+    replicaReadOnly: "yes"
+    replDisklessSync: "no"
+    replDisklessSyncDelay: "5"
+    replDisklessLoad: "disabled"
+    replDisableTcpNodelay: "no"
+    replicaPriority: "100"
+    
+    # ACL
+    acllogMaxLen: "128"
+    
+    # Miscellaneous
+    alwaysShowLogo: "yes"
+    dir: "/data"
+  
+  # Extra configuration to override or extend base config
+  # These values will override the base config above
+  extraConfig: {}
+    # Example overrides:
+    # maxmemory: "2gb"
+    # maxmemory-policy: "volatile-lru"
+    # slowlog-log-slower-than: "10000"
+    # slowlog-max-len: "128"
+    # notify-keyspace-events: "Ex"
+    # tcp-backlog: "1024"
+    # save: "900 1 300 10 60 10000"  # Enable RDB
+    # appendonly: "yes"  # Enable AOF
+
+# Sentinel Configuration
+sentinel:
+  enabled: true
+  
+  # Number of Sentinel instances (always use odd numbers: 3, 5, 7)
+  replicaCount: 3
+  
+  # Sentinel container image
+  # If not specified, uses default from _helpers.tpl
+  image: ""
+  
+  # Container-level security context for Sentinel pods
+  # Set enabled: true to override pod-level security context
+  securityContext:
+    enabled: false
+    # runAsUser: 1000930000
+    # runAsGroup: 1000930000
+    # runAsNonRoot: true
+    # readOnlyRootFilesystem: true
+    # allowPrivilegeEscalation: false
+  
+  # Resource limits and requests for Sentinel containers
+  resources:
+    limits:
+      memory: "256Mi"
+      # cpu: "500m"  # Uncomment to set CPU limit
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+  
+  # Pod Disruption Budget
+  pdb:
+    enabled: false
+    minAvailable: 1
+    # maxUnavailable: 1  # Alternative to minAvailable
+    annotations: {}
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 5000  # External port for clients
+    targetPort: 26379  # Sentinel port inside container
+  
+  # Base Sentinel configuration
   config:
     # Sentinel port
-    port: 5000
-    # Master name (used by Sentinel to identify the master)
+    port: 26379
+    
+    # Master name to monitor
     masterName: "mymaster"
-    # Quorum - minimum number of Sentinels that need to agree
-    # about the fact the master is not reachable for failover
+    
+    # Number of Sentinels that must agree master is down
+    # Should be: (total_sentinels / 2) + 1
+    # For 3 sentinels: quorum = 2
+    # For 5 sentinels: quorum = 3
     quorum: 2
-    # Time in milliseconds after which master is considered down
+    
+    # Time in milliseconds before marking master as down
+    # Increase this value if you have network latency
     downAfterMilliseconds: 5000
-    # Failover timeout in milliseconds
+    
+    # Maximum time for failover process
     failoverTimeout: 10000
-    # Number of replicas that can be reconfigured in parallel during failover
+    
+    # Number of replicas to reconfigure in parallel during failover
+    # Keep at 1 to minimize load during failover
     parallelSyncs: 1
-    # Additional Sentinel configuration parameters
-    extraConfig: {}
-      # Example:
-      # sentinel announce-ip: "10.0.0.1"
+    
+    # Hostname resolution (required for openshift)
+    resolveHostnames: "yes"
+    announceHostnames: "yes"
   
-  # Resource limits and requests
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 50m
-      memory: 64Mi
+  # Extra configuration to override or extend base config
+  # These values will override the base config above
+  extraConfig: {}
+    # Example overrides:
+    # sentinel down-after-milliseconds mymaster: "10000"
+    # sentinel failover-timeout mymaster: "20000"
+    # sentinel parallel-syncs mymaster: "2"
+    # sentinel deny-scripts-reconfig: "yes"
 
-# Health check probes configuration
+# Pod scheduling configuration
+
+# Node selector for pod assignment
+# Example: deploy only on nodes with label workload=redis
+nodeSelector: {}
+  # workload: redis
+  # disktype: ssd
+
+# Pod anti-affinity configuration
+# Spreads Redis and Sentinel pods across different nodes
+affinity:
+  enabled: true
+  # When enabled, uses preferredDuringSchedulingIgnoredDuringExecution
+  # This is a soft rule - pods will still schedule if not enough nodes
+  # For hard rule, modify the StatefulSet templates directly
+
+# Tolerations for pod assignment
+# Example: allow pods on nodes with redis taint
+tolerations: []
+  # - key: "redis"
+  #   operator: "Equal"
+  #   value: "true"
+  #   effect: "NoSchedule"
+  # - key: "high-memory"
+  #   operator: "Exists"
+  #   effect: "NoSchedule"
+
+# Probe configuration for health checks
 probes:
   redis:
     liveness:
-      # Initial delay before liveness probe starts
       initialDelaySeconds: 10
-      # Timeout for each probe
       timeoutSeconds: 5
-      # How often to perform the probe
       periodSeconds: 5
-      # Number of failures before marking unhealthy
       failureThreshold: 10
+      successThreshold: 1
     readiness:
-      # Initial delay before readiness probe starts
       initialDelaySeconds: 5
-      # Timeout for each probe
       timeoutSeconds: 15
-      # How often to perform the probe
       periodSeconds: 2
-      # Number of consecutive successes required
       successThreshold: 2
-      # Number of failures before marking not ready
       failureThreshold: 40
   
   sentinel:
     liveness:
-      # Initial delay before liveness probe starts
       initialDelaySeconds: 10
-      # Timeout for each probe
       timeoutSeconds: 5
-      # How often to perform the probe
       periodSeconds: 5
-      # Number of failures before marking unhealthy
       failureThreshold: 10
+      successThreshold: 1
     readiness:
-      # Initial delay before readiness probe starts
       initialDelaySeconds: 5
-      # Timeout for each probe
       timeoutSeconds: 10
-      # How often to perform the probe
       periodSeconds: 2
-      # Number of failures before marking not ready
+      successThreshold: 1
       failureThreshold: 20
 
-# Pod scheduling configuration
-affinity:
-  # Enable pod anti-affinity to spread pods across nodes
-  enabled: true
+# Helm chart metadata (read-only, for reference)
+# These values are set in Chart.yaml
+nameOverride: ""
+fullnameOverride: ""
 
-# Node selector for pod assignment
-nodeSelector: {}
-  # Example:
-  # disktype: ssd
-  # environment: production
+# ============================================================================
+# CONFIGURATION EXAMPLES FOR DIFFERENT SCENARIOS
+# ============================================================================
 
-# Tolerations for pod assignment
-tolerations: []
-  # Example:
-  # - key: "dedicated"
-  #   operator: "Equal"
-  #   value: "redis"
-  #   effect: "NoSchedule"
+# Example 1: Development Environment
+# -----------------------------------
+# redis:
+#   replicaCount: 3
+#   persistence:
+#     enabled: false
+#   resources:
+#     requests:
+#       cpu: 100m
+#       memory: 256Mi
+#     limits:
+#       memory: 512Mi
+# sentinel:
+#   replicaCount: 3
+#   resources:
+#     requests:
+#       cpu: 50m
+#       memory: 128Mi
+# affinity:
+#   enabled: false
+
+# Example 2: Production Environment
+# ----------------------------------
+# redis:
+#   replicaCount: 3
+#   persistence:
+#     enabled: true
+#     size: 20Gi
+#     storageClass: fast-ssd
+#   resources:
+#     requests:
+#       cpu: 500m
+#       memory: 1Gi
+#     limits:
+#       cpu: 2000m
+#       memory: 2Gi
+#   pdb:
+#     enabled: true
+#     minAvailable: 2
+#   password:
+#     existingSecret: redis-prod-secret
+#     secretKey: password
+# sentinel:
+#   replicaCount: 3
+#   pdb:
+#     enabled: true
+#     minAvailable: 2
+#   resources:
+#     requests:
+#       cpu: 100m
+#       memory: 256Mi
+#     limits:
+#       memory: 512Mi
+# affinity:
+#   enabled: true
+# nodeSelector:
+#   workload: redis
+
+# Example 3: Cache-Only Configuration
+# ------------------------------------
+# redis:
+#   replicaCount: 3
+#   persistence:
+#     enabled: false
+#   config:
+#     maxmemory: "1gb"
+#     maxmemory-policy: "allkeys-lru"
+#     save: ""
+#     appendonly: "no"
+#   extraConfig:
+#     slowlog-log-slower-than: "10000"
+#     notify-keyspace-events: "Ex"
+# sentinel:
+#   config:
+#     downAfterMilliseconds: 3000
+#     quorum: 2
+
+# Example 4: High Security
+# -------------------------
+# podSecurityContext:
+#   enabled: true
+#   runAsUser: "1000930000"
+#   runAsGroup: "1000930000"
+#   fsGroup: "1000930000"
+#   fsGroupChangePolicy: "OnRootMismatch"
+# redis:
+#   securityContext:
+#     enabled: true
+#     runAsNonRoot: true
+#     readOnlyRootFilesystem: true
+#     allowPrivilegeEscalation: false
+#     capabilities:
+#       drop:
+#         - ALL
+#   password:
+#     existingSecret: vault-redis-secret
+#   extraConfig:
+#     protected-mode: "yes"
+#     rename-command-CONFIG: ""
+# sentinel:
+#   securityContext:
+#     enabled: true
+#     runAsNonRoot: true
+#     readOnlyRootFilesystem: true
+
+# Example 5: Persistent Data with Custom Config
+# ----------------------------------------------
+# redis:
+#   replicaCount: 3
+#   persistence:
+#     enabled: true
+#     size: 50Gi
+#     storageClass: fast-ssd
+#   config:
+#     maxmemory: "4gb"
+#     maxmemory-policy: "allkeys-lru"
+#   extraConfig:
+#     save: "900 1 300 10 60 10000"
+#     appendonly: "yes"
+#     appendfsync: "everysec"
+#     auto-aof-rewrite-percentage: "100"
+#     auto-aof-rewrite-min-size: "64mb"
+#   resources:
+#     requests:
+#       cpu: 1000m
+#       memory: 4Gi
+#     limits:
+#       cpu: 2000m
+#       memory: 5Gi
