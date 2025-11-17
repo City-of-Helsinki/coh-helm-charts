@@ -143,8 +143,11 @@ Generate Redis configuration with auto-merge (extraConfig wins)
   "bind" (.Values.redis.config.bind | default "0.0.0.0")
   "protected-mode" (.Values.redis.config.protectedMode | default "yes")
   "port" (.Values.redis.config.port | default "6379")
-  "timeout" (.Values.redis.config.timeout | default "0")
+  "timeout" (.Values.redis.config.timeout | default "500")
   "tcp-keepalive" (.Values.redis.config.tcpKeepalive | default "300")
+  "tcp-backlog" (.Values.redis.config.tcpBacklog | default "511")
+  
+  "requirepass" (.Values.redis.config.requirepass | default "")
   
   "daemonize" (.Values.redis.config.daemonize | default "no")
   "supervised" (.Values.redis.config.supervised | default "no")
@@ -155,8 +158,12 @@ Generate Redis configuration with auto-merge (extraConfig wins)
   
   "databases" (.Values.redis.config.databases | default "16")
   
+  "maxmemory" (.Values.redis.config.maxmemory | default "900mb")
+  "maxmemory-policy" (.Values.redis.config.maxmemoryPolicy | default "allkeys-lru")
+  
   "save" (.Values.redis.config.save | default "")
-  "stop-writes-on-bgsave-error" (.Values.redis.config.stopWritesOnBgsaveError | default "yes")
+  "appendonly" (.Values.redis.config.appendonly | default "no")
+  "stop-writes-on-bgsave-error" (.Values.redis.config.stopWritesOnBgsaveError | default "no")
   "rdbcompression" (.Values.redis.config.rdbcompression | default "yes")
   "rdbchecksum" (.Values.redis.config.rdbchecksum | default "yes")
   "rdb-del-sync-files" (.Values.redis.config.rdbDelSyncFiles | default "no")
@@ -171,9 +178,6 @@ Generate Redis configuration with auto-merge (extraConfig wins)
   
   "acllog-max-len" (.Values.redis.config.acllogMaxLen | default "128")
   
-  "maxmemory-policy" (.Values.redis.config.maxmemoryPolicy | default "allkeys-lru")
-  
-  "tcp-backlog" (.Values.redis.config.tcpBacklog | default "511")
   "always-show-logo" (.Values.redis.config.alwaysShowLogo | default "yes")
   "dir" (.Values.redis.config.dir | default "/data")
 -}}

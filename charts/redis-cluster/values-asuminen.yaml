@@ -58,19 +58,6 @@ sentinel:
     targetPort : 26379
   extraConfig: {}
 
-# Configurable Labels
-labels:
-  common:
-    environment: "test"
-    team: "asuminen"
-    chart-version: "0.9.0"
-  redis:
-    component: "redis"
-    role: "cache"
-  sentinel:
-    component: "sentinel"
-    role: "monitoring"
-
 # Pod scheduling
 nodeSelector: {}
 affinity:

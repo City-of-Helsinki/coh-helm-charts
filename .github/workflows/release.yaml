@@ -4,7 +4,13 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:  # Allow manual triggers
+  workflow_dispatch:
+    # 1. Define input for chart version for manual triggers
+    inputs:
+      chart_version:
+        description: 'The semantic version to release (e.g., 1.0.1). Will override existing releases.'
+        required: true
+        type: string
 
 jobs:
   test:
@@ -38,13 +44,30 @@ jobs:
 
       - name: Set up Helm
         uses: azure/setup-helm@v3
+        
+      # Install yq for parsing YAML, which is required in the next step
+      - name: Install yq
+        run: sudo snap install yq
 
-      - name: Extract version from tag
+      # 2. Updated step: Prioritizes workflow_dispatch input, falls back to tag
+      - name: Determine Chart Version
         id: version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          # Use manual input if available
+          VERSION="${{ github.event.inputs.chart_version }}"
+          
+          # If no manual input, extract version from the git tag
+          if [ -z "$VERSION" ] && [[ "${{ github.ref }}" == "refs/tags/v"* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
+          
+          if [ -z "$VERSION" ]; then
+            echo "Error: Chart version could not be determined. Set 'chart_version' input or push a 'v*' tag."
+            exit 1
+          fi
+
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
+          echo "Using determined Version: $VERSION"
 
       - name: Get chart name
         id: chart
@@ -62,7 +85,7 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-      - name: Publish to Helm Repository
+      - name: Publish to Helm Repository (Handles Overwrite)
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
@@ -76,10 +99,11 @@ jobs:
           # Create chart directory if it doesn't exist
           mkdir -p ${{ steps.chart.outputs.chart_name }}
           
-          # Copy packaged chart to its folder
+          # Copy packaged chart to its folder. This step overwrites the existing .tgz file if the version is the same.
           cp ../*.tgz ${{ steps.chart.outputs.chart_name }}/
           
-          # Update repository index (include all charts in the repo)
+          # Update repository index. --merge ensures the existing index.yaml is updated
+          # and the new chart entry (even if the version is a duplicate) replaces the old one.
           helm repo index . --url https://${{ github.repository_owner }}.github.io/coh-helm-repo --merge index.yaml
           
           # Commit and push
