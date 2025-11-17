@@ -53,6 +53,7 @@ helm install my-redis . -f values.yaml
 
 This chart deploys a complete Redis Sentinel cluster with all necessary resources. StatefulSets provide stable network identities for Redis and Sentinel pods, while init containers handle dynamic configuration and replication setup. Applications connect to the Sentinel service to discover the current master.
 
+```mermaid
 graph TB
     A[App] --> SS[Sentinel Service]
     
@@ -83,6 +84,7 @@ graph TB
     style CM fill:#a8dadc
     style SEC fill:#ffb5a7
     style PVC1 fill:#f1faee
+```
 
 ### Components Deployed
 
