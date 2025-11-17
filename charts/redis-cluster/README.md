@@ -53,70 +53,36 @@ helm install my-redis . -f values.yaml
 
 This chart deploys a complete Redis Sentinel cluster with all necessary resources. StatefulSets provide stable network identities for Redis and Sentinel pods, while init containers handle dynamic configuration and replication setup. Applications connect to the Sentinel service to discover the current master.
 
-```mermaid
 graph TB
-    subgraph K8s["openshift Cluster"]
-        subgraph Services["Services"]
-            HS[Headless Service<br/>redis-headless<br/>ClusterIP: None]
-            SS[Sentinel Service<br/>redis-sentinel<br/>ClusterIP]
-            SHS[Sentinel Headless<br/>sentinel-headless<br/>ClusterIP: None]
-        end
-        
-        subgraph SentinelSS["Sentinel StatefulSet"]
-            S0[sentinel-0<br/>Port: 26379]
-            S1[sentinel-1<br/>Port: 26379]
-            S2[sentinel-2<br/>Port: 26379]
-        end
-        
-        subgraph RedisSS["Redis StatefulSet"]
-            R0[redis-0<br/>Master<br/>Port: 6379]
-            R1[redis-1<br/>Replica<br/>Port: 6379]
-            R2[redis-2<br/>Replica<br/>Port: 6379]
-        end
-        
-        subgraph Config["Configuration"]
-            CM[ConfigMap<br/>redis.conf<br/>sentinel.conf]
-            SEC[Secret<br/>redis-password]
-        end
-        
-        subgraph Storage["Persistent Storage"]
-            PVC0[PVC-0<br/>8Gi]
-            PVC1[PVC-1<br/>8Gi]
-            PVC2[PVC-2<br/>8Gi]
-        end
-    end
+    A[App] --> SS[Sentinel Service]
     
-    subgraph Apps["Applications"]
-        APP1[App Pod 1]
-        APP2[App Pod 2]
-    end
+    SS --> S1[Sentinel]
+    SS --> S2[Sentinel]
+    SS --> S3[Sentinel]
     
-    APP1 & APP2 -->|Query Master| SS
-    SS --> S0 & S1 & S2
-    S0 & S1 & S2 -->|Monitor| R0 & R1 & R2
+    S1 & S2 & S3 --> M[Redis Master]
+    S1 & S2 & S3 --> R1[Redis Replica]
+    S1 & S2 & S3 --> R2[Redis Replica]
     
-    R0 -->|Replicate| R1 & R2
+    M --> R1
+    M --> R2
     
-    R0 -.->|Mount| PVC0
-    R1 -.->|Mount| PVC1
-    R2 -.->|Mount| PVC2
+    M --> PVC1[Storage]
+    R1 --> PVC2[Storage]
+    R2 --> PVC3[Storage]
     
-    R0 & R1 & R2 -.->|Read Config| CM
-    S0 & S1 & S2 -.->|Read Config| CM
-    R0 & R1 & R2 -.->|Auth| SEC
-    
-    HS -->|DNS| R0 & R1 & R2
-    SHS -->|DNS| S0 & S1 & S2
-    
-    style R0 fill:#ff6b6b
+    M & R1 & R2 --> CM[ConfigMap]
+    M & R1 & R2 --> SEC[Secret]
+
+    style M fill:#ff6b6b
     style R1 fill:#4ecdc4
     style R2 fill:#4ecdc4
-    style S0 fill:#ffe66d
     style S1 fill:#ffe66d
     style S2 fill:#ffe66d
+    style S3 fill:#ffe66d
     style CM fill:#a8dadc
-    style SEC fill:#e63946
-```
+    style SEC fill:#ffb5a7
+    style PVC1 fill:#f1faee
 
 ### Components Deployed
 
