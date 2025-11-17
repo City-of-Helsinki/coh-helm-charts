@@ -150,64 +150,225 @@ helm upgrade my-redis redis-cluster/redis-cluster \
 
 ## Configuration Reference
 
-### Global Settings
+## **Global Settings**
 
 | Parameter | Description | Default |
-|-----------|-------------|---------|
+|----------|-------------|---------|
 | `podSecurityContext.enabled` | Enable pod security context | `false` |
 | `podSecurityContext.runAsUser` | User ID for pod | `""` |
 | `podSecurityContext.runAsGroup` | Group ID for pod | `""` |
 | `podSecurityContext.fsGroup` | FS group for pod | `""` |
-| `nodeSelector` | Node labels for pod assignment | `{}` |
-| `tolerations` | Tolerations for pod assignment | `[]` |
+| `podSecurityContext.fsGroupChangePolicy` | FS group change policy | `"OnRootMismatch"` |
+| `nodeSelector` | Node labels | `{}` |
+| `tolerations` | Tolerations | `[]` |
 | `affinity.enabled` | Enable pod anti-affinity | `true` |
+| `serviceAccount.create` | Create service account | `true` |
+| `serviceAccount.name` | Service account name | `""` |
+| `serviceAccount.annotations` | Service account annotations | `{}` |
 
-### Redis Configuration
+---
+
+## **Redis Configuration**
+
+### **Basic Settings**
 
 | Parameter | Description | Default |
-|-----------|-------------|---------|
+|----------|-------------|---------|
 | `redis.replicaCount` | Number of Redis instances | `3` |
-| `redis.image` | Redis container image | `registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3
-` |
+| `redis.image` | Redis image | `registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3` |
+| `redis.securityContext.enabled` | Enable security context | `false` |
+
+---
+
+### **Resources**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
 | `redis.resources.requests.cpu` | CPU request | `100m` |
 | `redis.resources.requests.memory` | Memory request | `256Mi` |
+| `redis.resources.limits.cpu` | CPU limit | `""` |
 | `redis.resources.limits.memory` | Memory limit | `512Mi` |
-| `redis.persistence.enabled` | Enable persistent storage | `true` |
+
+---
+
+### **Persistence**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
+| `redis.persistence.enabled` | Enable PVC | `true` |
 | `redis.persistence.size` | PVC size | `8Gi` |
-| `redis.persistence.storageClass` | Storage class name | `""` |
+| `redis.persistence.storageClass` | Storage class | `""` |
+
+---
+
+### **Password & Security**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
 | `redis.password.password` | Redis password | `""` (auto-generated) |
-| `redis.password.existingSecret` | Existing secret name | `""` |
-| `redis.password.secretKey` | Key in secret | `redis-password` |
-| `redis.pdb.enabled` | Enable PodDisruptionBudget | `false` |
-| `redis.pdb.minAvailable` | Minimum available pods | `1` |
+| `redis.password.existingSecret` | Secret name | `""` |
+| `redis.password.secretKey` | Secret key | `redis-password` |
+
+---
+
+### **Pod Disruption Budget**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
+| `redis.pdb.enabled` | Enable PDB | `false` |
+| `redis.pdb.minAvailable` | Min available pods | `1` |
+| `redis.pdb.maxUnavailable` | Max unavailable | `""` |
+| `redis.pdb.annotations` | Annotations | `{}` |
+
+---
+
+### **Redis Config (`redis.conf`)**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
+| `redis.config.bind` | Bind address | `0.0.0.0` |
+| `redis.config.protectedMode` | Protected mode | `yes` |
+| `redis.config.port` | Port | `6379` |
+| `redis.config.timeout` | Client timeout | `500` |
+| `redis.config.tcpKeepalive` | TCP keepalive | `300` |
+| `redis.config.tcpBacklog` | TCP backlog | `511` |
+| `redis.config.requirepass` | Password | `""` |
+| `redis.config.daemonize` | Daemonize | `no` |
+| `redis.config.supervised` | Supervised mode | `no` |
+| `redis.config.pidfile` | PID file | `/var/run/redis_6379.pid` |
+| `redis.config.loglevel` | Log level | `notice` |
+| `redis.config.logfile` | Log file path | `""` |
+| `redis.config.databases` | Databases count | `16` |
 | `redis.config.maxmemory` | Max memory | `900mb` |
 | `redis.config.maxmemoryPolicy` | Eviction policy | `allkeys-lru` |
 | `redis.config.save` | RDB save intervals | `""` |
 | `redis.config.appendonly` | Enable AOF | `no` |
-| `redis.extraConfig` | Additional config | `{}` |
+| `redis.config.stopWritesOnBgsaveError` | Stop writes on BGSAVE error | `no` |
+| `redis.config.rdbcompression` | RDB compression | `yes` |
+| `redis.config.rdbchecksum` | RDB checksum | `yes` |
+| `redis.config.rdbDelSyncFiles` | Delete sync files | `no` |
+| `redis.config.replicaServeStaleData` | Serve stale data | `yes` |
+| `redis.config.replicaReadOnly` | Replica read-only | `yes` |
+| `redis.config.replDisklessSync` | Diskless sync | `no` |
+| `redis.config.replDisklessSyncDelay` | Sync delay | `5` |
+| `redis.config.replDisklessLoad` | Diskless load | `disabled` |
+| `redis.config.replDisableTcpNodelay` | Disable NODELAY | `no` |
+| `redis.config.replicaPriority` | Replica priority | `100` |
+| `redis.config.acllogMaxLen` | ACL log length | `128` |
+| `redis.config.alwaysShowLogo` | Always show logo | `yes` |
+| `redis.config.dir` | Data dir | `/data` |
+| `redis.extraConfig` | Extra config | `{}` |
 
-### Sentinel Configuration
+---
+
+### **Redis Service**
 
 | Parameter | Description | Default |
-|-----------|-------------|---------|
-| `sentinel.replicaCount` | Number of Sentinel instances | `3` |
-| `sentinel.image` | Sentinel container image | `registry.redhat.io/rhel9/redis-7` |
+|----------|-------------|---------|
+| `redis.service.port` | Service port | `6379` |
+| `redis.service.targetPort` | Container port | `6379` |
+
+---
+
+## **Sentinel Configuration**
+
+### **Basic Settings**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
+| `sentinel.replicaCount` | Sentinel instances | `3` |
+| `sentinel.image` | Sentinel image | `registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3` |
+| `sentinel.securityContext.enabled` | Enable security context | `false` |
+
+---
+
+### **Resources**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
 | `sentinel.resources.requests.cpu` | CPU request | `50m` |
 | `sentinel.resources.requests.memory` | Memory request | `128Mi` |
+| `sentinel.resources.limits.cpu` | CPU limit | `""` |
 | `sentinel.resources.limits.memory` | Memory limit | `256Mi` |
-| `sentinel.pdb.enabled` | Enable PodDisruptionBudget | `false` |
-| `sentinel.pdb.minAvailable` | Minimum available pods | `1` |
+
+---
+
+### **Sentinel Pod Disruption Budget**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
+| `sentinel.pdb.enabled` | Enable PDB | `false` |
+| `sentinel.pdb.minAvailable` | Min available | `1` |
+| `sentinel.pdb.maxUnavailable` | Max unavailable | `""` |
+| `sentinel.pdb.annotations` | Annotations | `{}` |
+
+---
+
+### **Sentinel Config**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
+| `sentinel.config.port` | Sentinel port | `26379` |
+| `sentinel.config.masterName` | Redis master name | `mymaster` |
+| `sentinel.config.quorum` | Failover quorum | `2` |
+| `sentinel.config.downAfterMilliseconds` | Down detection | `5000` |
+| `sentinel.config.failoverTimeout` | Failover timeout | `10000` |
+| `sentinel.config.parallelSyncs` | Parallel syncs | `1` |
+| `sentinel.config.resolveHostnames` | Resolve hostnames | `yes` |
+| `sentinel.config.announceHostnames` | Announce hostnames | `yes` |
+| `sentinel.extraConfig` | Extra config | `{}` |
+
+---
+
+### **Sentinel Service**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
 | `sentinel.service.type` | Service type | `ClusterIP` |
 | `sentinel.service.port` | Service port | `5000` |
 | `sentinel.service.targetPort` | Container port | `26379` |
-| `sentinel.config.port` | Sentinel port | `26379` |
-| `sentinel.config.masterName` | Master name | `mymaster` |
-| `sentinel.config.quorum` | Quorum for failover | `2` |
-| `sentinel.config.downAfterMilliseconds` | Down detection time | `5000` |
-| `sentinel.config.failoverTimeout` | Failover timeout | `10000` |
-| `sentinel.config.parallelSyncs` | Parallel syncs | `1` |
-| `sentinel.extraConfig` | Additional config | `{}` |
 
+---
+
+## **Probes**
+
+### **Redis Probes**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
+| `probes.redis.liveness.initialDelaySeconds` | Initial delay | `10` |
+| `probes.redis.liveness.timeoutSeconds` | Timeout | `5` |
+| `probes.redis.liveness.periodSeconds` | Period | `5` |
+| `probes.redis.liveness.failureThreshold` | Failure threshold | `10` |
+| `probes.redis.readiness.initialDelaySeconds` | Initial delay | `5` |
+| `probes.redis.readiness.timeoutSeconds` | Timeout | `15` |
+| `probes.redis.readiness.periodSeconds` | Period | `2` |
+| `probes.redis.readiness.successThreshold` | Success threshold | `2` |
+| `probes.redis.readiness.failureThreshold` | Failure threshold | `40` |
+
+---
+
+### **Sentinel Probes**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
+| `probes.sentinel.liveness.initialDelaySeconds` | Initial delay | `10` |
+| `probes.sentinel.liveness.timeoutSeconds` | Timeout | `5` |
+| `probes.sentinel.liveness.periodSeconds` | Period | `5` |
+| `probes.sentinel.liveness.failureThreshold` | Failure threshold | `10` |
+| `probes.sentinel.readiness.initialDelaySeconds` | Initial delay | `5` |
+| `probes.sentinel.readiness.timeoutSeconds` | Timeout | `10` |
+| `probes.sentinel.readiness.periodSeconds` | Period | `2` |
+| `probes.sentinel.readiness.failureThreshold` | Failure threshold | `20` |
+
+---
+
+## **Init Scripts**
+
+| Parameter | Description | Default |
+|----------|-------------|---------|
+| `scripts.redisInit` | Redis init script | `scripts/redis_init.sh` |
+| `scripts.sentinelInit` | Sentinel init script | `scripts/sentinel_init.sh` |
 ---
 
 ## Upgrading
