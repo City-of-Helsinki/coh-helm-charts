@@ -193,7 +193,7 @@ Generate Redis configuration with auto-merge (extraConfig wins)
 {{- end }}
 
 {{- range $key, $value := $finalConfig }}
-{{- if not (empty $value) }}
+{{- if or (not (empty $value)) (eq $key "save") }}
 {{ $key }} {{ $value }}
 {{- end }}
 {{- end }}
