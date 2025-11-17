@@ -162,9 +162,6 @@ helm upgrade my-redis redis-cluster/redis-cluster \
 | `nodeSelector` | Node labels | `{}` |
 | `tolerations` | Tolerations | `[]` |
 | `affinity.enabled` | Enable pod anti-affinity | `true` |
-| `serviceAccount.create` | Create service account | `true` |
-| `serviceAccount.name` | Service account name | `""` |
-| `serviceAccount.annotations` | Service account annotations | `{}` |
 
 ---
 
