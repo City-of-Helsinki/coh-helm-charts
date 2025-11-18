@@ -212,7 +212,7 @@ helm upgrade my-redis redis-cluster/redis-cluster \
 
 | Parameter | Description | Default |
 |----------|-------------|---------|
-| `redis.pdb.enabled` | Enable PDB | `false` |
+| `redis.pdb.enabled` | Enable PDB | `true` |
 | `redis.pdb.minAvailable` | Min available pods | `1` |
 | `redis.pdb.maxUnavailable` | Max unavailable | `""` |
 | `redis.pdb.annotations` | Annotations | `{}` |

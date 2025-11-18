@@ -3,12 +3,10 @@ set -e
 
 echo "Starting Sentinel initialization..."
 
-# Create directory
 mkdir -p /etc/redis
 
 REDIS_PORT=${REDIS_PORT}
 
-# Now find the actual master
 n=0
 MASTER_HOST=""
 
@@ -19,13 +17,11 @@ do
   do
       echo "Finding master at $NODE_HOST:$REDIS_PORT"
       
-      # Test connection first (with auth)
       if ! redis-cli --no-auth-warning --raw -h $NODE_HOST -p $REDIS_PORT -a ${REDIS_PASSWORD} ping 2>/dev/null | grep -q PONG; then
           echo "  ❌ Cannot connect to $NODE_HOST:$REDIS_PORT"
           continue
       fi
       
-      # Get replication info (with auth)
       REPLICATION_INFO=$(redis-cli --no-auth-warning --raw -h $NODE_HOST -p $REDIS_PORT -a ${REDIS_PASSWORD} info replication 2>/dev/null)
       if [ $? -ne 0 ]; then
           echo "  ❌ Failed to get replication info from $NODE_HOST:$REDIS_PORT"
@@ -45,14 +41,12 @@ do
   sleep 5
 done
 
-# If no master found after retries, use first node
 if [ -z "$MASTER_HOST" ]; then
     echo "No master found after retries, defaulting to first node"
     MASTER_HOST="${REDIS_NODES%%,*}"
     echo "Using fallback master: $MASTER_HOST:$REDIS_PORT"
 fi
 
-# Create the final sentinel.conf
 cat > /etc/redis/sentinel.conf << EOF
 port 26379
 dir /tmp
