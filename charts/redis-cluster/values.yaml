@@ -17,7 +17,7 @@ redis:
   
   # Redis container image
   # If not specified, uses default from _helpers.tpl
-  image: ""
+  image: ""  # defaults to registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3
   
   # Container-level security context for Redis pods
   # Set enabled: true to override pod-level security context
@@ -46,7 +46,7 @@ redis:
     enabled: true
     size: 8Gi
     storageClass: ""  # Use cluster default storage class
-    # storageClass: "fast-ssd"  # Specify custom storage class
+    mountPath: "/data"
   
   # Password configuration
   password:
@@ -58,11 +58,11 @@ redis:
     existingSecret: ""
     
     # Key name in the secret containing the password
-    secretKey: "redis-password"
+    secretKey: "REDIS_PASSWORD"
   
   # Pod Disruption Budget
   pdb:
-    enabled: false
+    enabled: true
     minAvailable: 1
     # maxUnavailable: 1  # Alternative to minAvailable
     annotations: {}
@@ -148,7 +148,7 @@ sentinel:
   
   # Sentinel container image
   # If not specified, uses default from _helpers.tpl
-  image: ""
+  image: "" # defaults to registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3
   
   # Container-level security context for Sentinel pods
   # Set enabled: true to override pod-level security context
@@ -171,7 +171,7 @@ sentinel:
   
   # Pod Disruption Budget
   pdb:
-    enabled: false
+    enabled: true
     minAvailable: 1
     # maxUnavailable: 1  # Alternative to minAvailable
     annotations: {}
