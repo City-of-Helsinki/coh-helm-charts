@@ -1,5 +1,5 @@
 {{- $redisPort := 6379 }}
-{{- $sentinelPort := 5000 }}
+{{- $sentinelPort := 26379 }}
 {{- $masterName := "mymaster" }}
 {{- if .Values.redis }}
 {{- if .Values.redis.config }}

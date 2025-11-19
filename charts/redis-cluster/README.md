@@ -126,11 +126,11 @@ Applications connect to Redis through Sentinels for automatic master discovery. 
 
 After installation, use these DNS names within the cluster:
 
-* **Sentinel Service**: `<release-name>-sentinel.<namespace>.svc.cluster.local:5000`
+* **Sentinel Service**: `<release-name>-sentinel.<namespace>.svc.cluster.local:26379`
 * **Redis Headless**: `<release-name>-redis-0.<release-name>-headless.<namespace>.svc.cluster.local:6379`
 
 Example for release "my-redis" in "default" namespace:
-* Sentinel: `my-redis-sentinel.default.svc.cluster.local:5000`
+* Sentinel: `my-redis-sentinel.default.svc.cluster.local:26379`
 * Redis Master: `my-redis-redis-0.my-redis-headless.default.svc.cluster.local:6379`
 
 ---
@@ -322,7 +322,7 @@ helm upgrade my-redis redis-cluster/redis-cluster \
 | Parameter | Description | Default |
 |----------|-------------|---------|
 | `sentinel.service.type` | Service type | `ClusterIP` |
-| `sentinel.service.port` | Service port | `5000` |
+| `sentinel.service.port` | Service port | `26379` |
 | `sentinel.service.targetPort` | Container port | `26379` |
 
 ---
