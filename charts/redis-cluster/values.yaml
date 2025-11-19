@@ -179,7 +179,7 @@ sentinel:
   # Service configuration
   service:
     type: ClusterIP
-    port: 5000  # External port for clients
+    port: 26379  # External port for clients
     targetPort: 26379  # Sentinel port inside container
   
   # Base Sentinel configuration

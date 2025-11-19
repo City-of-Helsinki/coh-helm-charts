@@ -43,7 +43,8 @@ metadata:
 spec:
   clusterIP: None
   ports:
-  - port: {{ .Values.sentinel.service.port }}
-    name: sentinel
+    - port: {{ .Values.sentinel.service.port }}
+      targetPort: {{ .Values.sentinel.service.targetPort }}
+      name: sentinel
   selector:
     {{- include "redis-sentinel.sentinel.selectorLabels" . | nindent 4 }}
