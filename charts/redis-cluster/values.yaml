@@ -35,16 +35,16 @@ redis:
   # Resource limits and requests for Redis containers
   resources:
     limits:
-      memory: "512Mi"
+      memory: "1Gi"
       # cpu: "1000m"  # Uncomment to set CPU limit
     requests:
-      cpu: "100m"
-      memory: "256Mi"
+      cpu: "50m"
+      memory: "512Mi"
   
   # Persistent storage configuration
   persistence:
-    enabled: true
-    size: 8Gi
+    enabled: false
+    size: 10Gi
     storageClass: ""  # Use cluster default storage class
     mountPath: "/data"
   
@@ -163,11 +163,11 @@ sentinel:
   # Resource limits and requests for Sentinel containers
   resources:
     limits:
-      memory: "256Mi"
+      memory: "200Mi"
       # cpu: "500m"  # Uncomment to set CPU limit
     requests:
       cpu: "50m"
-      memory: "128Mi"
+      memory: "20Mi"
   
   # Pod Disruption Budget
   pdb:
