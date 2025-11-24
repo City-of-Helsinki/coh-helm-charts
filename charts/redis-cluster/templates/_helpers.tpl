@@ -131,7 +131,7 @@ Get the redis password key
 {{- if .Values.redis.password.existingSecret }}
 {{- .Values.redis.password.secretKey }}
 {{- else }}
-{{- "redis-password" }}
+{{- "REDIS_PASSWORD" }}
 {{- end }}
 {{- end }}
 

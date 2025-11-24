@@ -204,7 +204,7 @@ helm upgrade my-redis redis-cluster/redis-cluster \
 |----------|-------------|---------|
 | `redis.password.password` | Redis password | `""` (auto-generated) |
 | `redis.password.existingSecret` | Secret name | `""` |
-| `redis.password.secretKey` | Secret key | `redis-password` |
+| `redis.password.secretKey` | Secret key | `REDIS_PASSWORD` |
 
 ---
 
@@ -438,7 +438,7 @@ Verify password configuration, check network connectivity, and confirm Sentinel 
 oc exec my-redis-sentinel-0 -- redis-cli -p 26379 SENTINEL masters
 
 # Verify password in secret
-oc get secret my-redis-secret -o jsonpath='{.data.redis-password}' | base64 -d
+oc get secret my-redis-secret -o jsonpath='{.data.REDIS_PASSWORD}' | base64 -d
 
 # Test connectivity
 oc exec my-redis-sentinel-0 -- \
