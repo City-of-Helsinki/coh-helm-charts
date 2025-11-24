@@ -125,13 +125,13 @@ Get the redis password secret
 {{- end }}
 
 {{/*
-Get the redis password key
+Get the redis password key - Use REDIS_PASSWORD as default if not specified
 */}}
 {{- define "redis-sentinel.redis.passwordKey" -}}
 {{- if .Values.redis.password.existingSecret }}
-{{- .Values.redis.password.secretKey }}
+    {{- .Values.redis.password.secretKey | default "REDIS_PASSWORD" }}
 {{- else }}
-{{- "REDIS_PASSWORD" }}
+    {{- "REDIS_PASSWORD" }}
 {{- end }}
 {{- end }}
 
