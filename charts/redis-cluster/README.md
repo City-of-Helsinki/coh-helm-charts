@@ -158,7 +158,7 @@ helm upgrade my-redis redis-cluster/redis-cluster \
 | `podSecurityContext.runAsUser` | User ID for pod | `""` |
 | `podSecurityContext.runAsGroup` | Group ID for pod | `""` |
 | `podSecurityContext.fsGroup` | FS group for pod | `""` |
-| `podSecurityContext.fsGroupChangePolicy` | FS group change policy | `"OnRootMismatch"` |
+| `podSecurityContext.fsGroupChangePolicy` | FS group change policy | `""` |
 | `nodeSelector` | Node labels | `{}` |
 | `tolerations` | Tolerations | `[]` |
 | `affinity.enabled` | Enable pod anti-affinity | `true` |
@@ -270,6 +270,7 @@ helm upgrade my-redis redis-cluster/redis-cluster \
 
 | Parameter | Description | Default |
 |----------|-------------|---------|
+| `sentinel.enabled` | Enable Sentinel instances | `true` |
 | `sentinel.replicaCount` | Sentinel instances | `3` |
 | `sentinel.image` | Sentinel image | `registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3` |
 | `sentinel.securityContext.enabled` | Enable security context | `false` |

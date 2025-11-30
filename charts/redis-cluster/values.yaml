@@ -5,10 +5,10 @@
 # These settings apply at the pod level
 podSecurityContext:
   enabled: false
-  runAsUser: "1000930000"
-  runAsGroup: "1000930000"
-  fsGroup: "1000930000"
-  fsGroupChangePolicy: "OnRootMismatch"
+  runAsUser: ""
+  runAsGroup: ""
+  fsGroup: ""
+  fsGroupChangePolicy: ""
 
 # Redis Configuration
 redis:
