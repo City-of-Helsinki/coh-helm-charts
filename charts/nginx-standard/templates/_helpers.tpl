@@ -59,13 +59,6 @@ Generate namespace
 {{- end -}}
 
 {{/*
-Define the NGINX image for the Deployment.
-*/}}
-{{- define "nginx-standard.image" -}}
-{{- default "registry.redhat.io/ubi9/nginx-120@sha256:99d8a1d13835606114bb7785056793903c8739b7e1213b549f82ef30e0d51e5d" .Values.nginx.image.full -}}
-{{- end -}}
-
-{{/*
 Check if file sharing is enabled
 */}}
 {{- define "nginx-standard.fileSharingEnabled" -}}
@@ -141,6 +134,79 @@ Generate configmap name
 */}}
 {{- define "nginx-standard.configmapName" -}}
 {{- include "nginx-standard.fullname" . }}-config-map
+{{- end -}}
+
+{{/*
+Define the NGINX image for the Deployment.
+*/}}
+{{- define "nginx-standard.image" -}}
+{{- default "registry.redhat.io/ubi9/nginx-120@sha256:99d8a1d13835606114bb7785056793903c8739b7e1213b549f82ef30e0d51e5d" .Values.nginx.image.full -}}
+{{- end -}}
+
+{{/*
+Conditional NGINX main configuration
+*/}}
+{{- define "nginx-standard.nginxConf" -}}
+{{- if eq .Values.nginx.useCase "elastic-proxy" -}}
+worker_processes auto;
+error_log /dev/stderr {{ .Values.nginx.logging.errorLevel | default "notice" }};
+pid /tmp/nginx.pid;
+
+env ELASTICSEARCH_URL;
+env ELASTIC_PASSWORD;
+env ELASTIC_USER;
+
+load_module modules/ngx_http_perl_module.so;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    proxy_temp_path /tmp/proxy_temp;
+    client_body_temp_path /tmp/client_temp;
+    fastcgi_temp_path /tmp/fastcgi_temp;
+    uwsgi_temp_path /tmp/uwsgi_temp;
+    scgi_temp_path /tmp/scgi_temp;
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    # Perl script to set authorization header
+    perl_set $elastic_authorization '
+      sub {
+        use MIME::Base64;
+        if (exists($ENV{"ELASTIC_USER"}) && exists($ENV{"ELASTIC_PASSWORD"})) {
+          return encode_base64($ENV{"ELASTIC_USER"} . ":" . $ENV{"ELASTIC_PASSWORD"}, "");
+        }
+        return "";
+      }
+    ';
+
+    # Log in JSON Format (using simplified structure aligned with the default, but required for elastic)
+    log_format nginxlog_json escape=json '{ "time": "$time_iso8601", '
+      '"level": "info", '
+      '"source": "nginx", '
+      '"remote_addr": "$remote_addr", '
+      '"method": "$request_method", '
+      '"uri": "$request_uri", '
+      '"status": $status, '
+      '"response_time": $request_time, '
+      '"bytes_sent": $body_bytes_sent, '
+      '"referer": "$http_referer", '
+      '"user_agent": "$http_user_agent", '
+      '"x_forwarded_for": "$http_x_forwarded_for", '
+      '"request_id": "$nginx_req_id" }';
+      
+    access_log /dev/stdout nginxlog_json;
+
+    sendfile on;
+    keepalive_timeout 65;
+
+    # Include custom server block (server.conf)
+    include /opt/app-root/etc/nginx.default.d/*.conf; 
+}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -314,29 +380,79 @@ location {{ .path }} {
   autoindex {{ if .autoindex }}on{{ else }}off{{ end }};
 {{- end }}
 {{- if .additionalConfig }}
-{{ .additionalConfig | indent 2 }}
-{{- end -}}
+{{ .additionalConfig | nindent 2 }}
+{{- end }}
 }
+
 {{ end -}}
 {{- else if eq .Values.nginx.useCase "elastic-proxy" -}}
-{{- range .Values.elasticProxy.routes -}}
-location {{ .path }} {
-{{- $methods := join " " .methods }}
-{{- if $methods }}
-  limit_except {{ $methods }} {
-    deny all;
-  }
+server {
+    listen {{ include "nginx-standard.servicePort" . }} default_server;
+    server_name _;
+    client_max_body_size {{ .Values.elasticProxy.clientMaxBodySize | default "50m" }};
+
+{{- range .Values.elasticProxy.routes }}
+    location {{ .path }} {
+        {{- $methods := join " " .methods }}
+        {{- if $methods }}
+        limit_except {{ $methods }} {
+          deny all;
+        }
+        {{- end }}
+        
+        # NGINX Proxy Settings (from values.yaml)
+        proxy_connect_timeout {{ $.Values.elasticProxy.proxy.connectTimeout | default "60s" }};
+        proxy_send_timeout {{ $.Values.elasticProxy.proxy.sendTimeout | default "60s" }};
+        proxy_read_timeout {{ $.Values.elasticProxy.proxy.readTimeout | default "60s" }};
+        proxy_buffer_size {{ $.Values.elasticProxy.proxy.bufferSize | default "8k" }};
+        proxy_buffers {{ $.Values.elasticProxy.proxy.buffersNumber | default 4 }} {{ $.Values.elasticProxy.proxy.bufferSize | default "8k" }};
+        
+        # Standard Proxy Headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Elastic Authentication Header (via Perl module)
+        proxy_set_header Authorization "Basic $elastic_authorization";
+
+        # Proxy Pass to Elasticsearch URL
+        proxy_pass ${ELASTICSEARCH_URL};
+        proxy_ssl_verify off;
+        proxy_redirect off;
+        proxy_pass_header Authorization;
+        
+        # CORS Headers for search endpoints (check if path contains search/msearch)
+        {{- if or (contains "_search" .path) (contains "_msearch" .path) }}
+        if ($request_method = 'OPTIONS') {
+          return 204;
+        }
+        proxy_pass_header Access-Control-Allow-Origin;
+        proxy_pass_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Allow-Headers;
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+        {{- end }}
+
+        {{- if .additionalConfig }}
+{{ .additionalConfig | nindent 8 }}
+        {{- end }}
+    }
 {{- end }}
-  proxy_pass {{ $.Values.elasticProxy.upstream.protocol }}://{{ $.Values.elasticProxy.upstream.service }}:{{ $.Values.elasticProxy.upstream.port }};
-  proxy_set_header Host $host;
-  proxy_set_header X-Real-IP $remote_addr;
-  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  proxy_set_header X-Forwarded-Proto $scheme;
-{{- if .additionalConfig }}
-{{ .additionalConfig | indent 2 }}
-{{- end }}
+
+    # Standard health check endpoints for the dedicated server block (Always needed)
+    location {{ include "nginx-standard.readinessPath" . }} {
+      access_log off;
+      add_header Content-Type text/plain;
+      return 200 'OK';
+    }
+    
+    location {{ include "nginx-standard.livenessPath" . }} {
+      access_log off;
+      add_header Content-Type text/plain;
+      return 200 'OK';
+    }
 }
-{{ end -}}
 {{- else -}}
 # Default configuration
 location / {

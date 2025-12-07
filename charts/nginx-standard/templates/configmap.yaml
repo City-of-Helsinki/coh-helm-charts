@@ -7,9 +7,12 @@ metadata:
     {{- include "nginx-standard.labels" . | nindent 4 }}
 data:
   nginx.conf: |-
+{{- if eq .Values.nginx.useCase "elastic-proxy" }}
+{{ include "nginx-standard.nginxConf" . | nindent 4 }}
+{{- else }}
     # NGINX main configuration
     worker_processes auto;
-    error_log {{ .Values.nginx.logging.errorLog }} {{ .Values.nginx.logging.errorLevel }};
+    error_log {{ .Values.nginx.logging.errorLog }} {{ .Values.nginx.logging.errorLevel | default "notice" }};
     pid /tmp/nginx.pid;
     
     events {
@@ -18,20 +21,20 @@ data:
     
     http {
       include /etc/nginx/mime.types;
-      default_type application/octet-stream;
+      default_type application/octet-stream; 
       # JSON log format
-      log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$nginx_req_id"}';    
+      log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$nginx_req_id"}';
       # Access log configuration
       access_log {{ .Values.nginx.logging.accessLog }} json_log;
       sendfile on;
       tcp_nopush on;
       tcp_nodelay on;
       keepalive_timeout 65;
-      types_hash_max_size 2048;
+      types_hash_max_size 2048;   
       server {
         listen {{ include "nginx-standard.servicePort" . }} default_server;
         listen [::]:{{ include "nginx-standard.servicePort" . }} default_server;
-        server_name _; 
+        server_name _;  
         # Generate request ID with unique name to avoid conflicts
         set $nginx_req_id $http_x_request_id;
         if ($nginx_req_id = "") {
@@ -44,19 +47,20 @@ data:
         include /opt/app-root/etc/nginx.default.d/*.conf;
       }
     }
+{{- end }}
   server.conf: |-
     # Main server configuration
 {{- $serverConfig := include "nginx-standard.serverConfig" . -}}
 {{- if $serverConfig -}}
 {{ $serverConfig | nindent 4 }}
 {{- else }}
-    # Default configuration
     location / {
       root /usr/share/nginx/html;
       index index.html index.htm;
     }
 {{- end -}}
-    # Health check endpoints
+{{- if ne .Values.nginx.useCase "elastic-proxy" -}}
+    # Health check endpoints (Only included if not elastic-proxy, as the helper includes them otherwise)
     location {{ include "nginx-standard.readinessPath" . }} {
       access_log off;  # Don't log health checks
       add_header Content-Type text/plain;
@@ -67,3 +71,4 @@ data:
       add_header Content-Type text/plain;
       return 200 'OK';
     }
+{{- end -}}

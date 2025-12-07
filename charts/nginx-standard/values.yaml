@@ -167,17 +167,15 @@ fileSharing:
 # ELASTIC PROXY USE CASE CONFIGURATION
 # ============================================================================
 elasticProxy:
-  enabled: false  # Set to true when using elastic-proxy use case
-  
+  enabled: false # Set to true when using elastic-proxy use case
+  authSecretName: ""
   # Upstream Elasticsearch configuration
   upstream:
-    service: "elasticsearch-service"
-    port: 9200
-    protocol: "http"  # http | https
+    url: "https://elasticsearch-host.cluster.svc:9200" # ELASTICSEARCH_URL env var
   
   # Proxy settings
   proxy:
-    connectTimeout: "60s"
+    connectTimeout: "5s"
     sendTimeout: "60s"
     readTimeout: "60s"
     bufferSize: "8k"
@@ -186,15 +184,10 @@ elasticProxy:
   # Elasticsearch routes with method restrictions
   routes:
     # Search endpoints
-    - path: "~ ^/(.*)/_search$"
+    - path: "~ ^/([a-z][a-z_,-]*)/(_search|_msearch)$" # Corrected regex from user's original helper
       methods: ["POST", "GET"]
       additionalConfig: |
-        # proxy_cache_bypass $http_upgrade;
-        # proxy_read_timeout 90;
-    
-    # Multi-search endpoint
-    - path: "~ ^/(.*)/_msearch$"
-      methods: ["POST", "GET"]
+        # Additional NGINX directives
     
     # Cluster health
     - path: "/_cluster/health"
@@ -203,12 +196,6 @@ elasticProxy:
     # Ping endpoint
     - path: "/ping"
       methods: ["GET"]
-          
-    # Example: Index-specific operations
-    # - path: "~ ^/my-index/(.*)$"
-    #   methods: ["GET", "POST"]
-    #   additionalConfig: |
-    #     proxy_set_header Authorization "Basic xyz";
 
 # ============================================================================
 # EXTERNAL SECRETS CONFIGURATION (Azure Key Vault)
