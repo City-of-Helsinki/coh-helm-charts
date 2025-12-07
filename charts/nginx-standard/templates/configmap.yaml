@@ -46,6 +46,9 @@ data:
         # Add request ID to response header
         add_header X-Request-ID $nginx_req_id;
         
+        # Apply Security Headers (NEW)
+{{ include "nginx-standard.securityHeaders" . | nindent 8 }}
+        
         # Include custom server configuration
         include /opt/app-root/etc/nginx.default.d/*.conf;
       }

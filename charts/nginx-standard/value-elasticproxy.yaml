@@ -1,0 +1,68 @@
+# Values for Elastic Proxy Use Case Deployment
+
+global:
+  namespace: "es-proxy-prod"
+  project: "search-platform"
+  environment: "prod"
+
+nameOverride: "es-proxy-v1"
+
+# ============================================================================
+# NGINX Configuration Overrides
+# ============================================================================
+nginx:
+  useCase: "elastic-proxy"
+  replicaCount: 3
+  
+  # Use default production resources, no change needed here.
+  
+  # Disable NGINX security headers if they are managed by the OpenShift Route/HAProxy
+  security:
+    headers:
+      enabled: false
+
+# ============================================================================
+# FILE SHARING - Disabled
+# ============================================================================
+fileSharing:
+  enabled: false
+
+# ============================================================================
+# ELASTIC PROXY USE CASE CONFIGURATION (Overrides)
+# ============================================================================
+elasticProxy:
+  enabled: true
+  
+  upstream:
+    service: "elasticsearch-client-service"
+    port: 9200
+    protocol: "https" # Use https to backend
+  
+  proxy:
+    # Adjusting timeouts is common for reverse proxies
+    readTimeout: "90s" 
+  
+  routes:
+    # Standard read-only routes
+    - path: "~ ^/(.*)/_search$"
+      methods: ["POST", "GET"]
+    - path: "~ ^/(.*)/_msearch$"
+      methods: ["POST", "GET"]
+    - path: "/_cluster/health"
+      methods: ["GET"]
+
+# ============================================================================
+# EXTERNAL SECRETS CONFIGURATION (Disabled)
+# ============================================================================
+externalSecrets:
+  enabled: false
+
+# ============================================================================
+# OPENSHIFT ROUTE CONFIGURATION (Enabled)
+# ============================================================================
+route:
+  enabled: true
+  host: "search.example.com" # REQUIRED
+  
+  annotations:
+    haproxy.router.openshift.io/timeout: "90s" # Longer timeout for search queries

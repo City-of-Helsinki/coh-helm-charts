@@ -1,0 +1,74 @@
+# Values for File Sharing Use Case Deployment
+
+global:
+  namespace: "fileshare-dev"
+  project: "file-sharing-demo"
+  environment: "dev"
+
+nameOverride: "fileshare-dev"
+
+# ============================================================================
+# NGINX Configuration Overrides
+# ============================================================================
+nginx:
+  useCase: "file-sharing"
+  replicaCount: 2
+  
+  # Override placement and resources for the 'dev' environment
+  nodeSelector:
+    env: "devtest"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+
+# ============================================================================
+# FILE SHARING USE CASE CONFIGURATION (Overrides)
+# ============================================================================
+fileSharing:
+  enabled: true
+  storage:
+    pvc:
+      size: "50Gi"
+    azureFile:
+      shareName: "test-fileshare"
+      secretName: fileshare-credentials 
+  
+  locations:
+    # Overwrite the default root path location
+    - path: "/"
+      root: "/opt/app-root/src"
+      autoindex: true
+      additionalConfig: |
+        autoindex_exact_size off;
+        autoindex_localtime on;
+    # Add a new location block
+    - path: "/downloads"
+      alias: "/opt/app-root/src/downloads/"
+      autoindex: true
+      additionalConfig: |
+        add_header Content-Disposition "attachment";
+# ============================================================================
+# ELASTIC PROXY - Disabled
+# ============================================================================
+elasticProxy:
+  enabled: false
+
+# ============================================================================
+# EXTERNAL SECRETS CONFIGURATION (Mandatory Overrides)
+# ============================================================================
+externalSecrets:
+  enabled: true
+  azureKeyVault:
+    vaultName: "hki-yuygxqll-dev-kv"  # REQUIRED
+    tenantId: "3feb6bc1-d722-4726-966c-5b58b64df752" # REQUIRED
+
+# ============================================================================
+# OPENSHIFT ROUTE CONFIGURATION (Enabled)
+# ============================================================================
+route:
+  enabled: true
+  host: "files.test.hel.ninja" # REQUIRED

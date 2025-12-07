@@ -282,6 +282,20 @@ Generate service account name if enabled
 {{- end -}}
 {{- end -}}
 
+{{/*
+NGINX Security Headers Helper
+*/}}
+{{- define "nginx-standard.securityHeaders" -}}
+{{- if .Values.nginx.security.headers.enabled -}}
+add_header Content-Security-Policy "{{ .Values.nginx.security.headers.csp }}" always;
+add_header Strict-Transport-Security "{{ .Values.nginx.security.headers.sts }}" always;
+add_header X-Frame-Options "{{ .Values.nginx.security.headers.frameOptions }}" always;
+add_header X-Content-Type-Options "{{ .Values.nginx.security.headers.contentTypeOptions }}" always;
+add_header X-XSS-Protection "{{ .Values.nginx.security.headers.xssProtection }}" always;
+{{- end -}}
+{{- end -}}
+
+
 {{- define "nginx-standard.serverConfig" -}}
 {{- if eq .Values.nginx.useCase "file-sharing" -}}
 {{- range .Values.fileSharing.locations -}}
@@ -300,10 +314,9 @@ location {{ .path }} {
 {{- end }}
 {{- if .additionalConfig }}
 {{ .additionalConfig | indent 2 }}
-{{- end }}
-}
-
 {{- end -}}
+}
+{{ end -}}
 {{- else if eq .Values.nginx.useCase "elastic-proxy" -}}
 {{- range .Values.elasticProxy.routes -}}
 location {{ .path }} {
