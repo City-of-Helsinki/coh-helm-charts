@@ -335,7 +335,6 @@ location {{ .path }} {
 {{ .additionalConfig | indent 2 }}
 {{- end }}
 }
-
 {{- end -}}
 {{- else -}}
 # Default configuration

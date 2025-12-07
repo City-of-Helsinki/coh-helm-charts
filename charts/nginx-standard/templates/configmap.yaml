@@ -53,11 +53,10 @@ data:
         include /opt/app-root/etc/nginx.default.d/*.conf;
       }
     }
-  
   server.conf: |-
     # Main server configuration
 {{- $serverConfig := include "nginx-standard.serverConfig" . -}}
-{{- if $serverConfig }}
+{{- if $serverConfig -}}
 {{ $serverConfig | nindent 4 }}
 {{- else }}
     # Default configuration
@@ -65,15 +64,13 @@ data:
       root /usr/share/nginx/html;
       index index.html index.htm;
     }
-{{- end }}
-    
+{{- end -}}
     # Health check endpoints
     location {{ include "nginx-standard.readinessPath" . }} {
       access_log off;  # Don't log health checks
       add_header Content-Type text/plain;
       return 200 'OK';
     }
-    
     location {{ include "nginx-standard.livenessPath" . }} {
       access_log off;  # Don't log health checks
       add_header Content-Type text/plain;
