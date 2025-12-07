@@ -36,7 +36,7 @@ externalSecrets:
     tenantId: "3feb6bc1-d722-4726-966c-5b58b64df752" # REQUIRED
 
 # ============================================================================
-# OPENSHIFT ROUTE CONFIGURATION (Enabled)
+# OPENSHIFT ROUTE CONFIGURATION
 # ============================================================================
 route:
   enabled: true

@@ -8,3 +8,16 @@ elasticProxy:
   authSecretName: ""
   upstream:
     url: "https://elasticsearch-host1.cluster.svc:9200" # ELASTICSEARCH_URL env var
+
+# ============================================================================
+# OPENSHIFT ROUTE CONFIGURATION 
+# ============================================================================
+routes:
+  enabled: true
+  items:
+    - nameSuffix: "" # Creates a route named: {{ .Release.Name }}-nginx-standard
+      host: "liikenne-elastic-proxy-prod.apps.platta.hel.fi"
+      path: ""
+    - nameSuffix: "-internal" # Creates a route named: {{ .Release.Name }}-nginx-standard-internal
+      host: "liikenne-elastic-proxy.api.hel.ninja"
+      path: "/internal"

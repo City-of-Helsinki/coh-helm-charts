@@ -1,25 +1,32 @@
-{{- if eq (include "nginx-standard.routeEnabled" .) "true" }}
+{{- if .Values.routes.enabled }}
+{{- range $i, $route := .Values.routes.items }}
+{{- $fullName := include "nginx-standard.fullname" $ }}
+---
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: {{ include "nginx-standard.fullname" . }}-route
-  namespace: {{ include "nginx-standard.namespace" . }}
-  annotations:
-    {{- include "nginx-standard.routeAnnotations" . | nindent 4 }}
+  name: {{ $fullName }}{{ $route.nameSuffix }} 
+  namespace: {{ include "nginx-standard.namespace" $ }}
   labels:
-    {{- include "nginx-standard.labels" . | nindent 4 }}
+    {{- include "nginx-standard.labels" $ | nindent 4 }}
+  annotations:
+    {{- $globalAnnotations := default dict $.Values.routes.annotations }}
+    {{- $itemAnnotations := default dict $route.annotations }}
+    {{- $annotations := mergeOverwrite $globalAnnotations $itemAnnotations }}
+    {{- toYaml $annotations | nindent 4 }}
 spec:
-  host: {{ include "nginx-standard.routeHost" . }}
+  host: {{ $route.host | required "Host is required for every route in the items list." }}
+  path: {{ $route.path | default "" }}
   to:
     kind: Service
-    name: {{ include "nginx-standard.fullname" . }}
+    name: {{ $fullName }}
     weight: 100
   port:
-    targetPort: {{ include "nginx-standard.serviceName" . }}
-  {{- if .Values.route.tls.enabled }}
+    targetPort: {{ $.Values.nginx.service.name | default "http" }}
+{{- if $route.tls }}
   tls:
-    termination: {{ include "nginx-standard.routeTLSTermination" . }}
-    insecureEdgeTerminationPolicy: {{ include "nginx-standard.routeInsecureEdgeTerminationPolicy" . }}
+    termination: {{ $route.tls.termination | default "edge" }}
+    insecureEdgeTerminationPolicy: {{ $route.tls.insecureEdgeTerminationPolicy | default "Redirect" }}
   {{- end }}
-  wildcardPolicy: None
+{{- end }}
 {{- end }}
