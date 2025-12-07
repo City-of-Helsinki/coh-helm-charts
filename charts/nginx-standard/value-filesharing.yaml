@@ -2,8 +2,6 @@
 
 global:
   namespace: "fileshare-dev"
-  project: "file-sharing-demo"
-  environment: "dev"
 
 nameOverride: "fileshare-dev"
 
@@ -24,7 +22,11 @@ nginx:
     limits:
       memory: "256Mi"
       cpu: "250m"
-
+    
+  # Disable NGINX security headers if they are managed by the OpenShift Route/HAProxy
+  security:
+    headers:
+      enabled: false
 # ============================================================================
 # FILE SHARING USE CASE CONFIGURATION (Overrides)
 # ============================================================================
@@ -32,7 +34,7 @@ fileSharing:
   enabled: true
   storage:
     pvc:
-      size: "50Gi"
+      size: "10Gi"
     azureFile:
       shareName: "test-fileshare"
       secretName: fileshare-credentials 

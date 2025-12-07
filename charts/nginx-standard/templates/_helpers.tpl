@@ -41,12 +41,6 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if .Values.nginx.useCase }}
 app.kubernetes.io/use-case: {{ .Values.nginx.useCase }}
 {{- end }}
-{{- if .Values.global.project }}
-app.kubernetes.io/project: {{ .Values.global.project }}
-{{- end }}
-{{- if .Values.global.environment }}
-app.kubernetes.io/environment: {{ .Values.global.environment }}
-{{- end }}
 {{- end -}}
 
 {{/*
@@ -335,7 +329,7 @@ location {{ .path }} {
 {{ .additionalConfig | indent 2 }}
 {{- end }}
 }
-{{- end -}}
+{{ end -}}
 {{- else -}}
 # Default configuration
 location / {

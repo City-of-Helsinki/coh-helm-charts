@@ -19,36 +19,27 @@ data:
     http {
       include /etc/nginx/mime.types;
       default_type application/octet-stream;
-      
       # JSON log format
-      log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$nginx_req_id"}';
-      
+      log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$nginx_req_id"}';    
       # Access log configuration
       access_log {{ .Values.nginx.logging.accessLog }} json_log;
-      
       sendfile on;
       tcp_nopush on;
       tcp_nodelay on;
       keepalive_timeout 65;
       types_hash_max_size 2048;
-      
       server {
         listen {{ include "nginx-standard.servicePort" . }} default_server;
         listen [::]:{{ include "nginx-standard.servicePort" . }} default_server;
-        server_name _;
-        
+        server_name _; 
         # Generate request ID with unique name to avoid conflicts
         set $nginx_req_id $http_x_request_id;
         if ($nginx_req_id = "") {
           set $nginx_req_id "nginx-$connection-$msec";
-        }
-        
+        } 
         # Add request ID to response header
         add_header X-Request-ID $nginx_req_id;
-        
-        # Apply Security Headers (NEW)
-{{ include "nginx-standard.securityHeaders" . | nindent 8 }}
-        
+{{- include "nginx-standard.securityHeaders" . | nindent 8 -}}
         # Include custom server configuration
         include /opt/app-root/etc/nginx.default.d/*.conf;
       }

@@ -2,8 +2,6 @@
 
 global:
   namespace: "es-proxy-prod"
-  project: "search-platform"
-  environment: "prod"
 
 nameOverride: "es-proxy-v1"
 
