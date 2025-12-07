@@ -1,0 +1,21 @@
+{{- if eq (include "nginx-standard.azureFileEnabled" .) "true" }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "nginx-standard.pvName" . }}
+  labels:
+    {{- include "nginx-standard.labels" . | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ include "nginx-standard.pvCapacity" . }}
+  accessModes:
+    - {{ .Values.fileSharing.storage.pvc.accessMode | default "ReadWriteMany" }}
+  {{- if .Values.fileSharing.storage.pvc.storageClassName }}
+  storageClassName: {{ .Values.fileSharing.storage.pvc.storageClassName }}
+  {{- end }}
+  azureFile:
+    secretName: {{ include "nginx-standard.secretName" . }}
+    shareName: {{ include "nginx-standard.azureFileShareName" . }}
+    readOnly: false
+  persistentVolumeReclaimPolicy: Retain
+{{- end }}

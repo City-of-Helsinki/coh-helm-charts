@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nginx-standard.configmapName" . }}
+  namespace: {{ include "nginx-standard.namespace" . }}
+  labels:
+    {{- include "nginx-standard.labels" . | nindent 4 }}
+data:
+  nginx.conf: |-
+    # NGINX main configuration
+    worker_processes auto;
+    error_log {{ .Values.nginx.logging.errorLog }} {{ .Values.nginx.logging.errorLevel }};
+    pid /tmp/nginx.pid;
+    
+    events {
+      worker_connections 1024;
+    }
+    
+    http {
+      include /etc/nginx/mime.types;
+      default_type application/octet-stream;
+      
+      # JSON log format
+      log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$nginx_req_id"}';
+      
+      # Access log configuration
+      access_log {{ .Values.nginx.logging.accessLog }} json_log;
+      
+      sendfile on;
+      tcp_nopush on;
+      tcp_nodelay on;
+      keepalive_timeout 65;
+      types_hash_max_size 2048;
+      
+      server {
+        listen {{ include "nginx-standard.servicePort" . }} default_server;
+        listen [::]:{{ include "nginx-standard.servicePort" . }} default_server;
+        server_name _;
+        
+        # Generate request ID with unique name to avoid conflicts
+        set $nginx_req_id $http_x_request_id;
+        if ($nginx_req_id = "") {
+          set $nginx_req_id "nginx-$connection-$msec";
+        }
+        
+        # Add request ID to response header
+        add_header X-Request-ID $nginx_req_id;
+        
+        # Include custom server configuration
+        include /opt/app-root/etc/nginx.default.d/*.conf;
+      }
+    }
+  
+  server.conf: |-
+    # Main server configuration
+{{- $serverConfig := include "nginx-standard.serverConfig" . -}}
+{{- if $serverConfig }}
+{{ $serverConfig | nindent 4 }}
+{{- else }}
+    # Default configuration
+    location / {
+      root /usr/share/nginx/html;
+      index index.html index.htm;
+    }
+{{- end }}
+    
+    # Health check endpoints
+    location {{ include "nginx-standard.readinessPath" . }} {
+      access_log off;  # Don't log health checks
+      add_header Content-Type text/plain;
+      return 200 'OK';
+    }
+    
+    location {{ include "nginx-standard.livenessPath" . }} {
+      access_log off;  # Don't log health checks
+      add_header Content-Type text/plain;
+      return 200 'OK';
+    }

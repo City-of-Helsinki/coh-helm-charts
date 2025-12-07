@@ -1,0 +1,21 @@
+{{- if and (eq .Values.nginx.useCase "file-sharing") .Values.fileSharing.enabled .Values.fileSharing.storage.pvc.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nginx-standard.pvcName" . }}
+  namespace: {{ include "nginx-standard.namespace" . }}
+  labels:
+    {{- include "nginx-standard.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.fileSharing.storage.pvc.accessMode | default "ReadWriteMany" }}
+  resources:
+    requests:
+      storage: {{ .Values.fileSharing.storage.pvc.size }}
+  {{- if .Values.fileSharing.storage.pvc.storageClassName }}
+  storageClassName: {{ .Values.fileSharing.storage.pvc.storageClassName }}
+  {{- end }}
+  {{- if .Values.fileSharing.storage.pvc.volumeName }}
+  volumeName: {{ .Values.fileSharing.storage.pvc.volumeName }}
+  {{- end }}
+{{- end }}

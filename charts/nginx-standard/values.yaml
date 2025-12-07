@@ -1,0 +1,361 @@
+# Default values for nginx-standard
+# This Helm chart supports multiple NGINX use cases:
+# - file-sharing: Static file server with directory listing
+# - elastic-proxy: Reverse proxy for Elasticsearch with method restrictions
+
+global:
+  namespace: ""  # Override with --namespace or uses .Release.Namespace
+  project: "my-project"
+  environment: "prod"
+
+# Optional overrides for resource naming
+nameOverride: ""
+fullnameOverride: ""
+
+# ============================================================================
+# NGINX CONFIGURATION
+# ============================================================================
+nginx:
+  # Use case selector: "file-sharing" | "elastic-proxy"
+  useCase: "file-sharing"
+  
+  # Number of replica pods
+  replicaCount: 2
+  
+  # Container image configuration
+  image:
+    repository: "registry.access.redhat.com/ubi9/nginx-120"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+    pullSecrets: []
+      # - name: "quay-secret-new"
+  
+  # Node selector for pod placement
+  nodeSelector: {}
+    # env: "prod"
+    # region: "eu-north"
+  
+  # Pod tolerations
+  tolerations: []
+    # - key: "dedicated"
+    #   operator: "Equal"
+    #   value: "nginx"
+    #   effect: "NoSchedule"
+  
+  # Pod affinity rules
+  affinity: {}
+    # podAntiAffinity:
+    #   preferredDuringSchedulingIgnoredDuringExecution:
+    #   - weight: 100
+    #     podAffinityTerm:
+    #       labelSelector:
+    #         matchExpressions:
+    #         - key: app.kubernetes.io/name
+    #           operator: In
+    #           values:
+    #           - nginx-standard
+    #       topologyKey: kubernetes.io/hostname
+  
+  # Resource requests and limits
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  # Service configuration
+  service:
+    port: 8080
+    targetPort: 8080
+    name: "http"
+    type: "ClusterIP"
+  
+  # Health check probes (standardized endpoints)
+  healthChecks:
+    enabled: true
+    readinessPath: "/readiness"
+    livenessPath: "/healthz"
+  
+  # Logging configuration for containers
+  logging:
+    # Container best practice: log to stdout/stderr
+    accessLog: "/dev/stdout"
+    errorLog: "/dev/stderr"
+    errorLevel: "warn"  # debug | info | notice | warn | error | crit
+    
+    # Log format: json | combined | main | custom
+    format: "json"
+    
+    # JSON log format configuration (application-aligned)
+    jsonFormat:
+      enabled: true
+      # Fields that match your application logging structure
+      # You can customize these fields, add new ones, or remove existing ones
+      fields:
+        timestamp: "$time_iso8601"  # ISO 8601 format: 2024-01-15T10:30:45+00:00
+        level: "info"  # Static level for access logs
+        source: "nginx"  # Differentiates nginx logs from app logs
+        message: "$request"
+        request_id: "$http_x_request_id"  # Request tracking from X-Request-ID header
+        client_ip: "$remote_addr"
+        method: "$request_method"
+        uri: "$request_uri"
+        protocol: "$server_protocol"
+        status: "$status"
+        response_time: "$request_time"  # In seconds with millisecond precision
+        bytes_sent: "$body_bytes_sent"
+        user_agent: "$http_user_agent"
+        referer: "$http_referer"
+        x_forwarded_for: "$http_x_forwarded_for"
+        upstream_addr: "$upstream_addr"  # Backend server that handled the request
+        upstream_response_time: "$upstream_response_time"  # Backend response time
+  
+  # Security headers configuration
+  security:
+    headers:
+      enabled: true
+      csp: "default-src 'self'"  # Content Security Policy
+      sts: "max-age=31536000; includeSubDomains; preload"  # Strict-Transport-Security
+      frameOptions: "DENY"  # X-Frame-Options
+      contentTypeOptions: "nosniff"  # X-Content-Type-Options
+      xssProtection: "1; mode=block"  # X-XSS-Protection
+    authHeaders:
+      maxSize: "16k"
+      bufferSize: "16k"
+
+# ============================================================================
+# FILE SHARING USE CASE CONFIGURATION
+# ============================================================================
+fileSharing:
+  enabled: true
+  
+  # Storage configuration
+  storage:
+    # Persistent Volume Claim
+    pvc:
+      enabled: true
+      size: "100Gi"
+      storageClassName: "azurefile"
+      accessMode: "ReadWriteMany"
+      volumeName: ""  # Auto-generated if empty
+      
+      # Azure File specific configuration
+      azureFile:
+        enabled: true
+        shareName: "fileshare"
+        secretName: ""  # Auto-generated from external secrets if empty
+        capacity: ""  # Uses pvc.size if empty
+        volumeName: ""  # Auto-generated if empty
+    
+    # Mount path inside the container
+    mountPath: "/opt/app-root/src"
+  
+  # NGINX location blocks for file sharing
+  locations:
+    - path: "/"
+      root: "/opt/app-root/src"
+      index: "index.html index.htm"
+      autoindex: true
+      additionalConfig: |
+        # Additional NGINX directives
+        # autoindex_exact_size off;
+        # autoindex_localtime on;
+    
+    # Example: Serve specific subdirectory
+    # - path: "/downloads"
+    #   alias: "/opt/app-root/src/downloads/"
+    #   autoindex: true
+    #   additionalConfig: |
+    #     autoindex_exact_size off;
+
+# ============================================================================
+# ELASTIC PROXY USE CASE CONFIGURATION
+# ============================================================================
+elasticProxy:
+  enabled: false  # Set to true when using elastic-proxy use case
+  
+  # Upstream Elasticsearch configuration
+  upstream:
+    service: "elasticsearch-service"
+    port: 9200
+    protocol: "http"  # http | https
+  
+  # Proxy settings
+  proxy:
+    connectTimeout: "60s"
+    sendTimeout: "60s"
+    readTimeout: "60s"
+    bufferSize: "8k"
+    buffersNumber: 4
+  
+  # Elasticsearch routes with method restrictions
+  routes:
+    # Search endpoints
+    - path: "~ ^/(.*)/_search$"
+      methods: ["POST", "GET"]
+      additionalConfig: |
+        # proxy_cache_bypass $http_upgrade;
+        # proxy_read_timeout 90;
+    
+    # Multi-search endpoint
+    - path: "~ ^/(.*)/_msearch$"
+      methods: ["POST", "GET"]
+    
+    # Cluster health
+    - path: "/_cluster/health"
+      methods: ["GET"]
+    
+    # Ping endpoint
+    - path: "/ping"
+      methods: ["GET"]
+    
+    # Example: Index-specific operations
+    # - path: "~ ^/my-index/(.*)$"
+    #   methods: ["GET", "POST"]
+    #   additionalConfig: |
+    #     proxy_set_header Authorization "Basic xyz";
+
+# ============================================================================
+# EXTERNAL SECRETS CONFIGURATION (Azure Key Vault)
+# ============================================================================
+externalSecrets:
+  enabled: true
+  refreshInterval: "1h"  # How often to sync secrets from Key Vault
+  
+  # Azure Key Vault configuration
+  azureKeyVault:
+    vaultName: ""  # REQUIRED: Your Azure Key Vault name (e.g., "my-keyvault")
+    tenantId: ""  # REQUIRED: Azure tenant ID
+    
+    # Key names in Azure Key Vault for storage credentials
+    storageAccountNameKey: "AZURE-STORAGE-ACCOUNT-NAME"
+    storageAccountKeyKey: "AZURE-STORAGE-ACCOUNT-KEY"
+  
+  # Service Principal for Key Vault authentication
+  servicePrincipal:
+    secretName: "azure-service-principal"
+    # This secret should contain:
+    # - clientId: Azure AD application/client ID
+    # - clientSecret: Azure AD application secret
+
+# ============================================================================
+# OPENSHIFT ROUTE CONFIGURATION
+# ============================================================================
+route:
+  enabled: false
+  
+  # Route annotations
+  annotations:
+    haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains;preload"
+    haproxy.router.openshift.io/disable_cookies: "true"
+    # haproxy.router.openshift.io/timeout: "30s"
+    # haproxy.router.openshift.io/rate-limit-connections: "true"
+    # haproxy.router.openshift.io/rate-limit-connections.concurrent-tcp: "100"
+  
+  # Route hostname
+  host: ""  # REQUIRED when route.enabled is true (e.g., "nginx.example.com")
+  
+  # TLS configuration
+  tls:
+    enabled: true
+    termination: "edge"  # edge | passthrough | reencrypt
+    insecureEdgeTerminationPolicy: "Redirect"  # Redirect | Allow | None
+    # certificate: ""  # Optional: custom certificate
+    # key: ""  # Optional: custom key
+    # caCertificate: ""  # Optional: CA certificate for reencrypt
+
+# ============================================================================
+# SERVICE ACCOUNT CONFIGURATION
+# ============================================================================
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  
+  # Annotations to add to the service account
+  annotations: {}
+    # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/my-role
+  
+  # The name of the service account to use
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# ============================================================================
+# POD ANNOTATIONS
+# ============================================================================
+podAnnotations: {}
+  # prometheus.io/scrape: "true"
+  # prometheus.io/port: "8080"
+  # prometheus.io/path: "/metrics"
+
+# ============================================================================
+# EXAMPLES FOR DIFFERENT USE CASES
+# ============================================================================
+
+# Example 1: File Sharing with Azure File Storage
+# ------------------------------------------------
+# nginx:
+#   useCase: "file-sharing"
+#   replicaCount: 2
+# fileSharing:
+#   enabled: true
+#   storage:
+#     pvc:
+#       enabled: true
+#       size: "100Gi"
+#       storageClassName: "azurefile"
+#   locations:
+#     - path: "/"
+#       root: "/opt/app-root/src"
+#       autoindex: true
+# externalSecrets:
+#   enabled: true
+#   azureKeyVault:
+#     vaultName: "my-keyvault"
+#     tenantId: "xxx-xxx-xxx"
+# route:
+#   enabled: true
+#   host: "files.example.com"
+
+# Example 2: Elasticsearch Proxy
+# --------------------------------
+# nginx:
+#   useCase: "elastic-proxy"
+#   replicaCount: 3
+# fileSharing:
+#   enabled: false
+# elasticProxy:
+#   enabled: true
+#   upstream:
+#     service: "elasticsearch-master"
+#     port: 9200
+#   routes:
+#     - path: "~ ^/(.*)/_search$"
+#       methods: ["POST", "GET"]
+#     - path: "/_cluster/health"
+#       methods: ["GET"]
+# route:
+#   enabled: true
+#   host: "es-proxy.example.com"
+
+# Example 3: Simple File Server (No Azure Storage)
+# -------------------------------------------------
+# nginx:
+#   useCase: "file-sharing"
+#   replicaCount: 1
+# fileSharing:
+#   enabled: true
+#   storage:
+#     pvc:
+#       enabled: false  # Uses emptyDir
+#   locations:
+#     - path: "/"
+#       root: "/opt/app-root/src"
+#       index: "index.html"
+#       autoindex: false
+# externalSecrets:
+#   enabled: false
+# route:
+#   enabled: true
+#   host: "nginx.example.com"

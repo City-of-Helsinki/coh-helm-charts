@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nginx-standard.fullname" . }}
+  namespace: {{ include "nginx-standard.namespace" . }}
+  labels:
+    {{- include "nginx-standard.labels" . | nindent 4 }}
+spec:
+  replicas: {{ include "nginx-standard.replicaCount" . }}
+  selector:
+    matchLabels:
+      {{- include "nginx-standard.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nginx-standard.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "nginx-standard.serviceAccountName" . }}
+      {{- end }}
+      {{- if .Values.nginx.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.nginx.image.pullSecrets | nindent 8 }}
+      {{- end }}
+      volumes:
+        {{- if eq (include "nginx-standard.fileSharingEnabled" .) "true" }}
+        - name: file-content-volume
+          {{- if .Values.fileSharing.storage.pvc.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "nginx-standard.pvcName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+        - name: config-volume
+          configMap:
+            name: {{ include "nginx-standard.configmapName" . }}
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+              - key: server.conf
+                path: nginx.default.d/server.conf
+            defaultMode: 420
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.tag }}"
+          imagePullPolicy: {{ .Values.nginx.image.pullPolicy }}
+          command:
+            - /bin/bash
+            - -c
+          args:
+            - |
+              # Copy custom nginx.conf to the main config directory
+              if [ -f /opt/app-root/etc/nginx.conf ]; then
+                cp /opt/app-root/etc/nginx.conf /etc/nginx/nginx.conf
+              fi
+              # Start NGINX
+              exec nginx -g 'daemon off;'
+          ports:
+            - name: http
+              containerPort: {{ include "nginx-standard.servicePort" . }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.nginx.resources | nindent 12 }}
+          volumeMounts:
+            {{- if eq (include "nginx-standard.fileSharingEnabled" .) "true" }}
+            - name: file-content-volume
+              mountPath: {{ .Values.fileSharing.storage.mountPath | default "/opt/app-root/src" }}
+            {{- end }}
+            - name: config-volume
+              mountPath: /opt/app-root/etc
+          {{- if eq (include "nginx-standard.healthChecksEnabled" .) "true" }}
+          readinessProbe:
+            httpGet:
+              path: {{ include "nginx-standard.readinessPath" . }}
+              port: {{ include "nginx-standard.servicePort" . }}
+              scheme: HTTP
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: {{ include "nginx-standard.livenessPath" . }}
+              port: {{ include "nginx-standard.servicePort" . }}
+              scheme: HTTP
+            initialDelaySeconds: 30
+            timeoutSeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          {{- end }}
+      {{- with .Values.nginx.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- else }}
+      nodeSelector:
+        env: {{ .Values.global.environment | default "prod" }}
+      {{- end }}
+      {{- with .Values.nginx.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nginx.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

@@ -1,0 +1,25 @@
+{{- if eq (include "nginx-standard.routeEnabled" .) "true" }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "nginx-standard.fullname" . }}
+  namespace: {{ include "nginx-standard.namespace" . }}
+  annotations:
+    {{- include "nginx-standard.routeAnnotations" . | nindent 4 }}
+  labels:
+    {{- include "nginx-standard.labels" . | nindent 4 }}
+spec:
+  host: {{ include "nginx-standard.routeHost" . }}
+  to:
+    kind: Service
+    name: {{ include "nginx-standard.fullname" . }}
+    weight: 100
+  port:
+    targetPort: {{ include "nginx-standard.serviceName" . }}
+  {{- if .Values.route.tls.enabled }}
+  tls:
+    termination: {{ include "nginx-standard.routeTLSTermination" . }}
+    insecureEdgeTerminationPolicy: {{ include "nginx-standard.routeInsecureEdgeTerminationPolicy" . }}
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}
