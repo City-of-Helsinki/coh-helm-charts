@@ -8,13 +8,3 @@ elasticProxy:
   authSecretName: ""
   upstream:
     url: "https://elasticsearch-host1.cluster.svc:9200" # ELASTICSEARCH_URL env var
-
-# ============================================================================
-# OPENSHIFT ROUTE CONFIGURATION (Enabled)
-# ============================================================================
-# route:
-#   enabled: true
-#   host: "search.example.com" # REQUIRED
-  
-#   annotations:
-#     haproxy.router.openshift.io/timeout: "90s" # Longer timeout for search queries
