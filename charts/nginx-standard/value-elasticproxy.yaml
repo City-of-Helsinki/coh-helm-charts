@@ -4,25 +4,11 @@ nginx:
 # ELASTIC PROXY USE CASE CONFIGURATION (Overrides)
 # ============================================================================
 elasticProxy:
-  enabled: true
-  
+  enabled: false # Set to true when using elastic-proxy use case
+  authSecretName: ""
   upstream:
-    service: "elasticsearch-client-service"
-    port: 9200
-    protocol: "https" # Use https to backend
-  
-  proxy:
-    # Adjusting timeouts is common for reverse proxies
-    readTimeout: "90s" 
-  
-  routes:
-    # Standard read-only routes
-    - path: "~ ^/(.*)/_search$"
-      methods: ["POST", "GET"]
-    - path: "~ ^/(.*)/_msearch$"
-      methods: ["POST", "GET"]
-    - path: "/_cluster/health"
-      methods: ["GET"]
+    url: "https://elasticsearch-host1.cluster.svc:9200" # ELASTICSEARCH_URL env var
+
 # ============================================================================
 # OPENSHIFT ROUTE CONFIGURATION (Enabled)
 # ============================================================================
