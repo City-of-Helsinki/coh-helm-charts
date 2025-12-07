@@ -59,6 +59,13 @@ Generate namespace
 {{- end -}}
 
 {{/*
+Define the NGINX image for the Deployment.
+*/}}
+{{- define "nginx-standard.image" -}}
+{{- default "registry.redhat.io/ubi9/nginx-120@sha256:99d8a1d13835606114bb7785056793903c8739b7e1213b549f82ef30e0d51e5d" .Values.nginx.image.full -}}
+{{- end -}}
+
+{{/*
 Check if file sharing is enabled
 */}}
 {{- define "nginx-standard.fileSharingEnabled" -}}

@@ -2,7 +2,7 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: {{ include "nginx-standard.fullname" . }}
+  name: {{ include "nginx-standard.fullname" . }}-route
   namespace: {{ include "nginx-standard.namespace" . }}
   annotations:
     {{- include "nginx-standard.routeAnnotations" . | nindent 4 }}

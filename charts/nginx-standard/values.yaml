@@ -22,16 +22,14 @@ nginx:
   
   # Container image configuration
   image:
-    repository: "registry.access.redhat.com/ubi9/nginx-120"
-    tag: "latest"
+    full: ''
     pullPolicy: "IfNotPresent"
-    pullSecrets: []
-      # - name: "quay-secret-new"
+    pullSecrets: 
+      - name: "quay-secret-new"
   
   # Node selector for pod placement
   nodeSelector: {}
     # env: "prod"
-    # region: "eu-north"
   
   # Pod tolerations
   tolerations: []
@@ -48,11 +46,11 @@ nginx:
     #     podAffinityTerm:
     #       labelSelector:
     #         matchExpressions:
-    #         - key: app.kubernetes.io/name
+    #         - key: app.openshift.io/name
     #           operator: In
     #           values:
     #           - nginx-standard
-    #       topologyKey: kubernetes.io/hostname
+    #       topologyKey: openshift.io/hostname
   
   # Resource requests and limits
   resources:

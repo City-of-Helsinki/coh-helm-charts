@@ -1,43 +1,16 @@
-# Values for File Sharing Use Case Deployment
-
-global:
-  namespace: "fileshare-dev"
-
-nameOverride: "fileshare-dev"
-
-# ============================================================================
-# NGINX Configuration Overrides
-# ============================================================================
 nginx:
   useCase: "file-sharing"
-  replicaCount: 2
-  
-  # Override placement and resources for the 'dev' environment
-  nodeSelector:
-    env: "devtest"
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "256Mi"
-      cpu: "250m"
-    
-  # Disable NGINX security headers if they are managed by the OpenShift Route/HAProxy
-  security:
-    headers:
-      enabled: false
 # ============================================================================
 # FILE SHARING USE CASE CONFIGURATION (Overrides)
 # ============================================================================
 fileSharing:
   enabled: true
   storage:
-    pvc:
-      size: "10Gi"
+    # pvc:
+    #   size: "10Gi"
     azureFile:
       shareName: "test-fileshare"
-      secretName: fileshare-credentials 
+      secretName: '' 
   
   locations:
     # Overwrite the default root path location
@@ -53,12 +26,6 @@ fileSharing:
       autoindex: true
       additionalConfig: |
         add_header Content-Disposition "attachment";
-# ============================================================================
-# ELASTIC PROXY - Disabled
-# ============================================================================
-elasticProxy:
-  enabled: false
-
 # ============================================================================
 # EXTERNAL SECRETS CONFIGURATION (Mandatory Overrides)
 # ============================================================================

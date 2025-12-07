@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "nginx-standard.fullname" . }}
+  name: {{ include "nginx-standard.fullname" . }}-deployment
   namespace: {{ include "nginx-standard.namespace" . }}
   labels:
     {{- include "nginx-standard.labels" . | nindent 4 }}
@@ -43,7 +43,7 @@ spec:
             defaultMode: 420
       containers:
         - name: {{ .Chart.Name }}
-          image: "{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.tag }}"
+          image: "{{ include "nginx-standard.image" . }}"
           imagePullPolicy: {{ .Values.nginx.image.pullPolicy }}
           command:
             - /bin/bash
