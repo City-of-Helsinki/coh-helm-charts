@@ -7,12 +7,12 @@ metadata:
     {{- include "nginx-standard.labels" . | nindent 4 }}
 data:
   nginx.conf: |-
-{{- if eq .Values.nginx.useCase "elastic-proxy" }}
+{{- if or (eq .Values.nginx.useCase "elastic-proxy") (eq .Values.nginx.useCase "cache") }}
 {{ include "nginx-standard.nginxConf" . | nindent 4 }}
 {{- else }}
     # NGINX main configuration
     worker_processes auto;
-    error_log {{ .Values.nginx.logging.errorLog }} {{ .Values.nginx.logging.errorLevel | default "notice" }};
+    error_log {{ .Values.nginx.logging.errorLog | default "/dev/stderr" }} {{ .Values.nginx.logging.errorLevel | default "notice" }};
     pid /tmp/nginx.pid;
     {{- if eq (include "nginx-standard.frontProxyEnabled" .) "true" }}
     {{- range $key, $val := .Values.frontProxy.env }}
@@ -35,18 +35,17 @@ data:
       {{- end }}
       # JSON log format
       log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$nginx_req_id"}';
-      # Access log configuration
-      access_log {{ .Values.nginx.logging.accessLog }} json_log;
+      access_log {{ .Values.nginx.logging.accessLog | default "/dev/stdout" }} json_log;
       sendfile on;
       tcp_nopush on;
       tcp_nodelay on;
       keepalive_timeout 65;
-      types_hash_max_size 2048; 
+      types_hash_max_size 2048;
       server {
         listen {{ include "nginx-standard.servicePort" . | default "8080" }} default_server;
         listen [::]:{{ include "nginx-standard.servicePort" . | default "8080" }} default_server;
         server_name _; 
-        # Generate request ID with unique name to avoid conflicts
+        # Generate request ID with unique name to avoid conflicts 
         set $nginx_req_id $http_x_request_id;
         if ($nginx_req_id = "") {
           set $nginx_req_id "nginx-$connection-$msec";

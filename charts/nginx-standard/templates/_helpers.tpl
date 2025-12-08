@@ -92,6 +92,17 @@ false
 {{- end -}}
 
 {{/*
+Check if cache proxy is enabled
+*/}}
+{{- define "nginx-standard.cacheEnabled" -}}
+{{- if and (eq .Values.nginx.useCase "cache") .Values.cache.enabled -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end -}}
+
+{{/*
 Generate PVC name
 */}}
 {{- define "nginx-standard.pvcName" -}}
@@ -155,6 +166,27 @@ Define the NGINX image for the Deployment.
 {{- end -}}
 
 {{/*
+Generate NGINX cache HTTP block configuration directives (Must be in http block)
+*/}}
+{{- define "nginx-standard.cacheHttpConf" -}}
+{{- $cfg := .Values.cache.config | default dict -}}
+{{- $volumeName := .Values.cache.volumeName | default "nginx-cache" -}}
+{{- $path := printf "/srv/cache/%s" $volumeName -}}
+{{- printf "proxy_cache_path %s levels=%s keys_zone=%s max_size=%s inactive=%s use_temp_path=%s;" $path (default "1:2" $cfg.levels) (default "my_cache:10m" $cfg.keysZone) (default "1g" $cfg.maxSize) (default "60m" $cfg.inactive) (default "off" $cfg.useTempPath) }}
+proxy_no_cache $cookie_nocache $arg_nocache $http_authorization $http_apikey;
+proxy_cache_bypass $cookie_nocache $arg_nocache $http_authorization $http_apikey;
+proxy_cache_background_update {{ default "on" $cfg.backgroundUpdate }};
+proxy_cache_use_stale {{ default "error timeout" $cfg.useStale }};
+proxy_cache_key $uri$args;
+proxy_cache_valid 200 302 {{ default "10m" $cfg.validTime.default }};
+proxy_cache_valid 404 {{ default "1m" $cfg.validTime.notFound }};
+proxy_cache_lock on;
+proxy_cache_lock_age 5s;
+add_header X-Cache-Status $upstream_cache_status;
+add_header X-Cache-Uri $uri$args;
+{{- end -}}
+
+{{/*
 Conditional NGINX main configuration
 */}}
 {{- define "nginx-standard.nginxConf" -}}
@@ -192,7 +224,7 @@ http {
         return "";
       }
     ';
-    # Log in JSON Format (using simplified structure aligned with the default, but required for elastic)
+    # Log in JSON Format 
     log_format nginxlog_json escape=json '{ "time": "$time_iso8601", '
       '"level": "info", '
       '"source": "nginx", '
@@ -210,6 +242,36 @@ http {
 
     sendfile on;
     keepalive_timeout 65;
+
+    # Include custom server block (server.conf)
+    include /opt/app-root/etc/nginx.default.d/*.conf;
+}
+{{- else if eq .Values.nginx.useCase "cache" -}}
+worker_processes auto;
+error_log /dev/stderr {{ .Values.nginx.logging.errorLevel | default "notice" }};
+pid /tmp/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    # Cache settings (Includes proxy_cache_path - the main reason for this custom http block)
+    {{ include "nginx-standard.cacheHttpConf" . | nindent 4 }}
+
+    # JSON log format
+    log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$nginx_req_id"}';
+    # Access log configuration
+    access_log {{ .Values.nginx.logging.accessLog | default "/dev/stdout" }} json_log;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
 
     # Include custom server block (server.conf)
     include /opt/app-root/etc/nginx.default.d/*.conf;
@@ -516,11 +578,41 @@ server {
     {{- end }}
 }
 {{- end }}
+{{- else if eq .Values.nginx.useCase "cache" -}}
+server {
+    listen {{ include "nginx-standard.servicePort" . }} default_server;
+    server_name _;
+    client_max_body_size {{ .Values.cache.clientMaxBodySize | default "100m" }};
+    large_client_header_buffers 4 32k;
+    
+    location / {
+        # NGINX Proxy Settings
+        proxy_buffers {{ .Values.cache.proxy.buffersNumber | default 1024 }} {{ .Values.cache.proxy.bufferSize | default "4k" }};
+        proxy_buffer_size {{ .Values.cache.proxy.bufferSize | default "16k" }};
+        proxy_send_timeout {{ .Values.cache.proxy.sendTimeout | default "600s" }};
+        proxy_read_timeout {{ .Values.cache.proxy.readTimeout | default "600s" }};
+        proxy_connect_timeout {{ .Values.cache.proxy.connectTimeout | default "600s" }};
 
+        # Cache Directives (links to proxy_cache_path defined in the http block)
+        proxy_cache my_cache;
+        proxy_cache_valid 200 302 {{ .Values.cache.config.validTime.default | default "10m" }};
+        proxy_cache_valid 404 {{ .Values.cache.config.validTime.notFound | default "1m" }};
+        
+        # Standard Proxy Headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Proxy Pass to Backend URL
+        proxy_pass {{ .Values.cache.backendUrl | required "cache.backendUrl is required for cache useCase" }};
+    }
+}
 {{- else -}}
 # Default configuration
 location / {
-  return 404;
+  root /usr/share/nginx/html;
+  index index.html index.htm;
 }
 {{- end -}}
 {{- end -}}

@@ -32,6 +32,11 @@ spec:
           emptyDir: {}
           {{- end }}
         {{- end }}
+        {{- if eq (include "nginx-standard.cacheEnabled" .) "true" }}
+        # Volume for the stateless NGINX cache - uses ephemeral emptyDir
+        - name: cache-volume
+          emptyDir: {}
+        {{- end }}
         - name: config-volume
           configMap:
             name: {{ include "nginx-standard.configmapName" . }}
@@ -50,15 +55,15 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ include "nginx-standard.image" . }}"
           imagePullPolicy: {{ .Values.nginx.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: {{ include "nginx-standard.serviceName" . }}
+              containerPort: {{ include "nginx-standard.servicePort" . }}
+              protocol: TCP
           env:
             - name: POD_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
             {{- if eq (include "nginx-standard.elasticProxyEnabled" .) "true" }}
             - name: ELASTICSEARCH_URL
               value: {{ .Values.elasticProxy.upstream.url | required "elasticProxy.upstream.url is required for elastic-proxy use case" }}
@@ -109,6 +114,10 @@ spec:
             {{- if eq (include "nginx-standard.fileSharingEnabled" .) "true" }}
             - name: file-content-volume
               mountPath: {{ .Values.fileSharing.storage.mountPath | default "/opt/app-root/src" }}
+            {{- end }}
+            {{- if eq (include "nginx-standard.cacheEnabled" .) "true" }}
+            - name: cache-volume
+              mountPath: /srv/cache/{{ .Values.cache.volumeName | default "nginx-cache" }}
             {{- end }}
             - name: config-volume
               mountPath: /opt/app-root/etc

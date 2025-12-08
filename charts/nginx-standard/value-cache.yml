@@ -1,0 +1,58 @@
+nginx:
+  # 1. Set the use case to 'cache' to enable the caching logic
+  useCase: "cache"
+  
+  # Set replica count
+  replicaCount: 2
+
+# ============================================================================
+# CACHE PROXY USE CASE CONFIGURATION
+# ============================================================================
+cache:
+  enabled: true
+  
+  # The required URL of the upstream service to proxy and cache
+  # This must be a fully qualified URL (e.g., https://service-name.namespace.svc.cluster.local:port)
+  backendUrl: "https://my-backend-api.svc.cluster.local:8000"
+
+  # NGINX Directives for the 'server' block
+  clientMaxBodySize: "50m"
+  
+  # This defines the mount path for the cache volume: /srv/cache/<volumeName>
+  volumeName: "nginx-proxy-cache" 
+
+  # NGINX Proxy Buffer and Timeout Configuration
+  proxy:
+    buffersNumber: 1024    # Sets proxy_buffers <buffersNumber> <bufferSize>
+    bufferSize: "4k"       # Sets proxy_buffers and proxy_buffer_size
+    sendTimeout: "300s"    # proxy_send_timeout
+    readTimeout: "300s"    # proxy_read_timeout
+    connectTimeout: "300s" # proxy_connect_timeout
+
+  # NGINX Cache Configuration (used to generate the proxy_cache_path directive)
+  config:
+    levels: "1:2"           # levels=1:2
+    keysZone: "my_cache:10m" # keys_zone=my_cache:10m
+    maxSize: "1g"           # max_size=1g
+    inactive: "60m"         # inactive=60m (how long to keep objects not accessed)
+    useTempPath: "off"      # use_temp_path=off
+    backgroundUpdate: "on"  # proxy_cache_background_update
+    useStale: "error timeout" # proxy_cache_use_stale
+    
+    # Configure cache validity times
+    validTime:
+      default: "10m"    # proxy_cache_valid 200 302 10m;
+      notFound: "1m"    # proxy_cache_valid 404 1m;
+
+# ============================================================================
+# OPENSHIFT ROUTE CONFIGURATION 
+# ============================================================================
+routes:
+  enabled: true
+  items:
+    - nameSuffix: "" 
+      host: "cache.example.com"
+      path: "/"
+      tls:
+        termination: "edge"
+        insecureEdgeTerminationPolicy: "Redirect"
