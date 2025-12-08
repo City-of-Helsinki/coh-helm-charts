@@ -40,31 +40,54 @@ spec:
                 path: nginx.conf
               - key: server.conf
                 path: nginx.default.d/server.conf
+              {{- if and (eq .Values.nginx.useCase "front-proxy") (hasKey .Values.frontProxy.env "PROXY_IP") }}
+              # Mount the custom IP list file for the GEO block
+              - key: proxy_ips.conf
+                path: proxy_ips.conf
+              {{- end }}
             defaultMode: 420
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ include "nginx-standard.image" . }}"
           imagePullPolicy: {{ .Values.nginx.image.pullPolicy | default "IfNotPresent" }}
-          {{- if eq .Values.nginx.useCase "elastic-proxy" }}
           env:
-            # 1. Elasticsearch URL
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- if eq (include "nginx-standard.elasticProxyEnabled" .) "true" }}
             - name: ELASTICSEARCH_URL
               value: {{ .Values.elasticProxy.upstream.url | required "elasticProxy.upstream.url is required for elastic-proxy use case" }}
-            # 2. Basic Auth User (from secret)
             - name: ELASTIC_USER
               valueFrom:
                 secretKeyRef:
-                  # Use provided secret name or fallback to default chart fullname
                   name: {{ .Values.elasticProxy.authSecretName | default (include "nginx-standard.fullname" .) }}
                   key: user
-            # 3. Basic Auth Password (from secret)
             - name: ELASTIC_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  # Use provided secret name or fallback to default chart fullname
                   name: {{ .Values.elasticProxy.authSecretName | default (include "nginx-standard.fullname" .) }}
                   key: password
-          {{- end }}
+            {{- end }}
+
+            {{- if eq (include "nginx-standard.frontProxyEnabled" .) "true" }}
+            # FRONT PROXY ENV VARS (Plain values from values.yaml)
+            {{- range $key, $val := .Values.frontProxy.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+            {{- range $key, $val := .Values.frontProxy.secretEnv }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $val.secretName }}
+                  key: {{ $val.secretKey }}
+            {{- end }}
+            {{- end }}
           command:
             - /bin/bash
             - -c

@@ -81,6 +81,17 @@ false
 {{- end -}}
 
 {{/*
+Check if front proxy is enabled
+*/}}
+{{- define "nginx-standard.frontProxyEnabled" -}}
+{{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.enabled -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end -}}
+
+{{/*
 Generate PVC name
 */}}
 {{- define "nginx-standard.pvcName" -}}
@@ -157,7 +168,6 @@ env ELASTIC_PASSWORD;
 env ELASTIC_USER;
 
 load_module modules/ngx_http_perl_module.so;
-
 events {
     worker_connections 1024;
 }
@@ -182,7 +192,6 @@ http {
         return "";
       }
     ';
-
     # Log in JSON Format (using simplified structure aligned with the default, but required for elastic)
     log_format nginxlog_json escape=json '{ "time": "$time_iso8601", '
       '"level": "info", '
@@ -197,14 +206,13 @@ http {
       '"user_agent": "$http_user_agent", '
       '"x_forwarded_for": "$http_x_forwarded_for", '
       '"request_id": "$nginx_req_id" }';
-      
     access_log /dev/stdout nginxlog_json;
 
     sendfile on;
     keepalive_timeout 65;
 
     # Include custom server block (server.conf)
-    include /opt/app-root/etc/nginx.default.d/*.conf; 
+    include /opt/app-root/etc/nginx.default.d/*.conf;
 }
 {{- end -}}
 {{- end -}}
@@ -318,17 +326,17 @@ Get route insecure edge termination policy
 {{- end -}}
 
 {{/*
-Get service port
+Get service port 
 */}}
 {{- define "nginx-standard.servicePort" -}}
-{{- .Values.nginx.service.port | default 8080 -}}
+{{- default 8080 -}}
 {{- end -}}
 
 {{/*
 Get service name
 */}}
 {{- define "nginx-standard.serviceName" -}}
-{{- .Values.nginx.service.name | default "http" -}}
+{{- default "http" -}}
 {{- end -}}
 
 {{/*
@@ -363,6 +371,9 @@ add_header X-XSS-Protection "{{ .Values.nginx.security.headers.xssProtection }}"
 {{- end -}}
 
 
+{{/*
+Conditional NGINX server configuration
+*/}}
 {{- define "nginx-standard.serverConfig" -}}
 {{- if eq .Values.nginx.useCase "file-sharing" -}}
 {{- range .Values.fileSharing.locations -}}
@@ -390,7 +401,6 @@ server {
     listen {{ include "nginx-standard.servicePort" . }} default_server;
     server_name _;
     client_max_body_size {{ .Values.elasticProxy.clientMaxBodySize | default "50m" }};
-
 {{- range .Values.elasticProxy.routes }}
     location {{ .path }} {
         {{- $methods := join " " .methods }}
@@ -406,7 +416,6 @@ server {
         proxy_read_timeout {{ $.Values.elasticProxy.proxy.readTimeout | default "60s" }};
         proxy_buffer_size {{ $.Values.elasticProxy.proxy.bufferSize | default "8k" }};
         proxy_buffers {{ $.Values.elasticProxy.proxy.buffersNumber | default 4 }} {{ $.Values.elasticProxy.proxy.bufferSize | default "8k" }};
-        
         # Standard Proxy Headers
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -415,7 +424,6 @@ server {
 
         # Elastic Authentication Header (via Perl module)
         proxy_set_header Authorization "Basic $elastic_authorization";
-
         # Proxy Pass to Elasticsearch URL
         proxy_pass ${ELASTICSEARCH_URL};
         proxy_ssl_verify off;
@@ -453,6 +461,62 @@ server {
       return 200 'OK';
     }
 }
+{{- else if eq .Values.nginx.useCase "front-proxy" -}}
+
+# --- Primary Servers (Simple redirect and default proxy) ---
+{{- range .Values.frontProxy.primaryServers }}
+server {
+    listen {{ include "nginx-standard.servicePort" . }};
+    server_name {{ .serverName }}; # Renders $HOST_EN
+
+    # Inject custom server Directives (e.g., real_ip_header, client_max_body_size)
+    {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
+    {{- range . }}
+    {{ . }};
+    {{- end }}
+    {{- end }}
+
+    # Root Redirect
+    location = / {
+        return 301 https://{{ .serverName }}{{ .redirectPath }};
+    }
+
+    # Default Proxy
+    location / {
+        # FIX 2: Proxy Pass must use the literal URL from values.yaml (e.g., https://backend-api.svc.cluster.local:443)
+        proxy_pass {{ $.Values.frontProxy.env.HOST_PROXY }}/; 
+    }
+}
+{{- end }}
+
+# --- Custom Servers (Complex logic/API proxies) ---
+{{- range .Values.frontProxy.customServers }}
+server {
+    listen {{ include "nginx-standard.servicePort" . }};
+    server_name {{ .serverName }};
+
+    # Inject custom server Directives (e.g., real_ip_header, client_max_body_size)
+    {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
+    {{- range . }}
+    {{ . }};
+    {{- end }}
+    {{- end }}
+    
+    {{- range .locations }}
+    location {{ .path }} {
+        # Inject additional logic (e.g., the 'if' or 'return' statement) before proxy_pass
+        {{- if .additionalConfig }}
+{{ .additionalConfig | nindent 12 }}
+        {{- end }}
+
+        {{- if .proxyPass }}
+        proxy_pass {{ .proxyPass }}/;
+        {{- end }}
+    }
+    {{- end }}
+}
+{{- end }}
+
 {{- else -}}
 # Default configuration
 location / {

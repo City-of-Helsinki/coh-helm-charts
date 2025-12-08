@@ -14,7 +14,15 @@ data:
     worker_processes auto;
     error_log {{ .Values.nginx.logging.errorLog }} {{ .Values.nginx.logging.errorLevel | default "notice" }};
     pid /tmp/nginx.pid;
-    
+    {{- if eq (include "nginx-standard.frontProxyEnabled" .) "true" }}
+    {{- range $key, $val := .Values.frontProxy.env }}
+    env {{ $key }};
+    {{- end }}
+    {{- range $key, $val := .Values.frontProxy.secretEnv }}
+    env {{ $key }};
+    {{- end }}
+    {{- end }}
+
     events {
       worker_connections 1024;
     }
@@ -22,6 +30,9 @@ data:
     http {
       include /etc/nginx/mime.types;
       default_type application/octet-stream; 
+      {{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.globalConfig.httpDirectives }}
+      {{ .Values.frontProxy.globalConfig.httpDirectives | replace "$$" "$" | nindent 6 }} 
+      {{- end }}
       # JSON log format
       log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$nginx_req_id"}';
       # Access log configuration
@@ -30,11 +41,11 @@ data:
       tcp_nopush on;
       tcp_nodelay on;
       keepalive_timeout 65;
-      types_hash_max_size 2048;   
+      types_hash_max_size 2048; 
       server {
-        listen {{ include "nginx-standard.servicePort" . }} default_server;
-        listen [::]:{{ include "nginx-standard.servicePort" . }} default_server;
-        server_name _;  
+        listen {{ include "nginx-standard.servicePort" . | default "8080" }} default_server;
+        listen [::]:{{ include "nginx-standard.servicePort" . | default "8080" }} default_server;
+        server_name _; 
         # Generate request ID with unique name to avoid conflicts
         set $nginx_req_id $http_x_request_id;
         if ($nginx_req_id = "") {
@@ -52,7 +63,7 @@ data:
     # Main server configuration
 {{- $serverConfig := include "nginx-standard.serverConfig" . -}}
 {{- if $serverConfig -}}
-{{ $serverConfig | nindent 4 }}
+{{ $serverConfig | replace "$$" "$" | nindent 4 }}
 {{- else }}
     location / {
       root /usr/share/nginx/html;
@@ -61,14 +72,18 @@ data:
 {{- end -}}
 {{- if ne .Values.nginx.useCase "elastic-proxy" -}}
     # Health check endpoints (Only included if not elastic-proxy, as the helper includes them otherwise)
-    location {{ include "nginx-standard.readinessPath" . }} {
+    location {{ include "nginx-standard.readinessPath" . | default "/readiness" }} {
       access_log off;  # Don't log health checks
       add_header Content-Type text/plain;
       return 200 'OK';
     }
-    location {{ include "nginx-standard.livenessPath" . }} {
+    location {{ include "nginx-standard.livenessPath" . | default "/healthz" }} {
       access_log off;  # Don't log health checks
       add_header Content-Type text/plain;
       return 200 'OK';
     }
 {{- end -}}
+{{- if and (eq .Values.nginx.useCase "front-proxy") (hasKey .Values.frontProxy.env "PROXY_IP") }}
+  proxy_ips.conf: |-
+{{ .Values.frontProxy.env.PROXY_IP | nindent 4 }}
+{{- end }}

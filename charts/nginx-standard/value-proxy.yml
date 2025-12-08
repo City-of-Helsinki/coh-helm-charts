@@ -1,0 +1,89 @@
+nginx:
+  useCase: "front-proxy" 
+# ============================================================================
+# FRONT PROXY USE CASE (All NGINX configuration elements)
+# ============================================================================
+frontProxy:
+  enabled: true
+  
+  # --- 1a. PLAIN ENV VARIABLES (Value defined directly in values.yaml) ---
+  env:
+    HOST_PROXY: "https://backend-api.svc.cluster.local:443"
+    HOST_EN: "en.example.com"
+    HOST_SV: "sv.example.com"
+    
+    # GEO IP Whitelist List (used to generate proxy_ips.conf)
+    PROXY_IP: |
+      137.163.145.226/32 1;
+      129.0.0.0/8 1;
+      10.128.0.0/14 1;
+    PROXY_DEFAULT: 0
+
+  # --- 1b. SECRET ENV VARIABLES (Value fetched from a K8s Secret) ---
+  secretEnv:
+    # Environment variable name: DIGITRANSIT_API_KEY
+    DIGITRANSIT_API_KEY:
+      secretName: "my-proxy-secrets" 
+      secretKey: "digitransit-key"  
+
+    # Environment variable name: CUSTOM_AUTH_TOKEN
+    CUSTOM_AUTH_TOKEN:
+      secretName: "auth-secrets"
+      secretKey: "auth-token-value"
+      
+  # --- 2. GLOBAL NGINX CONFIGURATION INJECTIONS ---
+  globalConfig:
+    # Directives inserted directly into the NGINX 'http' block (e.g., GEO block)
+    httpDirectives: |
+      # Defines the $allowed variable using the list in proxy_ips.conf
+      geo $$remote_addr $$allowed {
+        default $$PROXY_DEFAULT; 
+        include /opt/app-root/etc/proxy_ips.conf;
+      }
+      # map $$http_user_agent $$is_bot { 
+      #   default 0;
+      #   ~*bot 1;
+      # }
+
+
+    # Directives inserted at the beginning of *each* NGINX 'server' block
+    serverDirectives:
+      - real_ip_header X-Forwarded-For;
+      - set_real_ip_from 10.128.0.0/14;
+      - client_max_body_size 100m; # Example from hauki-api
+      - proxy_buffers 1024 4k;    # Example from hauki-api
+
+  # --- 3. PRIMARY SERVER BLOCKS (Simple redirects/proxies) ---
+  primaryServers:
+    - serverName: $$HOST_EN
+      redirectPath: "/en"
+      
+  # --- 4. CUSTOM SERVER BLOCKS (Complex logic/API proxies) ---
+  customServers:
+    # Example 1: API proxy using a secret value and complex path
+    - serverName: digitransit-proxy.api.hel.fi
+      locations:
+        - path: "/"
+          proxyPass: https://api.digitransit.fi/
+          additionalConfig: |
+            # Uses the secret-backed env var $$DIGITRANSIT_API_KEY
+            proxy_set_header digitransit-subscription-key $$DIGITRANSIT_API_KEY;
+            
+    # Example 2: Location requiring the complex GEO block check
+    - serverName: admin.example.com
+      locations:
+        - path: "= /admin" # Exact match location
+          # The 'if' logic is placed in additionalConfig
+          additionalConfig: |
+            if ($$allowed = 0) {
+              return 403 "blocked $$remote_addr";
+            }
+          proxyPass: https://admin-backend.svc.cluster.local:8000/admin
+          
+    # Example 3: Simple redirect (omits proxyPass)
+    - serverName: xn--ptkset-buaa7n.hel.fi
+      locations:
+        - path: "/"
+          # proxyPass is omitted, and this directive terminates the request.
+          additionalConfig: |
+            return 301 https://paatokset.hel.fi/$$uri;

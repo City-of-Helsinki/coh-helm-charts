@@ -2,9 +2,9 @@
 # This Helm chart supports multiple NGINX use cases:
 # - file-sharing: Static file server with directory listing
 # - elastic-proxy: Reverse proxy for Elasticsearch with method restrictions
-
+# - front-proxy: Configurable reverse proxy for multiple virtual hosts
 global:
-  namespace: ""  # Override with --namespace or uses .Release.Namespace
+  namespace: "" # Override with --namespace or uses .Release.Namespace
 
 # Optional overrides for resource naming
 nameOverride: ""
@@ -14,7 +14,7 @@ fullnameOverride: ""
 # NGINX CONFIGURATION
 # ============================================================================
 nginx:
-  # Use case selector: "file-sharing" | "elastic-proxy"
+  # Use case selector: "file-sharing" | "elastic-proxy" | "front-proxy"
   useCase: "file-sharing"
   
   # Number of replica pods
@@ -34,23 +34,23 @@ nginx:
   # Pod tolerations
   tolerations: []
     # - key: "dedicated"
-    #   operator: "Equal"
-    #   value: "nginx"
-    #   effect: "NoSchedule"
+    #   operator: "Equal"
+    #   value: "nginx"
+    #   effect: "NoSchedule"
   
   # Pod affinity rules
   affinity: {}
     # podAntiAffinity:
-    #   preferredDuringSchedulingIgnoredDuringExecution:
-    #   - weight: 100
-    #     podAffinityTerm:
-    #       labelSelector:
-    #         matchExpressions:
-    #         - key: app.openshift.io/name
-    #           operator: In
-    #           values:
-    #           - nginx-standard
-    #       topologyKey: openshift.io/hostname
+    #   preferredDuringSchedulingIgnoredDuringExecution:
+    #   - weight: 100
+    #     podAffinityTerm:
+    #       labelSelector:
+    #         matchExpressions:
+    #         - key: app.openshift.io/name
+    #           operator: In
+    #           values:
+    #           - nginx-standard
+    #       topologyKey: openshift.io/hostname
   
   # Resource requests and limits
   resources:
@@ -132,15 +132,15 @@ fileSharing:
       size: "10Gi"
       storageClassName: "azurefile"
       accessMode: "ReadWriteMany"
-      volumeName: ""  # Auto-generated if empty
+      volumeName: "" # Auto-generated if empty
       
       # Azure File specific configuration
       azureFile:
         enabled: true
         shareName: "fileshare"
-        secretName: ""  # Auto-generated from external secrets if empty
-        capacity: ""  # Uses pvc.size if empty
-        volumeName: ""  # Auto-generated if empty
+        secretName: "" # Auto-generated from external secrets if empty
+        capacity: "" # Uses pvc.size if empty
+        volumeName: "" # Auto-generated if empty
     
     # Mount path inside the container
     mountPath: "/opt/app-root/src"
@@ -158,10 +158,10 @@ fileSharing:
     
     # Example: Serve specific subdirectory
     # - path: "/downloads"
-    #   alias: "/opt/app-root/src/downloads/"
-    #   autoindex: true
-    #   additionalConfig: |
-    #     autoindex_exact_size off;
+    #   alias: "/opt/app-root/src/downloads/"
+    #   autoindex: true
+    #   additionalConfig: |
+    #     autoindex_exact_size off;
 
 # ============================================================================
 # ELASTIC PROXY USE CASE CONFIGURATION
@@ -198,16 +198,119 @@ elasticProxy:
       methods: ["GET"]
 
 # ============================================================================
+# FRONT PROXY USE CASE CONFIGURATION (Values.yaml)
+#
+# NOTE: All NGINX variables (runtime or environment) must be escaped with $$
+# to render as a single $ in the final ConfigMap.
+# ============================================================================
+frontProxy:
+  enabled: false # Set to 'true' to activate the front-proxy use case
+  
+  # 1. PLAIN ENVIRONMENT VARIABLES
+  # These variables are read from the deployment and made available to NGINX via the 'env' directive.
+  env:
+    # Required for primary servers
+    HOST_APP: "www.example.com"
+    HOST_PROXY: "http://upstream-service-name:8080"
+    HOST_SECONDARY: "secondary.example.com"
+    
+    # Required for GEO block logic
+    PROXY_DEFAULT: "0" # Default value for the $allowed variable (e.g., 0 for denied, 1 for allowed)
+    
+    # List of allowed IPs/CIDR blocks. This content is mounted as /opt/app-root/etc/proxy_ips.conf.
+    PROXY_IP: |-
+      10.0.0.0/8 1;
+      172.16.0.0/12 1;
+      # Add more trusted IPs here
+  
+  # 2. SECRET ENVIRONMENT VARIABLES
+  # These variables are injected into the container from Kubernetes Secrets.
+  secretEnv:
+    API_AUTH_KEY:
+      secretName: "app-secrets"
+      secretKey: "auth-key"
+      
+  # 3. GLOBAL CONFIGURATION (Directives applied to the NGINX 'http' block or all 'server' blocks)
+  globalConfig:
+    # Directives inserted directly into the NGINX 'http' block (e.g., GEO, MAP)
+    httpDirectives: |
+      # Defines the $allowed variable using the list in proxy_ips.conf
+      geo $$remote_addr $$allowed {
+        default $$PROXY_DEFAULT; 
+        include /opt/app-root/etc/proxy_ips.conf;
+      }
+      # map $$http_user_agent $$is_bot { 
+      #   default 0;
+      #   ~*bot 1;
+      # }
+
+    # Directives injected into ALL generated server blocks (e.g., real_ip, buffer sizes)
+    serverDirectives:
+      - "real_ip_header X-Forwarded-For;" 
+      - "set_real_ip_from 10.128.0.0/14;" 
+      - "client_max_body_size 50m;" 
+
+  # 4. PRIMARY SERVER BLOCKS (Simplified definitions for hosts sharing a common proxy destination)
+  # These blocks automatically proxy to $$HOST_PROXY and perform root (/) redirect.
+  primaryServers:
+    # Main application host
+    - serverName: $$HOST_APP
+      redirectPath: /en # Root (/) redirects to /en
+      
+    # Secondary application host (e.g., for different region/language)
+    - serverName: $$HOST_SECONDARY
+      redirectPath: /fr # Root (/) redirects to /fr
+
+  # 5. CUSTOM SERVER BLOCKS (For unique logic, custom proxy targets, or redirects)
+  customServers:
+    # Example A: API Proxy with Custom Headers and Access Control
+    - serverName: api.internal.example.com
+      # Optional: Override global directives for this server only
+      serverDirectives:
+        - "client_max_body_size 10m;"
+      locations:
+        - path: /internal
+          proxyPass: http://internal-backend-svc:8080/
+          additionalConfig: |
+            # Use the secret env var (must be declared in frontProxy.secretEnv)
+            proxy_set_header X-Api-Key $$API_AUTH_KEY;
+            
+        - path: = /admin
+          proxyPass: https://admin-backend.local/
+          additionalConfig: |
+            # Block access using the $allowed NGINX variable from the GEO block
+            if ($$allowed = 0) {
+              return 403 "Forbidden from $$remote_addr";
+            }
+
+    # Example B: Permanent Redirect Host
+    - serverName: legacy-site.old.com
+      locations:
+        - path: /
+          # Omit proxyPass, only use additionalConfig for the return statement
+          additionalConfig: |
+            # Use the NGINX runtime variable $$uri to preserve the full path
+            return 301 https://new-home.com/$$uri;
+            
+    # Example C: Static Assets or Custom Root
+    - serverName: assets.example.com
+      locations:
+        - path: ~ ^/static/
+          # No proxyPass, use the NGINX root directive
+          additionalConfig: |
+            root /usr/share/nginx/static;
+            expires 30d;
+# ============================================================================
 # EXTERNAL SECRETS CONFIGURATION (Azure Key Vault)
 # ============================================================================
 externalSecrets:
   enabled: false
-  refreshInterval: "1h"  # How often to sync secrets from Key Vault
+  refreshInterval: "1h" # How often to sync secrets from Key Vault
   
   # Azure Key Vault configuration
   azureKeyVault:
-    vaultName: ""  # REQUIRED: Your Azure Key Vault name
-    tenantId: ""   # REQUIRED: Azure tenant ID
+    vaultName: "" # REQUIRED: Your Azure Key Vault name
+    tenantId: ""  # REQUIRED: Azure tenant ID
     
     # Key names in Azure Key Vault for storage credentials
     storageAccountNameKey: "AZURE-STORAGE-ACCOUNT-NAME"
@@ -226,8 +329,8 @@ routes:
   
   # # Default annotations applied to ALL routes unless overridden in the item list
   # annotations:
-  #   haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains;preload"
-  #   haproxy.router.openshift.io/disable_cookies: "true"
+  #   haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains;preload"
+  #   haproxy.router.openshift.io/disable_cookies: "true"
 
   # List of Route resources to create
   items:
@@ -237,14 +340,14 @@ routes:
       path: ""
       # Use the global annotations by default
 
-        
+      
     # --- ROUTE 2: internal Host ---
     - nameSuffix: "-internal" # Creates a route named: {{ .Release.Name }}-nginx-standard-internal
       host: "api.cluster.example.com"
       path: "/internal"
       # Override the default HSTS header for the internal route
       # annotations:
-      #   haproxy.router.openshift.io/hsts_header: "max-age=604800; includeSubDomains"
+      #   haproxy.router.openshift.io/hsts_header: "max-age=604800; includeSubDomains"
 
 # ============================================================================
 # SERVICE ACCOUNT CONFIGURATION
