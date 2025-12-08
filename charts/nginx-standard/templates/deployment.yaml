@@ -1,0 +1,194 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nginx-standard.fullname" . }}
+  namespace: {{ include "nginx-standard.namespace" . }}
+  labels:
+    {{- include "nginx-standard.labels" . | nindent 4 }}
+spec:
+  replicas: {{ include "nginx-standard.replicaCount" . }}
+  selector:
+    matchLabels:
+      {{- include "nginx-standard.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "nginx-standard.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "nginx-standard.serviceAccountName" . }}
+      {{- end }}
+      {{- if .Values.nginx.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.nginx.image.pullSecrets | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        {{- if .Values.nginx.errorPages.enabled }}
+        - name: error-pages
+          configMap:
+            name: {{ include "nginx-standard.configmapName" . }}-error-pages
+            defaultMode: 0444
+        {{- end }}
+        {{- if eq (include "nginx-standard.fileSharingEnabled" .) "true" }}
+        - name: file-content-volume
+          {{- if .Values.fileSharing.storage.pvc.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "nginx-standard.pvcName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+        {{- if eq (include "nginx-standard.cacheEnabled" .) "true" }}
+        - name: cache-volume
+          emptyDir: 
+            sizeLimit: {{ .Values.cache.volumeSize | default "2Gi" }}
+        {{- end }}
+        - name: config-volume
+          configMap:
+            name: {{ include "nginx-standard.configmapName" . }}
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+              - key: server.conf
+                path: nginx.default.d/server.conf
+              {{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.enabled (hasKey .Values.frontProxy.env "PROXY_IP") }}
+              - key: proxy_ips.conf
+                path: proxy_ips.conf
+              {{- end }}
+            defaultMode: 420
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-tmp
+          emptyDir: {}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ include "nginx-standard.image" . }}"
+          imagePullPolicy: {{ .Values.nginx.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          ports:
+            - name: http
+              containerPort: {{ include "nginx-standard.servicePort" . }}
+              protocol: TCP
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- if eq (include "nginx-standard.elasticProxyEnabled" .) "true" }}
+            - name: ELASTICSEARCH_URL
+              value: {{ .Values.elasticProxy.upstream.url | required "elasticProxy.upstream.url is required" }}
+            - name: ELASTIC_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.elasticProxy.authSecretName | default (include "nginx-standard.fullname" .) }}
+                  key: user
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.elasticProxy.authSecretName | default (include "nginx-standard.fullname" .) }}
+                  key: password
+            {{- end }}
+            {{- if eq (include "nginx-standard.frontProxyEnabled" .) "true" }}
+            {{- range $key, $val := .Values.frontProxy.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+            {{- range $key, $val := .Values.frontProxy.secretEnv }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $val.secretName }}
+                  key: {{ $val.secretKey }}
+            {{- end }}
+            {{- end }}
+          command:
+            - /bin/bash
+            - -c
+          args:
+            - |
+              if [ -f /opt/app-root/etc/nginx.conf ]; then
+                cp /opt/app-root/etc/nginx.conf /etc/nginx/nginx.conf
+              fi
+              exec nginx -g 'daemon off;'
+          resources:
+            {{- toYaml .Values.nginx.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.nginx.errorPages.enabled }}
+            - name: error-pages
+              mountPath: {{ .Values.nginx.errorPages.root }}
+              readOnly: true
+            {{- end }}
+            {{- if eq (include "nginx-standard.fileSharingEnabled" .) "true" }}
+            - name: file-content-volume
+              mountPath: {{ .Values.fileSharing.storage.mountPath | default "/opt/app-root/src" }}
+            {{- end }}
+            {{- if eq (include "nginx-standard.cacheEnabled" .) "true" }}
+            - name: cache-volume
+              mountPath: /srv/cache
+            {{- end }}
+            - name: config-volume
+              mountPath: /opt/app-root/etc
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: nginx-tmp
+              mountPath: /tmp
+          {{- if eq (include "nginx-standard.healthChecksEnabled" .) "true" }}
+          readinessProbe:
+            httpGet:
+              path: {{ include "nginx-standard.readinessPath" . }}
+              port: {{ include "nginx-standard.servicePort" . }}
+              scheme: HTTP
+            initialDelaySeconds: {{ .Values.nginx.healthChecks.readiness.initialDelaySeconds | default 5 }}
+            timeoutSeconds: {{ .Values.nginx.healthChecks.readiness.timeoutSeconds | default 1 }}
+            periodSeconds: {{ .Values.nginx.healthChecks.readiness.periodSeconds | default 10 }}
+            successThreshold: {{ .Values.nginx.healthChecks.readiness.successThreshold | default 1 }}
+            failureThreshold: {{ .Values.nginx.healthChecks.readiness.failureThreshold | default 3 }}
+          livenessProbe:
+            httpGet:
+              path: {{ include "nginx-standard.livenessPath" . }}
+              port: {{ include "nginx-standard.servicePort" . }}
+              scheme: HTTP
+            initialDelaySeconds: {{ .Values.nginx.healthChecks.liveness.initialDelaySeconds | default 30 }}
+            timeoutSeconds: {{ .Values.nginx.healthChecks.liveness.timeoutSeconds | default 1 }}
+            periodSeconds: {{ .Values.nginx.healthChecks.liveness.periodSeconds | default 10 }}
+            successThreshold: {{ .Values.nginx.healthChecks.liveness.successThreshold | default 1 }}
+            failureThreshold: {{ .Values.nginx.healthChecks.liveness.failureThreshold | default 3 }}
+          {{- end }}
+      {{- with .Values.nginx.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nginx.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nginx.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

@@ -1,0 +1,31 @@
+{{- if and .Values.observability.serviceMonitor.enabled .Values.observability.metrics.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "nginx-standard.fullname" . }}
+  namespace: {{ include "nginx-standard.namespace" . }}
+  labels:
+    {{- include "nginx-standard.labels" . | nindent 4 }}
+    {{- with .Values.observability.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "nginx-standard.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ include "nginx-standard.namespace" . }}
+  endpoints:
+    {{- if eq .Values.observability.metrics.type "prometheus_exporter" }}
+    - port: metrics
+      interval: {{ .Values.observability.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.observability.serviceMonitor.scrapeTimeout }}
+      path: /metrics
+    {{- else }}
+    - port: http
+      interval: {{ .Values.observability.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.observability.serviceMonitor.scrapeTimeout }}
+      path: {{ .Values.observability.metrics.stubStatus.path }}
+    {{- end }}
+{{- end }}

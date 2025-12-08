@@ -1,0 +1,496 @@
+# ==============================================================================
+# GLOBAL SETTINGS
+# ==============================================================================
+global:
+  namespace: ""  # Override release namespace (leave empty to use release namespace)
+
+# Chart naming overrides
+nameOverride: ""  # Override chart name
+fullnameOverride: ""  # Override full resource names
+
+# ==============================================================================
+# NGINX BASE CONFIGURATION
+# ==============================================================================
+nginx:
+  # Use case determines which configuration template to use
+  # Options: "file-sharing" | "elastic-proxy" | "cache" | "front-proxy"
+  useCase: "file-sharing"
+  
+  # Number of pod replicas (ignored if autoscaling.enabled is true)
+  replicaCount: 2
+  
+  # Container image configuration
+  image:
+    # Full image reference including registry, repository, and tag
+    full: 'registry.redhat.io/rhel8/nginx-120:latest'
+    pullPolicy: "IfNotPresent"
+    pullSecrets: 
+      - name: "quay-secret-new"
+  
+  # Pod scheduling configuration
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  # Resource limits and requests
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  # Service configuration
+  service:
+    port: 8080
+    targetPort: 8080
+    name: "http"
+    type: "ClusterIP"
+  
+  # Health check probes
+  healthChecks:
+    enabled: true
+    readinessPath: "/readiness"
+    livenessPath: "/healthz"
+    readiness:
+      initialDelaySeconds: 5
+      timeoutSeconds: 1
+      periodSeconds: 10
+      successThreshold: 1
+      failureThreshold: 3
+    liveness:
+      initialDelaySeconds: 30
+      timeoutSeconds: 1
+      periodSeconds: 10
+      successThreshold: 1
+      failureThreshold: 3
+  
+  # Logging configuration
+  logging:
+    accessLog: "/dev/stdout"
+    errorLog: "/dev/stderr"
+    errorLevel: "warn"  # Options: debug, info, notice, warn, error, crit
+    format: "json"  # JSON format for log aggregation
+  
+  # Security headers configuration
+  security:
+    headers:
+      enabled: true
+      csp: "default-src 'self'"
+      sts: "max-age=31536000; includeSubDomains; preload"
+      frameOptions: "SAMEORIGIN"
+      contentTypeOptions: "nosniff"
+      xssProtection: "1; mode=block"
+      referrerPolicy: "strict-origin-when-cross-origin"
+    authHeaders:
+      maxSize: "16k"
+      bufferSize: "16k"
+  
+  # Custom error pages
+  errorPages:
+    enabled: false
+    pages:
+      404: "/custom_404.html"
+      500: "/custom_50x.html"
+      502: "/custom_502.html"
+      503: "/custom_503.html"
+    root: "/usr/share/nginx/html"
+
+# ==============================================================================
+# OBSERVABILITY & MONITORING
+# ==============================================================================
+observability:
+  metrics:
+    enabled: false
+    # Metrics type: "stub_status" (NGINX built-in) or "prometheus_exporter" (sidecar)
+    type: "stub_status"
+    
+    # NGINX stub_status module configuration
+    stubStatus:
+      path: "/nginx_status"
+      allowedIPs:
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+    
+    # Prometheus exporter sidecar configuration
+    prometheusExporter:
+      enabled: false
+      image: "nginx/nginx-prometheus-exporter:0.11.0"
+      port: 9113
+      resources:
+        requests:
+          memory: "32Mi"
+          cpu: "50m"
+        limits:
+          memory: "64Mi"
+          cpu: "100m"
+  
+  # Prometheus ServiceMonitor (requires Prometheus Operator)
+  serviceMonitor:
+    enabled: false
+    interval: "30s"
+    scrapeTimeout: "10s"
+    labels: {}
+    # Example labels for Prometheus discovery:
+    # labels:
+    #   prometheus: kube-prometheus
+
+# ==============================================================================
+# AUTOSCALING & RESILIENCE
+# ==============================================================================
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+  # Custom metrics (optional)
+  # customMetrics:
+  #   - type: Pods
+  #     pods:
+  #       metric:
+  #         name: nginx_connections_active
+  #       target:
+  #         type: AverageValue
+  #         averageValue: "100"
+
+# Pod Disruption Budget (recommended for production)
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # Alternatively, use maxUnavailable:
+  # maxUnavailable: 1
+
+# ==============================================================================
+# FILE SHARING USE CASE
+# ==============================================================================
+fileSharing:
+  enabled: false
+  
+  storage:
+    mountPath: "/opt/app-root/src"
+    
+    # Persistent Volume Claim configuration
+    pvc:
+      enabled: true
+      size: "10Gi"
+      storageClassName: "azurefile"
+      accessMode: "ReadWriteMany"
+      volumeName: ""  # Optional: bind to specific PV
+      
+      # Azure File specific configuration
+      azureFile:
+        enabled: true
+        shareName: "fileshare"
+        secretName: ""  # Leave empty to auto-generate from External Secrets
+        capacity: ""  # Optional: override PV capacity
+        volumeName: ""  # Optional: custom PV name
+  
+  # NGINX location blocks for file serving
+  locations:
+    - path: "/"
+      root: "/opt/app-root/src"
+      index: "index.html index.htm"
+      autoindex: true  # Enable directory listing
+      additionalConfig: |
+        autoindex_exact_size off;
+        autoindex_localtime on;
+        # Uncomment to add file download headers:
+        # add_header Content-Disposition "attachment";
+
+# ==============================================================================
+# ELASTIC PROXY USE CASE
+# ==============================================================================
+elasticProxy:
+  enabled: false
+  
+  # Secret name containing Elasticsearch credentials (keys: user, password)
+  authSecretName: ""  # Leave empty to use chart name
+  
+  # Elasticsearch upstream configuration
+  upstream:
+    url: "https://elasticsearch-host.cluster.svc:9200"
+  
+  # Client request configuration
+  clientMaxBodySize: "50m"
+  
+  # Proxy timeout configuration
+  proxy:
+    connectTimeout: "60s"
+    sendTimeout: "60s"
+    readTimeout: "60s"
+    bufferSize: "8k"
+    buffersNumber: 4
+  
+  # Route definitions with method restrictions
+  routes:
+    - path: "~ ^/([a-z][a-z_,-]*)/(_search|_msearch)$"
+      methods: ["POST", "GET"]
+      additionalConfig: ""
+    
+    - path: "/_cluster/health"
+      methods: ["GET"]
+    
+    - path: "/ping"
+      methods: ["GET"]
+    
+    # Example: Restrict index creation
+    # - path: "~ ^/([a-z][a-z_,-]*)$"
+    #   methods: ["PUT"]
+    #   additionalConfig: |
+    #     return 403 "Index creation not allowed";
+
+# ==============================================================================
+# CACHE PROXY USE CASE
+# ==============================================================================
+cache:
+  enabled: false
+  
+  # Default backend URL (can be overridden per location)
+  defaultBackendUrl: "https://backend.svc:8000"
+  
+  # Client configuration
+  clientMaxBodySize: "50m"
+  
+  # Cache storage volume size (uses emptyDir)
+  volumeSize: "2Gi"
+  
+  # Global proxy configuration (can be overridden per location)
+  proxy:
+    buffersNumber: 1024
+    bufferSize: "4k"
+    sendTimeout: "300s"
+    readTimeout: "300s"
+    connectTimeout: "300s"
+  
+  # Cache zone definitions (proxy_cache_path)
+  zones:
+    - name: "default_cache"
+      path: "/srv/cache/default"
+      levels: "1:2"  # Cache directory hierarchy
+      keysZone: "default_cache:10m"  # Shared memory zone (name:size)
+      maxSize: "1g"  # Maximum cache size
+      inactive: "60m"  # Remove cached items not accessed in this time
+      useTempPath: "off"  # Don't use temp path for better performance
+  
+  # Location-specific cache configurations
+  locations:
+    - path: "/"
+      # backendUrl: ""  # Optional: override defaultBackendUrl
+      
+      cache:
+        enabled: true
+        zone: "default_cache"  # Must match a zone name above
+        
+        # Cache behavior
+        backgroundUpdate: "on"  # Update cache in background
+        useStale: "error timeout updating"  # Serve stale content on errors
+        lock: "on"  # Prevent cache stampede
+        lockTimeout: "5s"
+        revalidate: "on"  # Revalidate expired cache
+        minUses: 1  # Cache after N requests
+        
+        # Cache key definition (supports NGINX variables)
+        key: "$scheme$proxy_host$request_uri"
+        
+        # Cache validity times
+        validTime:
+          default: "10m"  # For 200, 301, 302 responses
+          notFound: "1m"  # For 404 responses
+          any: "1m"  # For other response codes
+        
+        # Cache bypass conditions (NGINX variables)
+        bypass:
+          - "$http_pragma"  # Pragma: no-cache header
+          - "$http_authorization"  # Authenticated requests
+          - "$cookie_nocache"  # nocache cookie
+        
+        # Don't cache conditions
+        noCache:
+          - "$http_pragma"
+          - "$http_authorization"
+        
+        # Add cache status header
+        addHeader: true
+        headerName: "X-Cache-Status"  # Header name
+      
+      # Proxy headers (optional)
+      proxy:
+        setHeaders:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+      
+      # Additional NGINX configuration
+      additionalConfig: ""
+      # Example:
+      # additionalConfig: |
+      #   if ($request_method !~ ^(GET|HEAD)$) {
+      #     set $skip_cache 1;
+      #   }
+
+# ==============================================================================
+# FRONT PROXY USE CASE
+# ==============================================================================
+frontProxy:
+  enabled: false
+  
+  # Plain environment variables (values defined here)
+  env:
+    HOST_APP: "www.example.com"
+    HOST_PROXY: "http://upstream:8080"
+    PROXY_DEFAULT: "0"
+    
+    # IP whitelist for GEO blocking (generates proxy_ips.conf)
+    PROXY_IP: |
+      10.0.0.0/8 1;
+      172.16.0.0/12 1;
+  
+  # Secret-based environment variables (values from Kubernetes Secrets)
+  secretEnv: {}
+  # Example:
+  # secretEnv:
+  #   API_KEY:
+  #     secretName: "api-secrets"
+  #     secretKey: "key"
+  
+  # Global NGINX configuration
+  globalConfig:
+    # HTTP block directives (applied to http block)
+    httpDirectives: |
+      geo $remote_addr $allowed {
+        default $PROXY_DEFAULT;
+        include /opt/app-root/etc/proxy_ips.conf;
+      }
+    
+    # Server block directives (applied to all server blocks)
+    serverDirectives:
+      - "real_ip_header X-Forwarded-For;"
+      - "set_real_ip_from 10.128.0.0/14;"
+      - "client_max_body_size 50m;"
+  
+  # Simple server configurations (redirect/basic proxy)
+  primaryServers:
+    - serverName: "$HOST_APP"
+      redirectPath: "/en"
+  
+  # Complex server configurations (advanced routing)
+  customServers: []
+  # Example:
+  # customServers:
+  #   - serverName: "api.example.com"
+  #     locations:
+  #       - path: "/"
+  #         proxyPass: "https://backend-api:8443"
+  #         additionalConfig: |
+  #           proxy_set_header X-API-Key $API_KEY;
+
+# ==============================================================================
+# NETWORKING
+# ==============================================================================
+
+# Network policies (recommended for production)
+networkPolicy:
+  enabled: false
+  
+  # Ingress rules
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+      ports:
+        - protocol: TCP
+          port: 8080
+  
+  # Egress rules
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: openshift-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    
+    # Allow HTTPS to pods in same namespace
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
+
+# OpenShift Routes
+routes:
+  enabled: false
+  
+  # Global route annotations
+  annotations:
+    haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains;preload"
+    haproxy.router.openshift.io/disable_cookies: "true"
+  
+  # Route definitions
+  items:
+    - nameSuffix: ""  # Creates route: <release-name>-nginx-standard
+      host: "hostname.example.com"  # REQUIRED
+      path: ""  # Optional path prefix
+      tls:
+        termination: "edge"  # edge | passthrough | reencrypt
+        insecureEdgeTerminationPolicy: "Redirect"  # Redirect | Allow | None
+      # Route-specific annotations (optional)
+      # annotations:
+      #   haproxy.router.openshift.io/rate-limit-connections: "true"
+
+# ==============================================================================
+# EXTERNAL SECRETS (Azure Key Vault Integration)
+# ==============================================================================
+externalSecrets:
+  enabled: false
+  refreshInterval: "1h"  # How often to sync from Key Vault
+  
+  azureKeyVault:
+    vaultName: ""  # REQUIRED: Azure Key Vault name
+    tenantId: ""  # REQUIRED: Azure AD tenant ID
+    
+    # Key names in Azure Key Vault
+    storageAccountNameKey: "AZURE-STORAGE-ACCOUNT-NAME"
+    storageAccountKeyKey: "AZURE-STORAGE-ACCOUNT-KEY"
+  
+  # Service Principal secret containing Azure credentials
+  servicePrincipal:
+    secretName: "azure-service-principal"
+    # This secret must contain keys: clientId, clientSecret
+
+# ==============================================================================
+# RBAC & SERVICE ACCOUNT
+# ==============================================================================
+serviceAccount:
+  create: false  # Set to true if pod needs specific permissions
+  annotations: {}
+  # Example for Azure Workload Identity:
+  # annotations:
+  #   azure.workload.identity/client-id: "your-client-id"
+  name: ""  # Leave empty to auto-generate
+
+# ==============================================================================
+# POD CONFIGURATION
+# ==============================================================================
+podAnnotations: {}
+# Example annotations:
+# podAnnotations:
+#   prometheus.io/scrape: "true"
+#   prometheus.io/port: "8080"
+#   prometheus.io/path: "/nginx_status"
+
+# ==============================================================================
+# TESTING
+# ==============================================================================
+tests:
+  enabled: true
+  image: "registry.access.redhat.com/ubi8/ubi-minimal:latest"

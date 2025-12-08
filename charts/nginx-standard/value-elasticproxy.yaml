@@ -1,0 +1,23 @@
+nginx:
+  useCase: "elastic-proxy"
+# ============================================================================
+# ELASTIC PROXY USE CASE CONFIGURATION (Overrides)
+# ============================================================================
+elasticProxy:
+  enabled: false # Set to true when using elastic-proxy use case
+  authSecretName: ""
+  upstream:
+    url: "https://elasticsearch-host1.cluster.svc:9200" # ELASTICSEARCH_URL env var
+
+# ============================================================================
+# OPENSHIFT ROUTE CONFIGURATION 
+# ============================================================================
+routes:
+  enabled: true
+  items:
+    - nameSuffix: "" # Creates a route named: {{ .Release.Name }}-nginx-standard
+      host: "liikenne-elastic-proxy-prod.apps.platta.hel.fi"
+      path: ""
+    - nameSuffix: "-internal" # Creates a route named: {{ .Release.Name }}-nginx-standard-internal
+      host: "liikenne-elastic-proxy.api.hel.ninja"
+      path: "/internal"

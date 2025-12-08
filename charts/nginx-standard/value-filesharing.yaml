@@ -1,0 +1,43 @@
+nginx:
+  useCase: "file-sharing"
+# ============================================================================
+# FILE SHARING USE CASE CONFIGURATION (Overrides)
+# ============================================================================
+fileSharing:
+  enabled: true
+  storage:
+    # pvc:
+    #   size: "10Gi"
+    azureFile:
+      shareName: "test-fileshare"
+      secretName: '' 
+  
+  locations:
+    # Overwrite the default root path location
+    - path: "/"
+      root: "/opt/app-root/src"
+      autoindex: true
+      additionalConfig: |
+        autoindex_exact_size off;
+        autoindex_localtime on;
+    # Add a new location block
+    - path: "/downloads"
+      alias: "/opt/app-root/src/downloads/"
+      autoindex: true
+      additionalConfig: |
+        add_header Content-Disposition "attachment";
+# ============================================================================
+# EXTERNAL SECRETS CONFIGURATION (Mandatory Overrides)
+# ============================================================================
+externalSecrets:
+  enabled: true
+  azureKeyVault:
+    vaultName: "hki-yuygxqll-dev-kv"  # REQUIRED
+    tenantId: "3feb6bc1-d722-4726-966c-5b58b64df752" # REQUIRED
+
+# ============================================================================
+# OPENSHIFT ROUTE CONFIGURATION
+# ============================================================================
+route:
+  enabled: true
+  host: "files.test.hel.ninja" # REQUIRED

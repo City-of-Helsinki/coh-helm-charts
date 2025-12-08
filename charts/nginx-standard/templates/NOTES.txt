@@ -1,0 +1,43 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+{{ if eq .Values.nginx.useCase "file-sharing" -}}
+File Sharing Mode Deployed
+- Mount Path: {{ .Values.fileSharing.storage.mountPath }}
+{{- if .Values.routes.enabled }}
+- Access URL: https://{{ (index .Values.routes.items 0).host }}
+{{- end }}
+{{- end }}
+
+{{ if eq .Values.nginx.useCase "elastic-proxy" -}}
+Elastic Proxy Mode Deployed
+- Elasticsearch URL: {{ .Values.elasticProxy.upstream.url }}
+{{- if .Values.routes.enabled }}
+- Proxy URL: https://{{ (index .Values.routes.items 0).host }}
+{{- end }}
+{{- end }}
+
+{{ if eq .Values.nginx.useCase "cache" -}}
+Cache Proxy Mode Deployed
+- Cache Zones: {{ len .Values.cache.zones }}
+- Total Cache Size: {{ .Values.cache.volumeSize }}
+{{- end }}
+
+{{ if eq .Values.nginx.useCase "front-proxy" -}}
+Front Proxy Mode Deployed
+- Primary Servers: {{ len .Values.frontProxy.primaryServers }}
+- Custom Servers: {{ len .Values.frontProxy.customServers }}
+{{- end }}
+
+To get the application URL:
+{{- if .Values.routes.enabled }}
+  export ROUTE_HOST=$(kubectl get route {{ include "nginx-standard.fullname" . }} -n {{ include "nginx-standard.namespace" . }} -o jsonpath='{.spec.host}')
+  echo "https://$ROUTE_HOST"
+{{- else }}
+  export POD_NAME=$(kubectl get pods -n {{ include "nginx-standard.namespace" . }} -l "app.kubernetes.io/name={{ include "nginx-standard.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  kubectl port-forward $POD_NAME 8080:{{ include "nginx-standard.servicePort" . }} -n {{ include "nginx-standard.namespace" . }}
+  echo "Visit http://127.0.0.1:8080"
+{{- end }}
+
+For more information, visit: https://github.com/your-org/nginx-standard-chart
