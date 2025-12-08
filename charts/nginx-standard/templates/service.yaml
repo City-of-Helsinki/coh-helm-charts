@@ -11,6 +11,12 @@ spec:
       protocol: TCP
       port: {{ include "nginx-standard.servicePort" . }}
       targetPort: {{ include "nginx-standard.servicePort" . }}
+    {{- if and .Values.observability.metrics.enabled (eq .Values.observability.metrics.type "prometheus_exporter") }}
+    - name: metrics
+      protocol: TCP
+      port: {{ .Values.observability.metrics.prometheusExporter.port }}
+      targetPort: {{ .Values.observability.metrics.prometheusExporter.port }}
+    {{- end }}
   selector:
     {{- include "nginx-standard.selectorLabels" . | nindent 4 }}
   type: {{ .Values.nginx.service.type | default "ClusterIP" }}

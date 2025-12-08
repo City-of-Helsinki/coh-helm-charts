@@ -1,0 +1,28 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "nginx-standard.fullname" . }}-test
+  namespace: {{ include "nginx-standard.namespace" . }}
+  labels:
+    {{- include "nginx-standard.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  containers:
+    - name: curl
+      image: {{ .Values.tests.image }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -e
+          URL="http://{{ include "nginx-standard.fullname" . }}-svc:{{ include "nginx-standard.servicePort" . }}"
+          {{- if eq (include "nginx-standard.healthChecksEnabled" .) "true" }}
+          curl -f "${URL}{{ include "nginx-standard.readinessPath" . }}"
+          curl -f "${URL}{{ include "nginx-standard.livenessPath" . }}"
+          {{- end }}
+          curl -f "${URL}/"
+          echo "Tests passed"
+  restartPolicy: Never
+{{- end }}

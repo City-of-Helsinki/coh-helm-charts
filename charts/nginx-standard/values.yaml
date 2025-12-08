@@ -1,58 +1,24 @@
-# Default values for nginx-standard
-# This Helm chart supports multiple NGINX use cases:
-# - file-sharing: Static file server with directory listing
-# - elastic-proxy: Reverse proxy for Elasticsearch with method restrictions
-# - front-proxy: Configurable reverse proxy for multiple virtual hosts
 global:
-  namespace: "" # Override with --namespace or uses .Release.Namespace
+  namespace: ""
+  environment: "prod"
 
-# Optional overrides for resource naming
 nameOverride: ""
 fullnameOverride: ""
 
-# ============================================================================
-# NGINX CONFIGURATION
-# ============================================================================
 nginx:
-  # Use case selector: "file-sharing" | "elastic-proxy" | "front-proxy"
   useCase: "file-sharing"
-  
-  # Number of replica pods
   replicaCount: 2
   
-  # Container image configuration
   image:
-    full: ''
+    full: 'registry.redhat.io/rhel8/nginx-120:latest'
     pullPolicy: "IfNotPresent"
     pullSecrets: 
       - name: "quay-secret-new"
   
-  # Node selector for pod placement
   nodeSelector: {}
-    # env: "prod"
-  
-  # Pod tolerations
   tolerations: []
-    # - key: "dedicated"
-    #   operator: "Equal"
-    #   value: "nginx"
-    #   effect: "NoSchedule"
-  
-  # Pod affinity rules
   affinity: {}
-    # podAntiAffinity:
-    #   preferredDuringSchedulingIgnoredDuringExecution:
-    #   - weight: 100
-    #     podAffinityTerm:
-    #       labelSelector:
-    #         matchExpressions:
-    #         - key: app.openshift.io/name
-    #           operator: In
-    #           values:
-    #           - nginx-standard
-    #       topologyKey: openshift.io/hostname
   
-  # Resource requests and limits
   resources:
     requests:
       memory: "256Mi"
@@ -61,310 +27,276 @@ nginx:
       memory: "512Mi"
       cpu: "500m"
   
-  # Service configuration
   service:
     port: 8080
     targetPort: 8080
     name: "http"
     type: "ClusterIP"
   
-  # Health check probes (standardized endpoints)
   healthChecks:
     enabled: true
     readinessPath: "/readiness"
     livenessPath: "/healthz"
+    readiness:
+      initialDelaySeconds: 5
+      timeoutSeconds: 1
+      periodSeconds: 10
+      successThreshold: 1
+      failureThreshold: 3
+    liveness:
+      initialDelaySeconds: 30
+      timeoutSeconds: 1
+      periodSeconds: 10
+      successThreshold: 1
+      failureThreshold: 3
   
-  # Logging configuration for containers
   logging:
     accessLog: "/dev/stdout"
     errorLog: "/dev/stderr"
     errorLevel: "warn"
-    
-    # Log format: json | combined | main | custom
     format: "json"
-    
-    # JSON log format configuration (application-aligned)
-    jsonFormat:
-      enabled: true
-      fields:
-        timestamp: "$time_iso8601"
-        level: "info"
-        source: "nginx"
-        message: "$request"
-        request_id: "$http_x_request_id"
-        client_ip: "$remote_addr"
-        method: "$request_method"
-        uri: "$request_uri"
-        protocol: "$server_protocol"
-        status: "$status"
-        response_time: "$request_time"
-        bytes_sent: "$body_bytes_sent"
-        user_agent: "$http_user_agent"
-        referer: "$http_referer"
-        x_forwarded_for: "$http_x_forwarded_for"
-        upstream_addr: "$upstream_addr"
-        upstream_response_time: "$upstream_response_time"
   
-  # Security headers configuration
   security:
     headers:
-      enabled: false
+      enabled: true
       csp: "default-src 'self'"
       sts: "max-age=31536000; includeSubDomains; preload"
-      frameOptions: "DENY"
+      frameOptions: "SAMEORIGIN"
       contentTypeOptions: "nosniff"
       xssProtection: "1; mode=block"
+      referrerPolicy: "strict-origin-when-cross-origin"
     authHeaders:
       maxSize: "16k"
       bufferSize: "16k"
+  
+  errorPages:
+    enabled: false
+    pages:
+      404: "/custom_404.html"
+      500: "/custom_50x.html"
+    root: "/usr/share/nginx/html"
 
-# ============================================================================
-# FILE SHARING USE CASE CONFIGURATION
-# ============================================================================
+observability:
+  metrics:
+    enabled: false
+    type: "stub_status"
+    stubStatus:
+      path: "/nginx_status"
+      allowedIPs:
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+    prometheusExporter:
+      enabled: false
+      image: "nginx/nginx-prometheus-exporter:0.11.0"
+      port: 9113
+      resources:
+        requests:
+          memory: "32Mi"
+          cpu: "50m"
+        limits:
+          memory: "64Mi"
+          cpu: "100m"
+  serviceMonitor:
+    enabled: false
+    interval: "30s"
+    scrapeTimeout: "10s"
+    labels: {}
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
 fileSharing:
   enabled: false
-  
-  # Storage configuration
   storage:
-    # Persistent Volume Claim
     pvc:
       enabled: true
       size: "10Gi"
       storageClassName: "azurefile"
       accessMode: "ReadWriteMany"
-      volumeName: "" # Auto-generated if empty
-      
-      # Azure File specific configuration
+      volumeName: ""
       azureFile:
         enabled: true
         shareName: "fileshare"
-        secretName: "" # Auto-generated from external secrets if empty
-        capacity: "" # Uses pvc.size if empty
-        volumeName: "" # Auto-generated if empty
-    
-    # Mount path inside the container
+        secretName: ""
+        capacity: ""
+        volumeName: ""
     mountPath: "/opt/app-root/src"
-  
-  # NGINX location blocks for file sharing
   locations:
     - path: "/"
       root: "/opt/app-root/src"
       index: "index.html index.htm"
       autoindex: true
       additionalConfig: |
-        # Additional NGINX directives
-        # autoindex_exact_size off;
-        # autoindex_localtime on;
-    
-    # Example: Serve specific subdirectory
-    # - path: "/downloads"
-    #   alias: "/opt/app-root/src/downloads/"
-    #   autoindex: true
-    #   additionalConfig: |
-    #     autoindex_exact_size off;
+        autoindex_exact_size off;
+        autoindex_localtime on;
 
-# ============================================================================
-# ELASTIC PROXY USE CASE CONFIGURATION
-# ============================================================================
 elasticProxy:
-  enabled: false # Set to true when using elastic-proxy use case
+  enabled: false
   authSecretName: ""
-  # Upstream Elasticsearch configuration
   upstream:
-    url: "https://elasticsearch-host.cluster.svc:9200" # ELASTICSEARCH_URL env var
-  
-  # Proxy settings
+    url: "https://elasticsearch-host.cluster.svc:9200"
   proxy:
     connectTimeout: "5s"
     sendTimeout: "60s"
     readTimeout: "60s"
     bufferSize: "8k"
     buffersNumber: 4
-  
-  # Elasticsearch routes with method restrictions
   routes:
-    # Search endpoints
-    - path: "~ ^/([a-z][a-z_,-]*)/(_search|_msearch)$" # Corrected regex from user's original helper
+    - path: "~ ^/([a-z][a-z_,-]*)/(_search|_msearch)$"
       methods: ["POST", "GET"]
-      additionalConfig: |
-        # Additional NGINX directives
-    
-    # Cluster health
+      additionalConfig: ""
     - path: "/_cluster/health"
       methods: ["GET"]
-    
-    # Ping endpoint
     - path: "/ping"
       methods: ["GET"]
 
-# ============================================================================
-# FRONT PROXY USE CASE CONFIGURATION (Values.yaml)
-#
-# NOTE: All NGINX variables (runtime or environment) must be escaped with $$
-# to render as a single $ in the final ConfigMap.
-# ============================================================================
+cache:
+  enabled: false
+  defaultBackendUrl: "https://backend.svc:8000"
+  clientMaxBodySize: "50m"
+  volumeSize: "2Gi"
+  
+  proxy:
+    buffersNumber: 1024
+    bufferSize: "4k"
+    sendTimeout: "300s"
+    readTimeout: "300s"
+    connectTimeout: "300s"
+  
+  zones:
+    - name: "default_cache"
+      path: "/srv/cache/default"
+      levels: "1:2"
+      keysZone: "default_cache:10m"
+      maxSize: "1g"
+      inactive: "60m"
+      useTempPath: "off"
+  
+  locations:
+    - path: "/"
+      cache:
+        enabled: true
+        zone: "default_cache"
+        backgroundUpdate: "on"
+        useStale: "error timeout updating"
+        lock: "on"
+        lockTimeout: "5s"
+        revalidate: "on"
+        minUses: 1
+        key: "$scheme$proxy_host$request_uri"
+        validTime:
+          default: "10m"
+          notFound: "1m"
+          any: "1m"
+        bypass:
+          - "$http_pragma"
+          - "$http_authorization"
+        noCache:
+          - "$http_pragma"
+          - "$http_authorization"
+        addHeader: true
+        headerName: "X-Cache-Status"
+      proxy:
+        setHeaders:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+      additionalConfig: ""
+
 frontProxy:
-  enabled: false # Set to 'true' to activate the front-proxy use case
-  
-  # 1. PLAIN ENVIRONMENT VARIABLES
-  # These variables are read from the deployment and made available to NGINX via the 'env' directive.
-  env:
-    # Required for primary servers
-    HOST_APP: "www.example.com"
-    HOST_PROXY: "http://upstream-service-name:8080"
-    HOST_SECONDARY: "secondary.example.com"
-    
-    # Required for GEO block logic
-    PROXY_DEFAULT: "0" # Default value for the $allowed variable (e.g., 0 for denied, 1 for allowed)
-    
-    # List of allowed IPs/CIDR blocks. This content is mounted as /opt/app-root/etc/proxy_ips.conf.
-    PROXY_IP: |-
-      10.0.0.0/8 1;
-      172.16.0.0/12 1;
-      # Add more trusted IPs here
-  
-  # 2. SECRET ENVIRONMENT VARIABLES
-  # These variables are injected into the container from Kubernetes Secrets.
-  secretEnv:
-    API_AUTH_KEY:
-      secretName: "app-secrets"
-      secretKey: "auth-key"
-      
-  # 3. GLOBAL CONFIGURATION (Directives applied to the NGINX 'http' block or all 'server' blocks)
-  globalConfig:
-    # Directives inserted directly into the NGINX 'http' block (e.g., GEO, MAP)
-    httpDirectives: |
-      # Defines the $allowed variable using the list in proxy_ips.conf
-      geo $$remote_addr $$allowed {
-        default $$PROXY_DEFAULT; 
-        include /opt/app-root/etc/proxy_ips.conf;
-      }
-      # map $$http_user_agent $$is_bot { 
-      #   default 0;
-      #   ~*bot 1;
-      # }
+  enabled: false
+  environment:
+    plain:
+      HOST_APP: "www.example.com"
+      HOST_PROXY: "http://upstream:8080"
+      PROXY_DEFAULT: "0"
+      PROXY_IP: |
+        10.0.0.0/8 1;
+        172.16.0.0/12 1;
+    secrets: {}
+  nginx:
+    http:
+      directives: |
+        geo $remote_addr $allowed {
+          default $PROXY_DEFAULT;
+          include /opt/app-root/etc/proxy_ips.conf;
+        }
+    server:
+      globalDirectives:
+        - "real_ip_header X-Forwarded-For;"
+        - "set_real_ip_from 10.128.0.0/14;"
+        - "client_max_body_size 50m;"
+  servers:
+    - name: "$HOST_APP"
+      type: "proxy"
+      target: "$HOST_PROXY"
+      redirectRoot: "/en"
+      locations: []
 
-    # Directives injected into ALL generated server blocks (e.g., real_ip, buffer sizes)
-    serverDirectives:
-      - "real_ip_header X-Forwarded-For;" 
-      - "set_real_ip_from 10.128.0.0/14;" 
-      - "client_max_body_size 50m;" 
+networkPolicy:
+  enabled: false
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: openshift-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
 
-  # 4. PRIMARY SERVER BLOCKS (Simplified definitions for hosts sharing a common proxy destination)
-  # These blocks automatically proxy to $$HOST_PROXY and perform root (/) redirect.
-  primaryServers:
-    # Main application host
-    - serverName: $$HOST_APP
-      redirectPath: /en # Root (/) redirects to /en
-      
-    # Secondary application host (e.g., for different region/language)
-    - serverName: $$HOST_SECONDARY
-      redirectPath: /fr # Root (/) redirects to /fr
-
-  # 5. CUSTOM SERVER BLOCKS (For unique logic, custom proxy targets, or redirects)
-  customServers:
-    # Example A: API Proxy with Custom Headers and Access Control
-    - serverName: api.internal.example.com
-      # Optional: Override global directives for this server only
-      serverDirectives:
-        - "client_max_body_size 10m;"
-      locations:
-        - path: /internal
-          proxyPass: http://internal-backend-svc:8080/
-          additionalConfig: |
-            # Use the secret env var (must be declared in frontProxy.secretEnv)
-            proxy_set_header X-Api-Key $$API_AUTH_KEY;
-            
-        - path: = /admin
-          proxyPass: https://admin-backend.local/
-          additionalConfig: |
-            # Block access using the $allowed NGINX variable from the GEO block
-            if ($$allowed = 0) {
-              return 403 "Forbidden from $$remote_addr";
-            }
-
-    # Example B: Permanent Redirect Host
-    - serverName: legacy-site.old.com
-      locations:
-        - path: /
-          # Omit proxyPass, only use additionalConfig for the return statement
-          additionalConfig: |
-            # Use the NGINX runtime variable $$uri to preserve the full path
-            return 301 https://new-home.com/$$uri;
-            
-    # Example C: Static Assets or Custom Root
-    - serverName: assets.example.com
-      locations:
-        - path: ~ ^/static/
-          # No proxyPass, use the NGINX root directive
-          additionalConfig: |
-            root /usr/share/nginx/static;
-            expires 30d;
-# ============================================================================
-# EXTERNAL SECRETS CONFIGURATION (Azure Key Vault)
-# ============================================================================
 externalSecrets:
   enabled: false
-  refreshInterval: "1h" # How often to sync secrets from Key Vault
-  
-  # Azure Key Vault configuration
+  refreshInterval: "1h"
   azureKeyVault:
-    vaultName: "" # REQUIRED: Your Azure Key Vault name
-    tenantId: ""  # REQUIRED: Azure tenant ID
-    
-    # Key names in Azure Key Vault for storage credentials
+    vaultName: ""
+    tenantId: ""
     storageAccountNameKey: "AZURE-STORAGE-ACCOUNT-NAME"
     storageAccountKeyKey: "AZURE-STORAGE-ACCOUNT-KEY"
-  
-  # Service Principal for Key Vault authentication
   servicePrincipal:
     secretName: "azure-service-principal"
 
-# ============================================================================
-# OPENSHIFT ROUTE CONFIGURATION
-# ============================================================================
 routes:
-  # Global flag to enable or disable all routes generated by this section
   enabled: false
-  
-  # # Default annotations applied to ALL routes unless overridden in the item list
-  # annotations:
-  #   haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains;preload"
-  #   haproxy.router.openshift.io/disable_cookies: "true"
-
-  # List of Route resources to create
+  annotations:
+    haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains;preload"
   items:
-    # --- ROUTE 1: Default/Main Host ---
-    - nameSuffix: "" # Creates a route named: {{ .Release.Name }}-nginx-standard
-      host: "hostname.cluster.example.com"
+    - nameSuffix: ""
+      host: "hostname.example.com"
       path: ""
-      # Use the global annotations by default
+      tls:
+        termination: "edge"
+        insecureEdgeTerminationPolicy: "Redirect"
 
-      
-    # --- ROUTE 2: internal Host ---
-    - nameSuffix: "-internal" # Creates a route named: {{ .Release.Name }}-nginx-standard-internal
-      host: "api.cluster.example.com"
-      path: "/internal"
-      # Override the default HSTS header for the internal route
-      # annotations:
-      #   haproxy.router.openshift.io/hsts_header: "max-age=604800; includeSubDomains"
-
-# ============================================================================
-# SERVICE ACCOUNT CONFIGURATION
-# ============================================================================
 serviceAccount:
   create: false
-  
-  # Annotations to add to the service account
   annotations: {}
-  
-  # The name of the service account to use
   name: ""
 
-# ============================================================================
-# POD ANNOTATIONS
-# ============================================================================
 podAnnotations: {}
-  # prometheus.io/scrape: "true"
-  # prometheus.io/port: "8080"
-  # prometheus.io/path: "/metrics"
+
+tests:
+  enabled: true
+  image: "registry.access.redhat.com/ubi8/ubi-minimal:latest"

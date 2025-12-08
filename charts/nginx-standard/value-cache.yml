@@ -1,56 +1,163 @@
 nginx:
-  # 1. Set the use case to 'cache' to enable the caching logic
   useCase: "cache"
-  
-  # Set replica count
   replicaCount: 2
 
-# ============================================================================
-# CACHE PROXY USE CASE CONFIGURATION
-# ============================================================================
 cache:
   enabled: true
-  
-  # The required URL of the upstream service to proxy and cache
-  # This must be a fully qualified URL (e.g., https://service-name.namespace.svc.cluster.local:port)
-  backendUrl: "https://my-backend-api.svc.cluster.local:8000"
-
-  # NGINX Directives for the 'server' block
+  defaultBackendUrl: "https://backend-api.svc:8000"
   clientMaxBodySize: "50m"
+  volumeSize: "5Gi"
   
-  # This defines the mount path for the cache volume: /srv/cache/<volumeName>
-  volumeName: "nginx-proxy-cache" 
-
-  # NGINX Proxy Buffer and Timeout Configuration
   proxy:
-    buffersNumber: 1024    # Sets proxy_buffers <buffersNumber> <bufferSize>
-    bufferSize: "4k"       # Sets proxy_buffers and proxy_buffer_size
-    sendTimeout: "300s"    # proxy_send_timeout
-    readTimeout: "300s"    # proxy_read_timeout
-    connectTimeout: "300s" # proxy_connect_timeout
-
-  # NGINX Cache Configuration (used to generate the proxy_cache_path directive)
-  config:
-    levels: "1:2"           # levels=1:2
-    keysZone: "my_cache:10m" # keys_zone=my_cache:10m
-    maxSize: "1g"           # max_size=1g
-    inactive: "60m"         # inactive=60m (how long to keep objects not accessed)
-    useTempPath: "off"      # use_temp_path=off
-    backgroundUpdate: "on"  # proxy_cache_background_update
-    useStale: "error timeout" # proxy_cache_use_stale
+    buffersNumber: 1024
+    bufferSize: "4k"
+    sendTimeout: "300s"
+    readTimeout: "300s"
+    connectTimeout: "300s"
+  
+  zones:
+    - name: "hot_cache"
+      path: "/srv/cache/hot"
+      levels: "1:2"
+      keysZone: "hot_cache:20m"
+      maxSize: "2g"
+      inactive: "30m"
+      useTempPath: "off"
     
-    # Configure cache validity times
-    validTime:
-      default: "10m"    # proxy_cache_valid 200 302 10m;
-      notFound: "1m"    # proxy_cache_valid 404 1m;
+    - name: "static_cache"
+      path: "/srv/cache/static"
+      levels: "1:2"
+      keysZone: "static_cache:50m"
+      maxSize: "10g"
+      inactive: "7d"
+      useTempPath: "off"
+    
+    - name: "api_cache"
+      path: "/srv/cache/api"
+      levels: "1:2"
+      keysZone: "api_cache:10m"
+      maxSize: "500m"
+      inactive: "1h"
+      useTempPath: "off"
+  
+  locations:
+    - path: "/"
+      cache:
+        enabled: true
+        zone: "hot_cache"
+        backgroundUpdate: "on"
+        useStale: "error timeout updating"
+        lock: "on"
+        lockTimeout: "5s"
+        revalidate: "on"
+        minUses: 1
+        key: "$scheme$proxy_host$request_uri"
+        validTime:
+          default: "10m"
+          notFound: "1m"
+          any: "1m"
+        bypass:
+          - "$http_pragma"
+          - "$http_authorization"
+          - "$cookie_nocache"
+        noCache:
+          - "$http_pragma"
+          - "$http_authorization"
+        addHeader: true
+        headerName: "X-Cache-Status"
+      proxy:
+        setHeaders:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"
+    
+    - path: "~ \\.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf)$"
+      backendUrl: "https://cdn-backend.svc:8000"
+      cache:
+        enabled: true
+        zone: "static_cache"
+        backgroundUpdate: "off"
+        useStale: "error timeout"
+        lock: "on"
+        revalidate: "off"
+        minUses: 1
+        key: "$scheme$proxy_host$uri"
+        validTime:
+          default: "7d"
+          notFound: "10m"
+          any: "1h"
+        bypass:
+          - "$arg_nocache"
+        noCache: []
+        addHeader: true
+        headerName: "X-Static-Cache"
+      proxy:
+        setHeaders:
+          - "Host $host"
+          - "Accept-Encoding ''"
+      additionalConfig: |
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    
+    - path: "/api"
+      backendUrl: "https://api-backend.svc:8443"
+      cache:
+        enabled: true
+        zone: "api_cache"
+        backgroundUpdate: "on"
+        useStale: "error timeout"
+        lock: "on"
+        lockTimeout: "10s"
+        revalidate: "on"
+        minUses: 2
+        key: "$request_method$scheme$proxy_host$request_uri$http_accept"
+        validTime:
+          default: "5m"
+          notFound: "30s"
+          any: "1m"
+        bypass:
+          - "$http_authorization"
+          - "$cookie_session"
+          - "$arg_nocache"
+        noCache:
+          - "$http_authorization"
+          - "$cookie_session"
+        addHeader: true
+        headerName: "X-API-Cache"
+      proxy:
+        buffersNumber: 512
+        bufferSize: "8k"
+        setHeaders:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-API-Version v1"
+      additionalConfig: |
+        if ($request_method !~ ^(GET|HEAD)$) {
+          set $skip_cache 1;
+        }
+        proxy_cache_bypass $skip_cache;
+        proxy_no_cache $skip_cache;
+    
+    - path: "/health"
+      cache:
+        enabled: false
+      additionalConfig: |
+        access_log off;
+        return 200 "OK";
 
-# ============================================================================
-# OPENSHIFT ROUTE CONFIGURATION 
-# ============================================================================
+observability:
+  metrics:
+    enabled: true
+    type: "stub_status"
+    stubStatus:
+      path: "/nginx_status"
+      allowedIPs:
+        - "10.0.0.0/8"
+
 routes:
   enabled: true
   items:
-    - nameSuffix: "" 
+    - nameSuffix: ""
       host: "cache.example.com"
       path: "/"
       tls:

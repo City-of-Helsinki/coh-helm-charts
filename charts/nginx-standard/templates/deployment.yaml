@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "nginx-standard.fullname" . }}-deployment
+  name: {{ include "nginx-standard.fullname" . }}
   namespace: {{ include "nginx-standard.namespace" . }}
   labels:
     {{- include "nginx-standard.labels" . | nindent 4 }}
@@ -12,6 +12,11 @@ spec:
       {{- include "nginx-standard.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         {{- include "nginx-standard.selectorLabels" . | nindent 8 }}
     spec:
@@ -22,6 +27,12 @@ spec:
       imagePullSecrets:
         {{- toYaml .Values.nginx.image.pullSecrets | nindent 8 }}
       {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       volumes:
         {{- if eq (include "nginx-standard.fileSharingEnabled" .) "true" }}
         - name: file-content-volume
@@ -33,9 +44,9 @@ spec:
           {{- end }}
         {{- end }}
         {{- if eq (include "nginx-standard.cacheEnabled" .) "true" }}
-        # Volume for the stateless NGINX cache - uses ephemeral emptyDir
         - name: cache-volume
-          emptyDir: {}
+          emptyDir: 
+            sizeLimit: {{ .Values.cache.volumeSize | default "2Gi" }}
         {{- end }}
         - name: config-volume
           configMap:
@@ -45,18 +56,29 @@ spec:
                 path: nginx.conf
               - key: server.conf
                 path: nginx.default.d/server.conf
-              {{- if and (eq .Values.nginx.useCase "front-proxy") (hasKey .Values.frontProxy.env "PROXY_IP") }}
-              # Mount the custom IP list file for the GEO block
+              {{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.enabled (hasKey .Values.frontProxy.env "PROXY_IP") }}
               - key: proxy_ips.conf
                 path: proxy_ips.conf
               {{- end }}
             defaultMode: 420
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-tmp
+          emptyDir: {}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ include "nginx-standard.image" . }}"
           imagePullPolicy: {{ .Values.nginx.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
           ports:
-            - name: {{ include "nginx-standard.serviceName" . }}
+            - name: http
               containerPort: {{ include "nginx-standard.servicePort" . }}
               protocol: TCP
           env:
@@ -64,9 +86,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             {{- if eq (include "nginx-standard.elasticProxyEnabled" .) "true" }}
             - name: ELASTICSEARCH_URL
-              value: {{ .Values.elasticProxy.upstream.url | required "elasticProxy.upstream.url is required for elastic-proxy use case" }}
+              value: {{ .Values.elasticProxy.upstream.url | required "elasticProxy.upstream.url is required" }}
             - name: ELASTIC_USER
               valueFrom:
                 secretKeyRef:
@@ -78,9 +104,7 @@ spec:
                   name: {{ .Values.elasticProxy.authSecretName | default (include "nginx-standard.fullname" .) }}
                   key: password
             {{- end }}
-
             {{- if eq (include "nginx-standard.frontProxyEnabled" .) "true" }}
-            # FRONT PROXY ENV VARS (Plain values from values.yaml)
             {{- range $key, $val := .Values.frontProxy.env }}
             - name: {{ $key }}
               value: {{ $val | quote }}
@@ -98,16 +122,10 @@ spec:
             - -c
           args:
             - |
-              # Copy custom nginx.conf to the main config directory
               if [ -f /opt/app-root/etc/nginx.conf ]; then
                 cp /opt/app-root/etc/nginx.conf /etc/nginx/nginx.conf
               fi
-              # Start NGINX
               exec nginx -g 'daemon off;'
-          ports:
-            - name: http
-              containerPort: {{ include "nginx-standard.servicePort" . }}
-              protocol: TCP
           resources:
             {{- toYaml .Values.nginx.resources | nindent 12 }}
           volumeMounts:
@@ -117,38 +135,41 @@ spec:
             {{- end }}
             {{- if eq (include "nginx-standard.cacheEnabled" .) "true" }}
             - name: cache-volume
-              mountPath: /srv/cache/{{ .Values.cache.volumeName | default "nginx-cache" }}
+              mountPath: /srv/cache
             {{- end }}
             - name: config-volume
               mountPath: /opt/app-root/etc
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: nginx-tmp
+              mountPath: /tmp
           {{- if eq (include "nginx-standard.healthChecksEnabled" .) "true" }}
           readinessProbe:
             httpGet:
               path: {{ include "nginx-standard.readinessPath" . }}
               port: {{ include "nginx-standard.servicePort" . }}
               scheme: HTTP
-            initialDelaySeconds: 5
-            timeoutSeconds: 1
-            periodSeconds: 10
-            successThreshold: 1
-            failureThreshold: 3
+            initialDelaySeconds: {{ .Values.nginx.healthChecks.readiness.initialDelaySeconds | default 5 }}
+            timeoutSeconds: {{ .Values.nginx.healthChecks.readiness.timeoutSeconds | default 1 }}
+            periodSeconds: {{ .Values.nginx.healthChecks.readiness.periodSeconds | default 10 }}
+            successThreshold: {{ .Values.nginx.healthChecks.readiness.successThreshold | default 1 }}
+            failureThreshold: {{ .Values.nginx.healthChecks.readiness.failureThreshold | default 3 }}
           livenessProbe:
             httpGet:
               path: {{ include "nginx-standard.livenessPath" . }}
               port: {{ include "nginx-standard.servicePort" . }}
               scheme: HTTP
-            initialDelaySeconds: 30
-            timeoutSeconds: 1
-            periodSeconds: 10
-            successThreshold: 1
-            failureThreshold: 3
+            initialDelaySeconds: {{ .Values.nginx.healthChecks.liveness.initialDelaySeconds | default 30 }}
+            timeoutSeconds: {{ .Values.nginx.healthChecks.liveness.timeoutSeconds | default 1 }}
+            periodSeconds: {{ .Values.nginx.healthChecks.liveness.periodSeconds | default 10 }}
+            successThreshold: {{ .Values.nginx.healthChecks.liveness.successThreshold | default 1 }}
+            failureThreshold: {{ .Values.nginx.healthChecks.liveness.failureThreshold | default 3 }}
           {{- end }}
       {{- with .Values.nginx.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
-      {{- else }}
-      nodeSelector:
-        env: {{ .Values.global.environment | default "prod" }}
       {{- end }}
       {{- with .Values.nginx.tolerations }}
       tolerations:

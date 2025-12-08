@@ -1,11 +1,11 @@
 {{- if .Values.routes.enabled }}
+{{- $fullName := include "nginx-standard.fullname" . }}
 {{- range $i, $route := .Values.routes.items }}
-{{- $fullName := include "nginx-standard.fullname" $ }}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: {{ $fullName }}{{ $route.nameSuffix }} 
+  name: {{ $fullName }}{{ $route.nameSuffix }}
   namespace: {{ include "nginx-standard.namespace" $ }}
   labels:
     {{- include "nginx-standard.labels" $ | nindent 4 }}
@@ -15,11 +15,11 @@ metadata:
     {{- $annotations := mergeOverwrite $globalAnnotations $itemAnnotations }}
     {{- toYaml $annotations | nindent 4 }}
 spec:
-  host: {{ $route.host | required "Host is required for every route in the items list." }}
+  host: {{ $route.host | required "Host is required" }}
   path: {{ $route.path | default "" }}
   to:
     kind: Service
-    name: {{ $fullName }}
+    name: {{ $fullName }}-svc
     weight: 100
   port:
     targetPort: {{ $.Values.nginx.service.name | default "http" }}
@@ -27,6 +27,6 @@ spec:
   tls:
     termination: {{ $route.tls.termination | default "edge" }}
     insecureEdgeTerminationPolicy: {{ $route.tls.insecureEdgeTerminationPolicy | default "Redirect" }}
-  {{- end }}
+{{- end }}
 {{- end }}
 {{- end }}

@@ -1,3 +1,5 @@
+{{- include "nginx-standard.validateCache" . -}}
+{{- include "nginx-standard.validateElasticProxy" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,18 +9,79 @@ metadata:
     {{- include "nginx-standard.labels" . | nindent 4 }}
 data:
   nginx.conf: |-
-{{- if or (eq .Values.nginx.useCase "elastic-proxy") (eq .Values.nginx.useCase "cache") }}
+{{- if eq .Values.nginx.useCase "cache" }}
+    # NGINX main configuration - Cache Proxy Mode
+    worker_processes auto;
+    error_log {{ .Values.nginx.logging.errorLog | default "/dev/stderr" }} {{ .Values.nginx.logging.errorLevel | default "notice" }};
+    pid /var/run/nginx.pid;
+
+    events {
+      worker_connections 1024;
+    }
+    
+    http {
+      include /etc/nginx/mime.types;
+      default_type application/octet-stream;
+      
+      # Cache zones
+      {{ include "nginx-standard.cacheHttpBlock" . | nindent 6 }}
+      
+      # JSON log format
+      log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"cache_status":"$upstream_cache_status","request_id":"$nginx_req_id"}';
+      access_log {{ .Values.nginx.logging.accessLog | default "/dev/stdout" }} json_log;
+      
+      sendfile on;
+      tcp_nopush on;
+      tcp_nodelay on;
+      keepalive_timeout 65;
+      types_hash_max_size 2048;
+      
+      server {
+        listen {{ include "nginx-standard.servicePort" . | default "8080" }} default_server;
+        listen [::]:{{ include "nginx-standard.servicePort" . | default "8080" }} default_server;
+        server_name _;
+        
+        # Generate request ID
+        set $nginx_req_id $http_x_request_id;
+        if ($nginx_req_id = "") {
+          set $nginx_req_id "nginx-$connection-$msec";
+        }
+        add_header X-Request-ID $nginx_req_id;
+        
+{{- include "nginx-standard.securityHeaders" . | nindent 8 }}
+        
+        # Include custom server configuration
+        include /opt/app-root/etc/nginx.default.d/*.conf;
+        
+        {{- if .Values.observability.metrics.enabled }}
+        {{- if eq .Values.observability.metrics.type "stub_status" }}
+        # Metrics endpoint
+        location {{ .Values.observability.metrics.stubStatus.path }} {
+          stub_status;
+          access_log off;
+          {{- if .Values.observability.metrics.stubStatus.allowedIPs }}
+          {{- range .Values.observability.metrics.stubStatus.allowedIPs }}
+          allow {{ . }};
+          {{- end }}
+          deny all;
+          {{- end }}
+        }
+        {{- end }}
+        {{- end }}
+      }
+    }
+{{- else if or (eq .Values.nginx.useCase "elastic-proxy") (eq .Values.nginx.useCase "front-proxy") }}
 {{ include "nginx-standard.nginxConf" . | nindent 4 }}
 {{- else }}
     # NGINX main configuration
     worker_processes auto;
     error_log {{ .Values.nginx.logging.errorLog | default "/dev/stderr" }} {{ .Values.nginx.logging.errorLevel | default "notice" }};
-    pid /tmp/nginx.pid;
+    pid /var/run/nginx.pid;
     {{- if eq (include "nginx-standard.frontProxyEnabled" .) "true" }}
-    {{- range $key, $val := .Values.frontProxy.env }}
+    {{- range $key, $val := .Values.frontProxy.environment.plain }}
     env {{ $key }};
     {{- end }}
-    {{- range $key, $val := .Values.frontProxy.secretEnv }}
+    {{- range $key, $val := .Values.frontProxy.environment.secrets }}
     env {{ $key }};
     {{- end }}
     {{- end }}
@@ -30,59 +93,100 @@ data:
     http {
       include /etc/nginx/mime.types;
       default_type application/octet-stream; 
-      {{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.globalConfig.httpDirectives }}
-      {{ .Values.frontProxy.globalConfig.httpDirectives | replace "$$" "$" | nindent 6 }} 
+      {{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.nginx.http.directives }}
+      # Custom HTTP directives
+      {{ .Values.frontProxy.nginx.http.directives | nindent 6 }} 
       {{- end }}
+      
       # JSON log format
       log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$nginx_req_id"}';
       access_log {{ .Values.nginx.logging.accessLog | default "/dev/stdout" }} json_log;
+      
       sendfile on;
       tcp_nopush on;
       tcp_nodelay on;
       keepalive_timeout 65;
       types_hash_max_size 2048;
+      
       server {
         listen {{ include "nginx-standard.servicePort" . | default "8080" }} default_server;
         listen [::]:{{ include "nginx-standard.servicePort" . | default "8080" }} default_server;
         server_name _; 
+        
         # Generate request ID with unique name to avoid conflicts 
         set $nginx_req_id $http_x_request_id;
         if ($nginx_req_id = "") {
           set $nginx_req_id "nginx-$connection-$msec";
         } 
-        # Add request ID to response header
         add_header X-Request-ID $nginx_req_id;
-{{- include "nginx-standard.securityHeaders" . | nindent 8 -}}
+        
+{{- include "nginx-standard.securityHeaders" . | nindent 8 }}
+        
         # Include custom server configuration
         include /opt/app-root/etc/nginx.default.d/*.conf;
+        
+        {{- if .Values.observability.metrics.enabled }}
+        {{- if eq .Values.observability.metrics.type "stub_status" }}
+        # Metrics endpoint
+        location {{ .Values.observability.metrics.stubStatus.path }} {
+          stub_status;
+          access_log off;
+          {{- if .Values.observability.metrics.stubStatus.allowedIPs }}
+          {{- range .Values.observability.metrics.stubStatus.allowedIPs }}
+          allow {{ . }};
+          {{- end }}
+          deny all;
+          {{- end }}
+        }
+        {{- end }}
+        {{- end }}
       }
     }
 {{- end }}
+  
   server.conf: |-
     # Main server configuration
+{{- if eq .Values.nginx.useCase "cache" }}
+{{ include "nginx-standard.cacheServerConfig" . | nindent 4 }}
+{{- else }}
 {{- $serverConfig := include "nginx-standard.serverConfig" . -}}
 {{- if $serverConfig -}}
-{{ $serverConfig | replace "$$" "$" | nindent 4 }}
+{{ $serverConfig | nindent 4 }}
 {{- else }}
     location / {
       root /usr/share/nginx/html;
       index index.html index.htm;
     }
 {{- end -}}
+{{- end -}}
+
 {{- if ne .Values.nginx.useCase "elastic-proxy" -}}
-    # Health check endpoints (Only included if not elastic-proxy, as the helper includes them otherwise)
+    # Health check endpoints
     location {{ include "nginx-standard.readinessPath" . | default "/readiness" }} {
-      access_log off;  # Don't log health checks
+      access_log off;
       add_header Content-Type text/plain;
       return 200 'OK';
     }
     location {{ include "nginx-standard.livenessPath" . | default "/healthz" }} {
-      access_log off;  # Don't log health checks
+      access_log off;
       add_header Content-Type text/plain;
       return 200 'OK';
     }
 {{- end -}}
-{{- if and (eq .Values.nginx.useCase "front-proxy") (hasKey .Values.frontProxy.env "PROXY_IP") }}
+
+{{- if .Values.nginx.errorPages.enabled }}
+    # Custom error pages
+    {{- range $code, $page := .Values.nginx.errorPages.pages }}
+    error_page {{ $code }} {{ $page }};
+    {{- end }}
+    
+    location ~ ^/(custom_.*\.html)$ {
+      root {{ .Values.nginx.errorPages.root }};
+      internal;
+    }
+{{- end -}}
+
+{{- if and (eq .Values.nginx.useCase "front-proxy") (hasKey .Values.frontProxy.environment.plain "PROXY_IP") }}
   proxy_ips.conf: |-
-{{ .Values.frontProxy.env.PROXY_IP | nindent 4 }}
+{{ .Values.frontProxy.environment.plain.PROXY_IP | nindent 4 }}
 {{- end }}
