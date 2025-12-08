@@ -182,7 +182,7 @@ data:
     }
 {{- end -}}
 
-{{- if and (eq .Values.nginx.useCase "front-proxy") (hasKey .Values.frontProxy.environment.plain "PROXY_IP") }}
+{{- if and (eq .Values.nginx.useCase "front-proxy") (hasKey .Values.frontProxy.env "PROXY_IP") }}
   proxy_ips.conf: |-
 {{ .Values.frontProxy.environment.plain.PROXY_IP | nindent 4 }}
 {{- end }}
