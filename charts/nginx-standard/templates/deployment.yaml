@@ -34,6 +34,12 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       volumes:
+        {{- if .Values.nginx.errorPages.enabled }}
+        - name: error-pages
+          configMap:
+            name: {{ include "nginx-standard.configmapName" . }}-error-pages
+            defaultMode: 0444
+        {{- end }}
         {{- if eq (include "nginx-standard.fileSharingEnabled" .) "true" }}
         - name: file-content-volume
           {{- if .Values.fileSharing.storage.pvc.enabled }}
@@ -129,6 +135,11 @@ spec:
           resources:
             {{- toYaml .Values.nginx.resources | nindent 12 }}
           volumeMounts:
+            {{- if .Values.nginx.errorPages.enabled }}
+            - name: error-pages
+              mountPath: {{ .Values.nginx.errorPages.root }}
+              readOnly: true
+            {{- end }}
             {{- if eq (include "nginx-standard.fileSharingEnabled" .) "true" }}
             - name: file-content-volume
               mountPath: {{ .Values.fileSharing.storage.mountPath | default "/opt/app-root/src" }}

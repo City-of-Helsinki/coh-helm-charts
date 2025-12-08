@@ -1,0 +1,76 @@
+{{- if .Values.nginx.errorPages.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nginx-standard.configmapName" . }}-error-pages
+  namespace: {{ include "nginx-standard.namespace" . }}
+  labels:
+    {{- include "nginx-standard.labels" . | nindent 4 }}
+data:
+  {{- range $code, $file := .Values.nginx.errorPages.pages }}
+  {{ trimPrefix "/" $file }}: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{{ $code }} Error</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .container {
+                background: white;
+                padding: 3rem;
+                border-radius: 1rem;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                text-align: center;
+                max-width: 500px;
+            }
+            h1 { font-size: 6rem; color: #667eea; margin-bottom: 1rem; }
+            h2 { color: #333; margin-bottom: 1rem; }
+            p { color: #666; line-height: 1.6; }
+            .back-link {
+                display: inline-block;
+                margin-top: 2rem;
+                padding: 0.75rem 2rem;
+                background: #667eea;
+                color: white;
+                text-decoration: none;
+                border-radius: 0.5rem;
+                transition: background 0.3s;
+            }
+            .back-link:hover { background: #5568d3; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>{{ $code }}</h1>
+            <h2>
+                {{- if eq $code "404" }}Page Not Found
+                {{- else if eq $code "500" }}Internal Server Error
+                {{- else if eq $code "502" }}Bad Gateway
+                {{- else if eq $code "503" }}Service Unavailable
+                {{- else }}Error
+                {{- end }}
+            </h2>
+            <p>
+                {{- if eq $code "404" }}The page you're looking for doesn't exist.
+                {{- else if eq $code "500" }}Something went wrong on our end. Please try again later.
+                {{- else if eq $code "502" }}The server is temporarily unavailable. Please try again in a moment.
+                {{- else if eq $code "503" }}Service is temporarily unavailable. We're working on it!
+                {{- else }}An unexpected error occurred.
+                {{- end }}
+            </p>
+            <a href="/" class="back-link">Go Home</a>
+        </div>
+    </body>
+    </html>
+  {{- end }}
+{{- end }}
