@@ -143,45 +143,19 @@ data:
   server.conf: |-
     # Main server configuration
 {{- if eq .Values.nginx.useCase "cache" }}
-{{ include "nginx-standard.cacheServerConfig" . | nindent 4 }}
+    {{ include "nginx-standard.cacheServerConfig" . | nindent 4 }}
 {{- else }}
-{{- $serverConfig := include "nginx-standard.serverConfig" . -}}
-{{- if $serverConfig -}}
-{{ $serverConfig | nindent 4 }}
-{{- else }}
-    location / {
-      root /usr/share/nginx/html;
-      index index.html index.htm;
-    }
+    {{- $serverConfig := include "nginx-standard.serverConfig" . -}}
+    {{- if $serverConfig -}}
+      {{ $serverConfig | nindent 4 }}
+    {{- else }}
+      location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+      }
+    {{- end -}}
 {{- end -}}
-{{- end -}}
-
-{{- if ne .Values.nginx.useCase "elastic-proxy" -}}
-    # Health check endpoints
-    location {{ include "nginx-standard.readinessPath" . | default "/readiness" }} {
-      access_log off;
-      add_header Content-Type text/plain;
-      return 200 'OK';
-    }
-    location {{ include "nginx-standard.livenessPath" . | default "/healthz" }} {
-      access_log off;
-      add_header Content-Type text/plain;
-      return 200 'OK';
-    }
-{{- end -}}
-
-{{- if .Values.nginx.errorPages.enabled }}
-    # Custom error pages
-    {{- range $code, $page := .Values.nginx.errorPages.pages }}
-    error_page {{ $code }} {{ $page }};
-    {{- end }}
     
-    location ~ ^/(custom_.*\.html)$ {
-      root {{ .Values.nginx.errorPages.root }};
-      internal;
-    }
-{{- end -}}
-
 {{- if and (eq .Values.nginx.useCase "front-proxy") (hasKey .Values.frontProxy.env "PROXY_IP") }}
   proxy_ips.conf: |-
 {{ .Values.frontProxy.environment.plain.PROXY_IP | nindent 4 }}

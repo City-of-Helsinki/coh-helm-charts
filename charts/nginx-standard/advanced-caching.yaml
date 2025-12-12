@@ -1,0 +1,171 @@
+nginx:
+  useCase: "cache"            
+  replicaCount: 2             
+
+cache:
+  enabled: true               
+  defaultBackendUrl: "https://backend-api.svc:8000" 
+  clientMaxBodySize: "50m"    
+  volumeSize: "5Gi"           
+  
+  proxy:
+    buffersNumber: 1024       # Number of buffers for reading backend responses
+    bufferSize: "4k"          # Size of each buffer (standard page size)
+    sendTimeout: "300s"       # Max time to send request to backend (5 min)
+    readTimeout: "300s"       # Max time to read response from backend
+    connectTimeout: "300s"    # Max time to establish backend connection
+  
+  zones:
+    - name: "hot_cache"       # Zone for frequently changing content
+      path: "/srv/cache/hot"  # Disk location for cache files
+      levels: "1:2"           # Directory structure: /srv/cache/hot/a/b/abc123...
+      keysZone: "hot_cache:20m"  # 20MB memory for cache keys (160k keys)
+      maxSize: "2g"           # Maximum 2GB disk space for this zone
+      inactive: "30m"         # Delete cache entries unused for 30 minutes
+      useTempPath: "off"      # Don't use temp files during cache updates
+    
+    - name: "static_cache"    
+      path: "/srv/cache/static"
+      levels: "1:2"
+      keysZone: "static_cache:50m"  
+      maxSize: "10g"          
+      inactive: "7d"          
+      useTempPath: "off"
+    
+    - name: "api_cache"       
+      path: "/srv/cache/api"
+      levels: "1:2"
+      keysZone: "api_cache:10m"  
+      maxSize: "500m"         
+      inactive: "1h"          
+      useTempPath: "off"
+  
+  locations:
+    # Location 1: Root path - General content caching
+    - path: "/"               # Match all requests to root
+      cache:
+        enabled: true         # Enable caching for this location
+        zone: "hot_cache"     # Use the hot_cache zone
+        backgroundUpdate: "on"  # Update expired cache in background
+        useStale: "error timeout updating"  # Serve stale cache if backend errors
+        lock: "on"            # Prevent multiple concurrent cache updates
+        lockTimeout: "5s"     # Release lock after 5 seconds
+        revalidate: "on"      # Use If-Modified-Since headers for validation
+        minUses: 1            # Cache after first request
+        key: "$scheme$proxy_host$request_uri"  # Cache key: protocol+host+URI
+        validTime:
+          default: "10m"      # Cache 200 responses for 10 minutes
+          notFound: "1m"      # Cache 404 responses for 1 minute
+          any: "1m"           # Cache all other status codes for 1 minute
+        bypass:
+          - "$http_pragma"    # Bypass if Pragma: no-cache header present
+          - "$http_authorization"  # Bypass for authenticated requests
+          - "$cookie_nocache" # Bypass if nocache cookie exists
+        noCache:
+          - "$http_pragma"    # Don't cache responses with Pragma header
+          - "$http_authorization"  # Don't cache authenticated content
+        addHeader: true       # Add cache status header
+        headerName: "X-Cache-Status"  # Custom header name
+      proxy:
+        setHeaders:           # Headers to add when proxying
+          - "Host $host"      # Preserve original Host header
+          - "X-Real-IP $remote_addr"  # Client IP address
+          - "X-Forwarded-For $proxy_add_x_forwarded_for"  # Request chain
+    
+    # Location 2: Static assets - Images, CSS, JS files
+    - path: "~ \\.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf)$"  # Regex match file extensions
+      backendUrl: "https://cdn-backend.svc:8000"  # Different backend for static files
+      cache:
+        enabled: true
+        zone: "static_cache"  # Use static_cache zone
+        backgroundUpdate: "off"  # Don't update static files in background
+        useStale: "error timeout"  # Serve stale only on backend errors
+        lock: "on"
+        revalidate: "off"     # No validation for static files
+        minUses: 1
+        key: "$scheme$proxy_host$uri"  # Cache key without query parameters
+        validTime:
+          default: "7d"       # Cache static files for 7 days
+          notFound: "10m"     # Cache missing static files for 10 minutes
+          any: "1h"           # Cache other status codes for 1 hour
+        bypass:
+          - "$arg_nocache"    # Bypass if ?nocache query parameter exists
+        noCache: []           # No conditions to skip caching
+        addHeader: true
+        headerName: "X-Static-Cache"  # Different header for static files
+      proxy:
+        setHeaders:
+          - "Host $host"
+          - "Accept-Encoding ''"  # Don't accept compressed content
+      additionalConfig: |      # Additional NGINX directives
+        expires 7d;           # Set HTTP Expires header to 7 days
+        add_header Cache-Control "public, immutable";  # Tell browsers to cache permanently
+    
+    # Location 3: API endpoints - JSON/REST API responses
+    - path: "/api"            # Match all API requests
+      backendUrl: "https://api-backend.svc:8443"  # Separate API backend
+      cache:
+        enabled: true
+        zone: "api_cache"     # Use api_cache zone
+        backgroundUpdate: "on"
+        useStale: "error timeout"
+        lock: "on"
+        lockTimeout: "10s"    # Longer lock timeout for APIs
+        revalidate: "on"
+        minUses: 2            # Cache only after 2 identical requests
+        key: "$request_method$scheme$proxy_host$request_uri$http_accept"  # Include method and Accept header
+        validTime:
+          default: "5m"       # Short cache for API data (5 minutes)
+          notFound: "30s"     # Very short cache for 404s (30 seconds)
+          any: "1m"           # Other status codes for 1 minute
+        bypass:
+          - "$http_authorization"  # Bypass for authenticated API calls
+          - "$cookie_session"      # Bypass if session cookie exists
+          - "$arg_nocache"         # Bypass if ?nocache parameter
+        noCache:
+          - "$http_authorization"  # Don't cache authenticated responses
+          - "$cookie_session"      # Don't cache session-based responses
+        addHeader: true
+        headerName: "X-API-Cache"  # Different header for API cache
+      proxy:
+        buffersNumber: 512    # Fewer buffers for API responses
+        bufferSize: "8k"      # Larger buffer size for API data
+        setHeaders:
+          - "Host $host"
+          - "X-Real-IP $remote_addr"
+          - "X-API-Version v1"  # Custom API version header
+      additionalConfig: |
+        if ($request_method !~ ^(GET|HEAD)$) {  # Only cache GET and HEAD requests
+          set $skip_cache 1;  # Set variable to skip cache for POST/PUT/DELETE
+        }
+        proxy_cache_bypass $skip_cache;  # Bypass cache if skip_cache=1
+        proxy_no_cache $skip_cache;      # Don't store in cache if skip_cache=1
+    
+    # Location 4: Health check endpoint - No caching
+    - path: "/health"         
+      cache:
+        enabled: false        # Never cache health checks
+      additionalConfig: |
+        access_log off;       # Don't log health check requests
+        return 200 "OK";      # Static response for health checks
+
+
+observability:
+  metrics:
+    enabled: true             
+    type: "stub_status"       
+    stubStatus:
+      path: "/nginx_status"   
+      allowedIPs:
+        - "10.0.0.0/8"        
+
+
+routes:
+  enabled: true               
+  items:
+    - nameSuffix: ""          
+      host: "cache.example.com"  
+      path: "/"              
+      tls:
+        termination: "edge"   
+        insecureEdgeTerminationPolicy: "Redirect"  

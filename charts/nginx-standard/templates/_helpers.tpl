@@ -326,18 +326,18 @@ Validate cache configuration
 */}}
 {{- define "nginx-standard.validateCache" -}}
 {{- if eq .Values.nginx.useCase "cache" -}}
-  {{- if not .Values.cache.enabled -}}
-    {{- fail "cache.enabled must be true when nginx.useCase is 'cache'" -}}
+ {{- if not .Values.cache.enabled -}}
+  {{- fail "cache.enabled must be true when nginx.useCase is 'cache'" -}}
+ {{- end -}}
+ {{- if .Values.cache.zones -}}
+  {{- if not .Values.cache.locations -}}
+   {{- fail "cache.locations is required when using cache.zones" -}}
   {{- end -}}
-  {{- if .Values.cache.zones -}}
-    {{- if not .Values.cache.locations -}}
-      {{- fail "cache.locations is required when using cache.zones" -}}
-    {{- end -}}
-  {{- else -}}
-    {{- if not .Values.cache.backendUrl -}}
-      {{- fail "cache.backendUrl is required when not using cache.zones" -}}
-    {{- end -}}
+ {{- else -}}
+  {{- if not .Values.cache.backendUrl -}}
+   {{- fail "cache.backendUrl is required when not using cache.zones" -}}
   {{- end -}}
+ {{- end -}}
 {{- end -}}
 {{- end -}}
 
@@ -346,12 +346,12 @@ Validate elastic proxy configuration
 */}}
 {{- define "nginx-standard.validateElasticProxy" -}}
 {{- if eq .Values.nginx.useCase "elastic-proxy" -}}
-  {{- if not .Values.elasticProxy.enabled -}}
-    {{- fail "elasticProxy.enabled must be true when nginx.useCase is 'elastic-proxy'" -}}
-  {{- end -}}
-  {{- if not .Values.elasticProxy.upstream.url -}}
-    {{- fail "elasticProxy.upstream.url is required" -}}
-  {{- end -}}
+ {{- if not .Values.elasticProxy.enabled -}}
+  {{- fail "elasticProxy.enabled must be true when nginx.useCase is 'elastic-proxy'" -}}
+ {{- end -}}
+ {{- if not .Values.elasticProxy.upstream.url -}}
+  {{- fail "elasticProxy.upstream.url is required" -}}
+ {{- end -}}
 {{- end -}}
 {{- end -}}
 
@@ -379,84 +379,84 @@ Generate location block with cache configuration
 {{- $location := .location }}
 {{- $root := .root }}
 location {{ $location.path }} {
-  {{- if $location.cache.enabled }}
-  # Cache configuration
-  proxy_cache {{ $location.cache.zone }};
-  proxy_cache_key {{ $location.cache.key | default "$scheme$proxy_host$request_uri" }};
-  
-  {{- if $location.cache.validTime }}
-  {{- if $location.cache.validTime.default }}
-  proxy_cache_valid 200 301 302 {{ $location.cache.validTime.default }};
-  {{- end }}
-  {{- if $location.cache.validTime.notFound }}
-  proxy_cache_valid 404 {{ $location.cache.validTime.notFound }};
-  {{- end }}
-  {{- if $location.cache.validTime.any }}
-  proxy_cache_valid any {{ $location.cache.validTime.any }};
-  {{- end }}
-  {{- end }}
-  
-  {{- if $location.cache.backgroundUpdate }}
-  proxy_cache_background_update {{ $location.cache.backgroundUpdate }};
-  {{- end }}
-  {{- if $location.cache.useStale }}
-  proxy_cache_use_stale {{ $location.cache.useStale }};
-  {{- end }}
-  {{- if $location.cache.lock }}
-  proxy_cache_lock {{ $location.cache.lock }};
-  {{- end }}
-  {{- if $location.cache.lockTimeout }}
-  proxy_cache_lock_timeout {{ $location.cache.lockTimeout }};
-  {{- end }}
-  {{- if $location.cache.revalidate }}
-  proxy_cache_revalidate {{ $location.cache.revalidate }};
-  {{- end }}
-  {{- if $location.cache.minUses }}
-  proxy_cache_min_uses {{ $location.cache.minUses }};
-  {{- end }}
-  
-  {{- if $location.cache.bypass }}
-  proxy_cache_bypass {{ join " " $location.cache.bypass }};
-  {{- end }}
-  {{- if $location.cache.noCache }}
-  proxy_no_cache {{ join " " $location.cache.noCache }};
-  {{- end }}
-  
-  {{- if $location.cache.addHeader }}
-  add_header {{ $location.cache.headerName | default "X-Cache-Status" }} $upstream_cache_status;
-  {{- end }}
-  {{- end }}
-  
-  {{- if or $location.backendUrl $root.Values.cache.defaultBackendUrl }}
-  # Proxy configuration
-  proxy_pass {{ $location.backendUrl | default $root.Values.cache.defaultBackendUrl }};
-  
-  {{- $proxy := $location.proxy | default $root.Values.cache.proxy }}
-  {{- if $proxy.buffersNumber }}
-  proxy_buffers {{ $proxy.buffersNumber }} {{ $proxy.bufferSize | default "4k" }};
-  proxy_buffer_size {{ $proxy.bufferSize | default "4k" }};
-  {{- end }}
-  {{- if $proxy.sendTimeout }}
-  proxy_send_timeout {{ $proxy.sendTimeout }};
-  {{- end }}
-  {{- if $proxy.readTimeout }}
-  proxy_read_timeout {{ $proxy.readTimeout }};
-  {{- end }}
-  {{- if $proxy.connectTimeout }}
-  proxy_connect_timeout {{ $proxy.connectTimeout }};
-  {{- end }}
-  
-  {{- if $proxy.setHeaders }}
-  {{- range $proxy.setHeaders }}
-  proxy_set_header {{ . }};
-  {{- end }}
-  {{- end }}
-  {{- end }}
-  
-  {{- if $location.additionalConfig }}
-  # Additional configuration
-  {{ $location.additionalConfig | nindent 2 }}
-  {{- end }}
+ {{- if $location.cache.enabled }}
+ # Cache configuration
+ proxy_cache {{ $location.cache.zone }};
+ proxy_cache_key {{ $location.cache.key | default "$scheme$proxy_host$request_uri" }};
+ 
+ {{- if $location.cache.validTime }}
+ {{- if $location.cache.validTime.default }}
+ proxy_cache_valid 200 301 302 {{ $location.cache.validTime.default }};
+ {{- end }}
+ {{- if $location.cache.validTime.notFound }}
+ proxy_cache_valid 404 {{ $location.cache.validTime.notFound }};
+ {{- end }}
+ {{- if $location.cache.validTime.any }}
+ proxy_cache_valid any {{ $location.cache.validTime.any }};
+ {{- end }}
+ {{- end }}
+ 
+ {{- if $location.cache.backgroundUpdate }}
+ proxy_cache_background_update {{ $location.cache.backgroundUpdate }};
+ {{- end }}
+ {{- if $location.cache.useStale }}
+ proxy_cache_use_stale {{ $location.cache.useStale }};
+ {{- end }}
+ {{- if $location.cache.lock }}
+ proxy_cache_lock {{ $location.cache.lock }};
+ {{- end }}
+ {{- if $location.cache.lockTimeout }}
+ proxy_cache_lock_timeout {{ $location.cache.lockTimeout }};
+ {{- end }}
+ {{- if $location.cache.revalidate }}
+ proxy_cache_revalidate {{ $location.cache.revalidate }};
+ {{- end }}
+ {{- if $location.cache.minUses }}
+ proxy_cache_min_uses {{ $location.cache.minUses }};
+ {{- end }}
+ 
+ {{- if $location.cache.bypass }}
+ proxy_cache_bypass {{ join " " $location.cache.bypass }};
+ {{- end }}
+ {{- if $location.cache.noCache }}
+ proxy_no_cache {{ join " " $location.cache.noCache }};
+ {{- end }}
+ 
+ {{- if $location.cache.addHeader }}
+ add_header {{ $location.cache.headerName | default "X-Cache-Status" }} $upstream_cache_status;
+ {{- end }}
+ {{- end }}
+ 
+ {{- if or $location.backendUrl $root.Values.cache.defaultBackendUrl }}
+ # Proxy configuration
+ proxy_pass {{ $location.backendUrl | default $root.Values.cache.defaultBackendUrl }};
+ 
+ {{- $proxy := $location.proxy | default $root.Values.cache.proxy }}
+ {{- if $proxy.buffersNumber }}
+ proxy_buffers {{ $proxy.buffersNumber }} {{ $proxy.bufferSize | default "4k" }};
+ proxy_buffer_size {{ $proxy.bufferSize | default "4k" }};
+ {{- end }}
+ {{- if $proxy.sendTimeout }}
+ proxy_send_timeout {{ $proxy.sendTimeout }};
+ {{- end }}
+ {{- if $proxy.readTimeout }}
+ proxy_read_timeout {{ $proxy.readTimeout }};
+ {{- end }}
+ {{- if $proxy.connectTimeout }}
+ proxy_connect_timeout {{ $proxy.connectTimeout }};
+ {{- end }}
+ 
+ {{- if $proxy.setHeaders }}
+ {{- range $proxy.setHeaders }}
+ proxy_set_header {{ . }};
+ {{- end }}
+ {{- end }}
+ {{- end }}
+ 
+ {{- if $location.additionalConfig }}
+ # Additional configuration
+ {{ $location.additionalConfig | nindent 2 }}
+ {{- end }}
 }
 {{- end }}
 
@@ -470,14 +470,14 @@ Generate NGINX http block with cache zones (NEW APPROACH)
 
 # Upstream cache status variable
 map $upstream_cache_status $cache_header {
-  "MISS" "MISS";
-  "HIT" "HIT";
-  "EXPIRED" "EXPIRED";
-  "STALE" "STALE";
-  "UPDATING" "UPDATING";
-  "REVALIDATED" "REVALIDATED";
-  "BYPASS" "BYPASS";
-  default "UNKNOWN";
+ "MISS" "MISS";
+ "HIT" "HIT";
+ "EXPIRED" "EXPIRED";
+ "STALE" "STALE";
+ "UPDATING" "UPDATING";
+ "REVALIDATED" "REVALIDATED";
+ "BYPASS" "BYPASS";
+ default "UNKNOWN";
 }
 {{- end }}
 {{- end }}
@@ -525,56 +525,56 @@ env ELASTIC_USER;
 
 load_module modules/ngx_http_perl_module.so;
 events {
-    worker_connections 1024;
+  worker_connections 1024;
 }
 
 http {
-    proxy_temp_path /tmp/proxy_temp;
-    client_body_temp_path /tmp/client_temp;
-    fastcgi_temp_path /tmp/fastcgi_temp;
-    uwsgi_temp_path /tmp/uwsgi_temp;
-    scgi_temp_path /tmp/scgi_temp;
+  proxy_temp_path /tmp/proxy_temp;
+  client_body_temp_path /tmp/client_temp;
+  fastcgi_temp_path /tmp/fastcgi_temp;
+  uwsgi_temp_path /tmp/uwsgi_temp;
+  scgi_temp_path /tmp/scgi_temp;
 
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    
-    perl_set $elasticsearch_url '
-      sub {
-        return $ENV{"ELASTICSEARCH_URL"} || "";
-      }
-    ';
-    
-    # Perl script to set authorization header
-    perl_set $elastic_authorization '
-      sub {
-        use MIME::Base64;
-        if (exists($ENV{"ELASTIC_USER"}) && exists($ENV{"ELASTIC_PASSWORD"})) {
-          return encode_base64($ENV{"ELASTIC_USER"} . ":" . $ENV{"ELASTIC_PASSWORD"}, "");
-        }
-        return "";
-      }
-    ';
-    # Log in JSON Format 
-    log_format nginxlog_json escape=json '{ "time": "$time_iso8601", '
-      '"level": "info", '
-      '"source": "nginx", '
-      '"remote_addr": "$remote_addr", '
-      '"method": "$request_method", '
-      '"uri": "$request_uri", '
-      '"status": $status, '
-      '"response_time": $request_time, '
-      '"bytes_sent": $body_bytes_sent, '
-      '"referer": "$http_referer", '
-      '"user_agent": "$http_user_agent", '
-      '"x_forwarded_for": "$http_x_forwarded_for", '
-      '"request_id": "$request_id" }';
-    access_log /dev/stdout nginxlog_json;
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+  
+  perl_set $elasticsearch_url '
+   sub {
+    return $ENV{"ELASTICSEARCH_URL"} || "";
+   }
+  ';
+  
+  # Perl script to set authorization header
+  perl_set $elastic_authorization '
+   sub {
+    use MIME::Base64;
+    if (exists($ENV{"ELASTIC_USER"}) && exists($ENV{"ELASTIC_PASSWORD"})) {
+     return encode_base64($ENV{"ELASTIC_USER"} . ":" . $ENV{"ELASTIC_PASSWORD"}, "");
+    }
+    return "";
+   }
+  ';
+  # Log in JSON Format 
+  log_format nginxlog_json escape=json '{ "time": "$time_iso8601", '
+   '"level": "info", '
+   '"source": "nginx", '
+   '"remote_addr": "$remote_addr", '
+   '"method": "$request_method", '
+   '"uri": "$request_uri", '
+   '"status": $status, '
+   '"response_time": $request_time, '
+   '"bytes_sent": $body_bytes_sent, '
+   '"referer": "$http_referer", '
+   '"user_agent": "$http_user_agent", '
+   '"x_forwarded_for": "$http_x_forwarded_for", '
+   '"request_id": "$request_id" }';
+  access_log /dev/stdout nginxlog_json;
 
-    sendfile on;
-    keepalive_timeout 65;
+  sendfile on;
+  keepalive_timeout 65;
 
-    # Include custom server block (server.conf)
-    include /opt/app-root/etc/nginx.default.d/*.conf;
+  # Include custom server block (server.conf)
+  include /opt/app-root/etc/nginx.default.d/*.conf;
 }
 {{- else if eq .Values.nginx.useCase "cache" -}}
 worker_processes auto;
@@ -582,33 +582,33 @@ error_log /dev/stderr {{ .Values.nginx.logging.errorLevel | default "notice" }};
 pid /var/run/nginx.pid;
 
 events {
-    worker_connections 1024;
+  worker_connections 1024;
 }
 
 http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    
-    {{- if .Values.cache.zones }}
-    # NEW: Cache settings from zones configuration
-    {{ include "nginx-standard.cacheHttpBlock" . | nindent 4 }}
-    {{- else }}
-    # OLD: Legacy cache settings (backward compatibility)
-    {{ include "nginx-standard.cacheHttpConf" . | nindent 4 }}
-    {{- end }}
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+  
+  {{- if .Values.cache.zones }}
+  # NEW: Cache settings from zones configuration
+  {{ include "nginx-standard.cacheHttpBlock" . | nindent 4 }}
+  {{- else }}
+  # OLD: Legacy cache settings (backward compatibility)
+  {{ include "nginx-standard.cacheHttpConf" . | nindent 4 }}
+  {{- end }}
 
-    # JSON log format
-    log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$request_id"}';
-    access_log {{ .Values.nginx.logging.accessLog | default "/dev/stdout" }} json_log;
+  # JSON log format
+  log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$request_id"}';
+  access_log {{ .Values.nginx.logging.accessLog | default "/dev/stdout" }} json_log;
 
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    types_hash_max_size 2048;
+  sendfile on;
+  tcp_nopush on;
+  tcp_nodelay on;
+  keepalive_timeout 65;
+  types_hash_max_size 2048;
 
-    # Include custom server block (server.conf)
-    include /opt/app-root/etc/nginx.default.d/*.conf;
+  # Include custom server block (server.conf)
+  include /opt/app-root/etc/nginx.default.d/*.conf;
 }
 {{- end -}}
 {{- end -}}
@@ -627,16 +627,16 @@ Conditional NGINX server configuration
 {{- range .Values.fileSharing.locations -}}
 location {{ .path }} {
 {{- if .root }}
-  root {{ .root }};
+ root {{ .root }};
 {{- end }}
 {{- if .alias }}
-  alias {{ .alias }};
+ alias {{ .alias }};
 {{- end }}
 {{- if .index }}
-  index {{ .index }};
+ index {{ .index }};
 {{- end }}
 {{- if hasKey . "autoindex" }}
-  autoindex {{ if .autoindex }}on{{ else }}off{{ end }};
+ autoindex {{ if .autoindex }}on{{ else }}off{{ end }};
 {{- end }}
 {{- if .additionalConfig }}
 {{ .additionalConfig | nindent 2 }}
@@ -646,207 +646,146 @@ location {{ .path }} {
 
 {{- else if eq .Values.nginx.useCase "elastic-proxy" -}}
 server {
-    listen {{ include "nginx-standard.servicePort" . }} default_server;
-    server_name _;
-    # Hardcoded DNS resolver for Kubernetes/OpenShift
-    # Tries multiple common DNS services for maximum compatibility
-    resolver dns-default.openshift-dns.svc.cluster.local 
-             valid=10s 
-             ipv6=off;
-    resolver_timeout 5s;
-    client_max_body_size {{ .Values.elasticProxy.clientMaxBodySize | default "50m" }};
+  listen {{ include "nginx-standard.servicePort" . }} default_server;
+  server_name _;
+  # Hardcoded DNS resolver for Kubernetes/OpenShift
+  # Tries multiple common DNS services for maximum compatibility
+  resolver dns-default.openshift-dns.svc.cluster.local 
+      valid=10s 
+      ipv6=off;
+  resolver_timeout 5s;
+  client_max_body_size {{ .Values.elasticProxy.clientMaxBodySize | default "50m" }};
 {{- range .Values.elasticProxy.routes }}
-    location {{ .path }} {
-        {{- $methods := join " " .methods }}
-        {{- if $methods }}
-        limit_except {{ $methods }} {
-          deny all;
-        }
-        {{- end }}
-        
-        # NGINX Proxy Settings
-        proxy_connect_timeout {{ $.Values.elasticProxy.proxy.connectTimeout | default "60s" }};
-        proxy_send_timeout {{ $.Values.elasticProxy.proxy.sendTimeout | default "60s" }};
-        proxy_read_timeout {{ $.Values.elasticProxy.proxy.readTimeout | default "60s" }};
-        proxy_buffer_size {{ $.Values.elasticProxy.proxy.bufferSize | default "8k" }};
-        proxy_buffers {{ $.Values.elasticProxy.proxy.buffersNumber | default 4 }} {{ $.Values.elasticProxy.proxy.bufferSize | default "8k" }};
-        
-        # Standard Proxy Headers
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Elastic Authentication Header
-        proxy_set_header Authorization "Basic $elastic_authorization";
-        add_header X-Debug-Auth "Basic $elastic_authorization" always;
-        
-        # Proxy Pass to Elasticsearch
-        proxy_pass $elasticsearch_url;
-        proxy_ssl_verify off;
-        proxy_redirect off;
-        proxy_pass_header Authorization;
-        
-        # CORS Headers for search endpoints
-        {{- if or (contains "_search" .path) (contains "_msearch" .path) }}
-        if ($request_method = 'OPTIONS') {
-          return 204;
-        }
-        proxy_pass_header Access-Control-Allow-Origin;
-        proxy_pass_header Access-Control-Allow-Methods;
-        proxy_hide_header Access-Control-Allow-Headers;
-        add_header 'Access-Control-Allow-Origin' '*' always;
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
-        {{- end }}
-
-        {{- if .additionalConfig }}
-{{ .additionalConfig | nindent 8 }}
-        {{- end }}
+  location {{ .path }} {
+    {{- $methods := join " " .methods }}
+    {{- if $methods }}
+    limit_except {{ $methods }} {
+     deny all;
     }
-{{- end }}
-    # Health check endpoints
-    location {{ include "nginx-standard.readinessPath" . }} {
-      access_log off;
-      add_header Content-Type text/plain;
-      return 200 'OK';
-    }
+    {{- end }}
     
-    location {{ include "nginx-standard.livenessPath" . }} {
-      access_log off;
-      add_header Content-Type text/plain;
-      return 200 'OK';
+    # NGINX Proxy Settings
+    proxy_connect_timeout {{ $.Values.elasticProxy.proxy.connectTimeout | default "60s" }};
+    proxy_send_timeout {{ $.Values.elasticProxy.proxy.sendTimeout | default "60s" }};
+    proxy_read_timeout {{ $.Values.elasticProxy.proxy.readTimeout | default "60s" }};
+    proxy_buffer_size {{ $.Values.elasticProxy.proxy.bufferSize | default "8k" }};
+    proxy_buffers {{ $.Values.elasticProxy.proxy.buffersNumber | default 4 }} {{ $.Values.elasticProxy.proxy.bufferSize | default "8k" }};
+    
+    # Standard Proxy Headers
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # Elastic Authentication Header
+    proxy_set_header Authorization "Basic $elastic_authorization";
+    add_header X-Debug-Auth "Basic $elastic_authorization" always;
+    
+    # Proxy Pass to Elasticsearch
+    proxy_pass $elasticsearch_url;
+    proxy_ssl_verify off;
+    proxy_redirect off;
+    proxy_pass_header Authorization;
+    
+    # CORS Headers for search endpoints
+    {{- if or (contains "_search" .path) (contains "_msearch" .path) }}
+    if ($request_method = 'OPTIONS') {
+     return 204;
     }
+    proxy_pass_header Access-Control-Allow-Origin;
+    proxy_pass_header Access-Control-Allow-Methods;
+    proxy_hide_header Access-Control-Allow-Headers;
+    add_header 'Access-Control-Allow-Origin' '*' always;
+    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+    {{- end }}
+
+    {{- if .additionalConfig }}
+{{ .additionalConfig | nindent 8 }}
+    {{- end }}
+  }
+{{- end }}
+  # Health check endpoints
+  location {{ include "nginx-standard.readinessPath" . }} {
+   access_log off;
+   add_header Content-Type text/plain;
+   return 200 'OK';
+  }
+  
+  location {{ include "nginx-standard.livenessPath" . }} {
+   access_log off;
+   add_header Content-Type text/plain;
+   return 200 'OK';
+  }
 }
 
 {{- else if eq .Values.nginx.useCase "front-proxy" -}}
 # Primary Servers (Simple redirect and default proxy)
 {{- range .Values.frontProxy.primaryServers }}
 server {
-    listen {{ include "nginx-standard.servicePort" $ }};
-    server_name {{ .serverName }};
+  listen {{ include "nginx-standard.servicePort" $ }};
+  server_name {{ .serverName }};
 
-    # Global server directives
-    {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
-    {{- range . }}
-    {{ . }};
-    {{- end }}
-    {{- end }}
+  # Global server directives
+  {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
+  {{- range . }}
+  {{ . }};
+  {{- end }}
+  {{- end }}
 
-    # Root redirect
-    location = / {
-        return 301 https://{{ .serverName }}{{ .redirectPath }};
-    }
+  # Root redirect
+  location = / {
+    return 301 https://{{ .serverName }}{{ .redirectPath }};
+  }
 
-    # Default proxy
-    location / {
-        proxy_pass {{ $.Values.frontProxy.env.HOST_PROXY }}/; 
-    }
+  # Default proxy
+  location / {
+    proxy_pass {{ $.Values.frontProxy.env.HOST_PROXY }}/; 
+  }
 }
 {{- end }}
 
 # Custom Servers (Complex logic/API proxies)
 {{- range .Values.frontProxy.customServers }}
 server {
-    listen {{ include "nginx-standard.servicePort" $ }};
-    server_name {{ .serverName }};
+  listen {{ include "nginx-standard.servicePort" $ }};
+  server_name {{ .serverName }};
 
-    # Global server directives
-    {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
-    {{- range . }}
-    {{ . }};
-    {{- end }}
-    {{- end }}
-    
-    {{- range .locations }}
-    location {{ .path }} {
-        {{- if .additionalConfig }}
+  # Global server directives
+  {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
+  {{- range . }}
+  {{ . }};
+  {{- end }}
+  {{- end }}
+  
+  {{- range .locations }}
+  location {{ .path }} {
+    {{- if .additionalConfig }}
 {{ .additionalConfig | nindent 8 }}
-        {{- end }}
-
-        {{- if .proxyPass }}
-        proxy_pass {{ .proxyPass }}/;
-        {{- end }}
-    }
     {{- end }}
+
+    {{- if .proxyPass }}
+    proxy_pass {{ .proxyPass }}/;
+    {{- end }}
+  }
+  {{- end }}
 }
 {{- end }}
 
 {{- else if eq .Values.nginx.useCase "cache" -}}
 {{- if .Values.cache.locations }}
 # NEW: Per-location cache configuration
-server {
-    listen {{ include "nginx-standard.servicePort" . }} default_server;
-    server_name _;
-    
-    {{- if .Values.cache.clientMaxBodySize }}
-    client_max_body_size {{ .Values.cache.clientMaxBodySize }};
-    {{- end }}
-    large_client_header_buffers 4 32k;
-    
-    {{- range .Values.cache.locations }}
-    {{ include "nginx-standard.cacheLocation" (dict "root" $ "location" .) }}
-    {{- end }}
-}
+# We only use this helper if cache.locations is NOT defined. 
+# Since it is defined, we ensure the main nginx.conf uses the 'include' pattern 
+# and rely on nginx-standard.cacheServerConfig to generate the full content.
 {{- else }}
 # OLD: Legacy single location cache (backward compatibility)
 server {
-    listen {{ include "nginx-standard.servicePort" . }} default_server;
-    server_name _;
-    client_max_body_size {{ .Values.cache.clientMaxBodySize | default "100m" }};
-    large_client_header_buffers 4 32k;
-    
-    location / {
-        proxy_buffers {{ .Values.cache.proxy.buffersNumber | default 1024 }} {{ .Values.cache.proxy.bufferSize | default "4k" }};
-        proxy_buffer_size {{ .Values.cache.proxy.bufferSize | default "16k" }};
-        proxy_send_timeout {{ .Values.cache.proxy.sendTimeout | default "600s" }};
-        proxy_read_timeout {{ .Values.cache.proxy.readTimeout | default "600s" }};
-        proxy_connect_timeout {{ .Values.cache.proxy.connectTimeout | default "600s" }};
-
-        # Cache directives
-        proxy_cache my_cache;
-        proxy_cache_valid 200 302 {{ .Values.cache.config.validTime.default | default "10m" }};
-        proxy_cache_valid 404 {{ .Values.cache.config.validTime.notFound | default "1m" }};
-        
-        # Standard headers
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_pass {{ .Values.cache.backendUrl | required "cache.backendUrl is required" }};
-    }
-}
-{{- end }}
-
-{{- else -}}
-# Default configuration
-location / {
-    root /usr/share/nginx/html;
-    index index.html index.htm;
-}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Generate cache server configuration specifically (called from configmap.yaml)
-This is a separate helper because configmap.yaml specifically calls it
-*/}}
-{{- define "nginx-standard.cacheServerConfig" -}}
-{{- if .Values.cache.locations }}
-# Per-location cache configuration
-{{- if .Values.cache.clientMaxBodySize }}
-client_max_body_size {{ .Values.cache.clientMaxBodySize }};
-{{- end }}
-
-{{- range .Values.cache.locations }}
-{{ include "nginx-standard.cacheLocation" (dict "root" $ "location" .) }}
-{{- end }}
-{{- else }}
-# Legacy single location cache
-client_max_body_size {{ .Values.cache.clientMaxBodySize | default "100m" }};
-large_client_header_buffers 4 32k;
-
-location / {
+  listen {{ include "nginx-standard.servicePort" . }} default_server;
+  server_name _;
+  client_max_body_size {{ .Values.cache.clientMaxBodySize | default "100m" }};
+  large_client_header_buffers 4 32k;
+  
+  location / {
     proxy_buffers {{ .Values.cache.proxy.buffersNumber | default 1024 }} {{ .Values.cache.proxy.bufferSize | default "4k" }};
     proxy_buffer_size {{ .Values.cache.proxy.bufferSize | default "16k" }};
     proxy_send_timeout {{ .Values.cache.proxy.sendTimeout | default "600s" }};
@@ -865,6 +804,87 @@ location / {
     proxy_set_header X-Forwarded-Proto $scheme;
 
     proxy_pass {{ .Values.cache.backendUrl | required "cache.backendUrl is required" }};
+  }
+}
+{{- end }}
+
+{{- else -}}
+# Default configuration
+location / {
+  root /usr/share/nginx/html;
+  index index.html index.htm;
+}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Generate cache server configuration specifically (called from configmap.yaml)
+This is a separate helper because configmap.yaml specifically calls it
+*/}}
+{{- define "nginx-standard.cacheServerConfig" -}}
+{{- if .Values.cache.locations }}
+# Per-location cache configuration
+resolver dns-default.openshift-dns.svc.cluster.local valid=10s ipv6=off;
+resolver_timeout 5s;
+
+{{- if .Values.cache.clientMaxBodySize }}
+client_max_body_size {{ .Values.cache.clientMaxBodySize }};
+{{- end }}
+large_client_header_buffers 4 32k;
+
+{{- range .Values.cache.locations }}
+{{ include "nginx-standard.cacheLocation" (dict "root" $ "location" .) }}
+{{- end }}
+
+# Standard health check locations (MUST be included here for dynamic configuration)
+location {{ include "nginx-standard.readinessPath" . }} {
+  access_log off;
+  add_header Content-Type text/plain;
+  return 200 'OK';
+}
+
+location {{ include "nginx-standard.livenessPath" . }} {
+  access_log off;
+  add_header Content-Type text/plain;
+  return 200 'OK';
+}
+
+{{- if .Values.nginx.errorPages.enabled }}
+# Custom error pages
+{{- range $code, $page := .Values.nginx.errorPages.pages }}
+error_page {{ $code }} {{ $page }};
+{{- end }}
+
+location ~ ^/(custom_.*\.html)$ {
+  root {{ .Values.nginx.errorPages.root }};
+  internal;
+}
+{{- end }}
+
+{{- else }}
+# Legacy single location cache
+client_max_body_size {{ .Values.cache.clientMaxBodySize | default "100m" }};
+large_client_header_buffers 4 32k;
+
+location / {
+  proxy_buffers {{ .Values.cache.proxy.buffersNumber | default 1024 }} {{ .Values.cache.proxy.bufferSize | default "4k" }};
+  proxy_buffer_size {{ .Values.cache.proxy.bufferSize | default "16k" }};
+  proxy_send_timeout {{ .Values.cache.proxy.sendTimeout | default "600s" }};
+  proxy_read_timeout {{ .Values.cache.proxy.readTimeout | default "600s" }};
+  proxy_connect_timeout {{ .Values.cache.proxy.connectTimeout | default "600s" }};
+
+  # Cache directives
+  proxy_cache my_cache;
+  proxy_cache_valid 200 302 {{ .Values.cache.config.validTime.default | default "10m" }};
+  proxy_cache_valid 404 {{ .Values.cache.config.validTime.notFound | default "1m" }};
+  
+  # Standard headers
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  proxy_pass {{ .Values.cache.backendUrl | required "cache.backendUrl is required" }};
 }
 {{- end }}
 {{- end -}}
