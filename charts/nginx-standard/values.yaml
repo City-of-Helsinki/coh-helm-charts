@@ -116,9 +116,9 @@ observability:
     # NGINX stub_status module configuration
     stubStatus:
       path: "/nginx_status"
-      allowedIPs:
-        - "10.0.0.0/8"
-        - "172.16.0.0/12"
+      # allowedIPs:
+      #   - "10.0.0.0/8"
+      #   - "172.16.0.0/12"
     
     # Prometheus exporter sidecar configuration
     prometheusExporter:

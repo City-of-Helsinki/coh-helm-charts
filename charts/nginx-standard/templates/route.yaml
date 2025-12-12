@@ -23,10 +23,15 @@ spec:
     weight: 100
   port:
     targetPort: {{ $.Values.nginx.service.name | default "http" }}
-{{- if $route.tls }}
   tls:
-    termination: {{ $route.tls.termination | default "edge" }}
-    insecureEdgeTerminationPolicy: {{ $route.tls.insecureEdgeTerminationPolicy | default "Redirect" }}
-{{- end }}
+    {{- with $route.tls }}
+    # If 'tls' is defined for the specific route item, use its values
+    termination: {{ .termination | default "edge" }}
+    insecureEdgeTerminationPolicy: {{ .insecureEdgeTerminationPolicy | default "Redirect" }}
+    {{- else }}
+    # If 'tls' is NOT defined, use the chart's defaults (Edge/Redirect)
+    termination: "edge"
+    insecureEdgeTerminationPolicy: "Redirect"
+    {{- end }}
 {{- end }}
 {{- end }}
