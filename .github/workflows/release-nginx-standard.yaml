@@ -5,7 +5,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    # 1. Define input for chart version for manual triggers
     inputs:
       chart_version:
         description: 'The semantic version to release (e.g., 1.0.1). Will override existing releases.'
@@ -21,7 +20,6 @@ jobs:
 
       - name: Set up Helm
         uses: azure/setup-helm@v3
-        # FIX: Pass the default GITHUB_TOKEN to the environment of the action
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -47,15 +45,12 @@ jobs:
 
       - name: Set up Helm
         uses: azure/setup-helm@v3
-        # FIX: Pass the default GITHUB_TOKEN to the environment of the action
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
-      # Install yq for parsing YAML, which is required in the next step
       - name: Install yq
         run: sudo snap install yq
 
-      # 2. Updated step: Prioritizes workflow_dispatch input, falls back to tag
       - name: Determine Chart Version
         id: version
         run: |
@@ -93,7 +88,6 @@ jobs:
 
       - name: Publish to Helm Repository (Handles Overwrite)
         env:
-          # NOTE: This uses your custom secret GH_TOKEN for authenticating with the *other* repository (coh-helm-repo)
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           # Clone the artifacts repository using token
