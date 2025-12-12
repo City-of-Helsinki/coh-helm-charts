@@ -1,13 +1,21 @@
 nginx:
   useCase: "elastic-proxy"
+  image:
+    full: 'container-registry.platta-net.hel.fi/devops/nginxinc/nginx-unprivileged:alpine-perl'
+
 # ============================================================================
 # ELASTIC PROXY USE CASE CONFIGURATION (Overrides)
 # ============================================================================
 elasticProxy:
-  enabled: false # Set to true when using elastic-proxy use case
-  authSecretName: ""
+  enabled: true
+  upstreamAuth:
+    enabled: true                               
+    secretName: "elasticsearch-test-es-elastic-user"
+    username: "elastic"                
+    passwordKey: "elastic"                      
+  
   upstream:
-    url: "https://elasticsearch-host1.cluster.svc:9200" # ELASTICSEARCH_URL env var
+    url: "https://elasticsearch-test-es-http.nginx-demo.svc.cluster.local:9200" # ELASTICSEARCH_URL env var
 
 # ============================================================================
 # OPENSHIFT ROUTE CONFIGURATION 
@@ -16,8 +24,8 @@ routes:
   enabled: true
   items:
     - nameSuffix: "" # Creates a route named: {{ .Release.Name }}-nginx-standard
-      host: "liikenne-elastic-proxy-prod.apps.platta.hel.fi"
+      host: "test-elastic-proxy.apps.arodevtest.hel.fi"
       path: ""
     - nameSuffix: "-internal" # Creates a route named: {{ .Release.Name }}-nginx-standard-internal
-      host: "liikenne-elastic-proxy.api.hel.ninja"
+      host: "test-elastic-proxy.api.hel.ninja"
       path: "/internal"

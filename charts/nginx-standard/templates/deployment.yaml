@@ -97,17 +97,16 @@ spec:
                   fieldPath: metadata.namespace
             {{- if eq (include "nginx-standard.elasticProxyEnabled" .) "true" }}
             - name: ELASTICSEARCH_URL
-              value: {{ .Values.elasticProxy.upstream.url | required "elasticProxy.upstream.url is required" }}
+              value: {{ .Values.elasticProxy.upstream.url | required "elasticProxy.upstream.url is required" }}  
+            {{- if and (eq .Values.nginx.useCase "elastic-proxy") .Values.elasticProxy.upstreamAuth.enabled }}
             - name: ELASTIC_USER
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.elasticProxy.authSecretName | default (include "nginx-standard.fullname" .) }}
-                  key: user
+              value: {{ .Values.elasticProxy.upstreamAuth.username | required "elasticProxy.upstreamAuth.username is required when upstreamAuth is enabled" }}
             - name: ELASTIC_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.elasticProxy.authSecretName | default (include "nginx-standard.fullname" .) }}
-                  key: password
+                  name: {{ .Values.elasticProxy.upstreamAuth.secretName | default (include "nginx-standard.fullname" .) }}
+                  key: {{ .Values.elasticProxy.upstreamAuth.passwordKey | required "elasticProxy.upstreamAuth.passwordKey is required when upstreamAuth is enabled" }}
+            {{- end }}
             {{- end }}
             {{- if eq (include "nginx-standard.frontProxyEnabled" .) "true" }}
             {{- range $key, $val := .Values.frontProxy.env }}
@@ -122,6 +121,12 @@ spec:
                   key: {{ $val.secretKey }}
             {{- end }}
             {{- end }}
+          {{- if eq .Values.nginx.useCase "elastic-proxy" }}
+          command: ["nginx"]
+          args:
+            - '-g'
+            - 'daemon off;'
+          {{- else }}
           command:
             - /bin/bash
             - -c
@@ -131,9 +136,39 @@ spec:
                 cp /opt/app-root/etc/nginx.conf /etc/nginx/nginx.conf
               fi
               exec nginx -g 'daemon off;'
+          {{- end }}
           resources:
             {{- toYaml .Values.nginx.resources | nindent 12 }}
+            
+          # --- CONDITIONAL VOLUME MOUNTS ---
           volumeMounts:
+            {{- if eq .Values.nginx.useCase "elastic-proxy" }}
+            # 1. Volume Mounts for the direct NGINX execution (elastic-proxy)
+            {{- if .Values.nginx.errorPages.enabled }}
+            - name: error-pages
+              mountPath: {{ .Values.nginx.errorPages.root }}
+              readOnly: true
+            {{- end }}
+            # Mount nginx.conf to the final location
+            - name: config-volume
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            
+            # CRITICAL FIX: Mount server.conf to the exact path specified in the original nginx.conf's 'include' directive.
+            - name: config-volume
+              mountPath: /opt/app-root/etc/nginx.default.d/server.conf 
+              subPath: nginx.default.d/server.conf
+            
+            # The rest of the necessary mounts
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: nginx-tmp
+              mountPath: /tmp
+              
+            {{- else }}
+            # 2. Volume Mounts for all other use cases (shell execution)
             {{- if .Values.nginx.errorPages.enabled }}
             - name: error-pages
               mountPath: {{ .Values.nginx.errorPages.root }}
@@ -155,6 +190,7 @@ spec:
               mountPath: /var/run
             - name: nginx-tmp
               mountPath: /tmp
+            {{- end }}
           {{- if eq (include "nginx-standard.healthChecksEnabled" .) "true" }}
           readinessProbe:
             httpGet:

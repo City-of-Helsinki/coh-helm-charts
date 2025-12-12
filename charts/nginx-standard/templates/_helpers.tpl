@@ -538,6 +538,12 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
     
+    perl_set $elasticsearch_url '
+      sub {
+        return $ENV{"ELASTICSEARCH_URL"} || "";
+      }
+    ';
+    
     # Perl script to set authorization header
     perl_set $elastic_authorization '
       sub {
@@ -561,7 +567,7 @@ http {
       '"referer": "$http_referer", '
       '"user_agent": "$http_user_agent", '
       '"x_forwarded_for": "$http_x_forwarded_for", '
-      '"request_id": "$nginx_req_id" }';
+      '"request_id": "$request_id" }';
     access_log /dev/stdout nginxlog_json;
 
     sendfile on;
@@ -592,7 +598,7 @@ http {
     {{- end }}
 
     # JSON log format
-    log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$nginx_req_id"}';
+    log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"$request_id"}';
     access_log {{ .Values.nginx.logging.accessLog | default "/dev/stdout" }} json_log;
 
     sendfile on;
@@ -642,6 +648,12 @@ location {{ .path }} {
 server {
     listen {{ include "nginx-standard.servicePort" . }} default_server;
     server_name _;
+    # Hardcoded DNS resolver for Kubernetes/OpenShift
+    # Tries multiple common DNS services for maximum compatibility
+    resolver dns-default.openshift-dns.svc.cluster.local 
+             valid=10s 
+             ipv6=off;
+    resolver_timeout 5s;
     client_max_body_size {{ .Values.elasticProxy.clientMaxBodySize | default "50m" }};
 {{- range .Values.elasticProxy.routes }}
     location {{ .path }} {
@@ -667,9 +679,10 @@ server {
 
         # Elastic Authentication Header
         proxy_set_header Authorization "Basic $elastic_authorization";
+        add_header X-Debug-Auth "Basic $elastic_authorization" always;
         
         # Proxy Pass to Elasticsearch
-        proxy_pass ${ELASTICSEARCH_URL};
+        proxy_pass $elasticsearch_url;
         proxy_ssl_verify off;
         proxy_redirect off;
         proxy_pass_header Authorization;
@@ -691,7 +704,6 @@ server {
         {{- end }}
     }
 {{- end }}
-
     # Health check endpoints
     location {{ include "nginx-standard.readinessPath" . }} {
       access_log off;
@@ -809,8 +821,8 @@ server {
 {{- else -}}
 # Default configuration
 location / {
-  root /usr/share/nginx/html;
-  index index.html index.htm;
+    root /usr/share/nginx/html;
+    index index.html index.htm;
 }
 {{- end -}}
 {{- end -}}

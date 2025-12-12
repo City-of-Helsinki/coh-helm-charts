@@ -47,3 +47,7 @@ routes:
   enabled: true
   items:
     - host: "test-fileshare.test.hel.ninja"  # REQUIRED
+
+observability:
+  metrics:
+    enabled: true

@@ -227,8 +227,11 @@ fileSharing:
 elasticProxy:
   enabled: false
   
-  # Secret name containing Elasticsearch credentials (keys: user, password)
-  authSecretName: ""  # Leave empty to use chart name
+  upstreamAuth:
+    enabled: true                               
+    secretName: "my-elastic-upstream-auth-secret"
+    username: "elastic-admin-user"                
+    passwordKey: "password"
   
   # Elasticsearch upstream configuration
   upstream:
@@ -247,16 +250,18 @@ elasticProxy:
   
   # Route definitions with method restrictions
   routes:
-    - path: "~ ^/([a-z][a-z_,-]*)/(_search|_msearch)$"
-      methods: ["POST", "GET"]
+    - path: "= /"
+      methods: ["GET"]
       additionalConfig: ""
     
     - path: "/_cluster/health"
       methods: ["GET"]
+      additionalConfig: ""
     
-    - path: "/ping"
-      methods: ["GET"]
-    
+    - path: "~ ^/([a-z][a-z_,-]*)/(_search|_msearch)$"
+      methods: ["POST", "GET"]
+      additionalConfig: ""
+
     # Example: Restrict index creation
     # - path: "~ ^/([a-z][a-z_,-]*)$"
     #   methods: ["PUT"]
@@ -414,7 +419,7 @@ frontProxy:
 
 # Network policies (recommended for production)
 networkPolicy:
-  enabled: true
+  enabled: false
   
   # Ingress rules
   ingress:
