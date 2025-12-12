@@ -6,6 +6,9 @@ metadata:
   namespace: {{ include "nginx-standard.namespace" . }}
   labels:
     {{- include "nginx-standard.labels" . | nindent 4 }}
+    {{- if .Values.fileSharing.storage.mode }}
+    storage-mode: {{ .Values.fileSharing.storage.mode }}
+    {{- end }}
 spec:
   accessModes:
     - {{ .Values.fileSharing.storage.pvc.accessMode | default "ReadWriteMany" }}
@@ -15,7 +18,9 @@ spec:
   {{- if .Values.fileSharing.storage.pvc.storageClassName }}
   storageClassName: {{ .Values.fileSharing.storage.pvc.storageClassName }}
   {{- end }}
-  {{- if .Values.fileSharing.storage.pvc.volumeName }}
+  {{- if and (eq .Values.fileSharing.storage.mode "static") .Values.fileSharing.storage.pvc.volumeName }}
+  # Static mode: Bind to pre-created PV
   volumeName: {{ .Values.fileSharing.storage.pvc.volumeName }}
   {{- end }}
+  # If volumeName is empty and storageClassName is set, dynamic provisioning will occur
 {{- end }}

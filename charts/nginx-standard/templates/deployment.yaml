@@ -27,12 +27,17 @@ spec:
       imagePullSecrets:
         {{- toYaml .Values.nginx.image.pullSecrets | nindent 8 }}
       {{- end }}
+      {{- if (.Values.podSecurityContext).enabled | default false }}
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
-        seccompProfile:
-          type: RuntimeDefault
+        {{- $ctx := omit .Values.podSecurityContext "enabled" }}
+        {{- range $key, $value := $ctx }}
+        {{- if or (eq $key "runAsUser") (eq $key "runAsGroup") (eq $key "fsGroup") }}
+        {{ $key }}: {{ $value | int }}
+        {{- else }}
+        {{ $key }}: {{ $value }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
       volumes:
         {{- if .Values.nginx.errorPages.enabled }}
         - name: error-pages
@@ -77,12 +82,6 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ include "nginx-standard.image" . }}"
           imagePullPolicy: {{ .Values.nginx.image.pullPolicy | default "IfNotPresent" }}
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-            readOnlyRootFilesystem: true
           ports:
             - name: http
               containerPort: {{ include "nginx-standard.servicePort" . }}

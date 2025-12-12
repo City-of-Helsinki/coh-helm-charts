@@ -65,15 +65,33 @@ helm uninstall my-nginx
 
 ### File Sharing
 
-Serve static files with optional Azure File Storage integration and directory browsing.
+Serve static files with Azure File Storage integration and directory browsing. Supports both **dynamic** (auto-provisioned) and **static** (existing share) storage modes.
 
 **Key Features:**
-- Azure File Storage support via PVC
-- Directory auto-indexing
-- External Secrets integration for Azure credentials
+- Two storage provisioning modes: dynamic and static
+- Dynamic: Cluster automatically creates Azure File shares
+- Static: Mount pre-existing Azure File shares with External Secrets
+- Directory auto-indexing with customizable layouts
 - Multiple location blocks with custom configurations
+- Support for download headers and custom NGINX directives
 
-**Example Values:**
+---
+
+#### Storage Modes Comparison
+
+| Feature | Dynamic Mode | Static Mode |
+|---------|--------------|-------------|
+| **Setup** | Automatic | Manual |
+| **External Secrets** | Not required | Required |
+| **Key Vault** | Not required | Required |
+| **Use Existing Share** | No | Yes |
+| **Best For** | New deployments | Legacy/existing shares |
+
+---
+
+#### Dynamic Provisioning Example
+
+The cluster automatically creates the file share using Azure File CSI driver.
 
 ```yaml
 nginx:
@@ -82,16 +100,21 @@ nginx:
 fileSharing:
   enabled: true
   storage:
+    # Dynamic mode: cluster creates share automatically
+    mode: "dynamic"
     mountPath: "/opt/app-root/src"
     pvc:
       enabled: true
-      size: "10Gi"
-      storageClassName: "azurefile"
+      size: "50Gi"
+      # Use cluster's dynamic provisioner
+      storageClassName: "azure-file"
       accessMode: "ReadWriteMany"
+      # Leave empty for dynamic provisioning
+      volumeName: ""
+      # Disable static Azure File configuration
       azureFile:
-        enabled: true
-        shareName: "my-fileshare"
-  
+        enabled: false
+  # Configure file serving locations
   locations:
     - path: "/"
       root: "/opt/app-root/src"
@@ -99,19 +122,93 @@ fileSharing:
       additionalConfig: |
         autoindex_exact_size off;
         autoindex_localtime on;
-    
+    # Downloads with attachment headers
     - path: "/downloads"
       alias: "/opt/app-root/src/downloads/"
       autoindex: true
       additionalConfig: |
         add_header Content-Disposition "attachment";
+# External Secrets not needed for dynamic mode
+externalSecrets:
+  enabled: false
+routes:
+  enabled: true
+  items:
+    - nameSuffix: ""
+      host: "files.example.com"
+      tls:
+        termination: "edge"
+```
+**What happens:**
+1. Helm creates PVC with `storageClassName: azurefile-csi`
+2. Azure File CSI provisioner detects the PVC
+3. Cluster automatically:
+   - Creates or selects a storage account
+   - Creates a file share (named `pvc-xxxxx`)
+   - Creates a PV and binds it to the PVC
+   - Generates and stores credentials
+---
 
+#### Static Provisioning Example
+
+Mount a pre-existing Azure File share with credentials from Azure Key Vault.
+
+```yaml
+nginx:
+  useCase: "file-sharing"
+fileSharing:
+  enabled: true
+  storage:
+    # Static mode: use existing file share
+    mode: "static"
+    mountPath: "/opt/app-root/src"
+    pvc:
+      enabled: true
+      size: "50Gi"
+      storageClassName: "azurefile"
+      accessMode: "ReadWriteMany"
+      # Optional: bind to specific PV
+      volumeName: "my-fileshare-pv"
+      # Azure File configuration for existing share
+      azureFile:
+        enabled: true
+        # REQUIRED: name of your existing Azure File share
+        shareName: "company-fileshare"
+        secretName: "" #provide secret name only if secret object already exist, else it will be generated from external secrets objects 
+        # Optional: override PV capacity
+        capacity: ""
+  # Configure file serving locations
+  locations:
+    - path: "/"
+      root: "/opt/app-root/src"
+      index: "index.html index.htm"
+      autoindex: true
+      additionalConfig: |
+        autoindex_exact_size off;
+        autoindex_localtime on;
+    # Restricted admin area
+    - path: "/admin"
+      alias: "/opt/app-root/src/admin/"
+      autoindex: false
+      additionalConfig: |
+        # Disable directory listing for admin
+        auth_basic "Restricted Area";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+# External Secrets REQUIRED for static mode
 externalSecrets:
   enabled: true
+  refreshInterval: "1h"
   azureKeyVault:
-    vaultName: "my-keyvault"
-    tenantId: "your-tenant-id"
-
+    # REQUIRED: Your Azure Key Vault name
+    vaultName: "company-keyvault"
+    # REQUIRED: Azure AD tenant ID
+    tenantId: "3feb6bc1-d722-4726-966c-5b58b64df752"
+    # Key names in Azure Key Vault
+    storageAccountNameKey: "AZURE-STORAGE-ACCOUNT-NAME"
+    storageAccountKeyKey: "AZURE-STORAGE-ACCOUNT-KEY"
+  # Service Principal credentials (must exist in cluster)
+  servicePrincipal:
+    secretName: "azure-service-principal"
 routes:
   enabled: true
   items:
@@ -121,19 +218,74 @@ routes:
         termination: "edge"
 ```
 
-**Configuration Reference:**
+**Prerequisites for Static Mode:**
+
+1. **Create Azure Resources:**
+- Create file share (if not exists)
+- Get storage account key
+- Store credentials in Key Vault
+2. **Create Service Principal Secret with clientid and clientsecret**
+3. **Deploy Helm Chart:**
+
+**What happens:**
+1. Helm creates SecretStore pointing to your Key Vault
+2. ExternalSecret fetches credentials from Key Vault
+3. Kubernetes Secret is auto-created with storage account credentials
+4. PV is created pointing to your existing file share
+5. PVC binds to the PV
+---
+
+#### Configuration Reference
+
+**Storage Mode Configuration:**
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `fileSharing.enabled` | Enable file sharing mode | `false` |
+| `fileSharing.storage.mode` | Provisioning mode: `dynamic` or `static` | `dynamic` |
 | `fileSharing.storage.mountPath` | Mount path for files | `/opt/app-root/src` |
+
+**PVC Configuration:**
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
 | `fileSharing.storage.pvc.enabled` | Create PVC | `true` |
 | `fileSharing.storage.pvc.size` | PVC size | `10Gi` |
-| `fileSharing.storage.pvc.storageClassName` | Storage class | `azurefile` |
-| `fileSharing.storage.pvc.azureFile.enabled` | Enable Azure File | `true` |
-| `fileSharing.storage.pvc.azureFile.shareName` | Azure file share name | `fileshare` |
-| `fileSharing.locations` | List of location blocks | See values.yaml |
+| `fileSharing.storage.pvc.storageClassName` | Storage class name | `azurefile-csi` |
+| `fileSharing.storage.pvc.accessMode` | Access mode | `ReadWriteMany` |
+| `fileSharing.storage.pvc.volumeName` | Bind to specific PV (static mode only) | `""` |
 
+**Azure File Configuration (Static Mode Only):**
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `fileSharing.storage.pvc.azureFile.enabled` | Enable Azure File static provisioning | `false` |
+| `fileSharing.storage.pvc.azureFile.shareName` | Existing Azure File share name | `fileshare` |
+| `fileSharing.storage.pvc.azureFile.secretName` | Secret name with credentials | Auto-generated |
+| `fileSharing.storage.pvc.azureFile.capacity` | PV capacity override | Uses `pvc.size` |
+
+**Location Configuration:**
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `fileSharing.locations` | List of NGINX location blocks | See values.yaml |
+| `fileSharing.locations[].path` | Location path | - |
+| `fileSharing.locations[].root` | Document root directory | - |
+| `fileSharing.locations[].alias` | Alias directive (alternative to root) | - |
+| `fileSharing.locations[].index` | Index files | - |
+| `fileSharing.locations[].autoindex` | Enable directory listing | `false` |
+| `fileSharing.locations[].additionalConfig` | Custom NGINX directives | `""` |
+
+**External Secrets Configuration (Static Mode Only):**
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `externalSecrets.enabled` | Enable External Secrets integration | `false` |
+| `externalSecrets.refreshInterval` | Sync interval from Key Vault | `1h` |
+| `externalSecrets.azureKeyVault.vaultName` | Azure Key Vault name | Required |
+| `externalSecrets.azureKeyVault.tenantId` | Azure AD tenant ID | Required |
+| `externalSecrets.servicePrincipal.secretName` | K8s secret with SP credentials | `azure-service-principal` |
+---
 ### Elastic Proxy
 
 Secure proxy for Elasticsearch with built-in authentication and route filtering.
@@ -580,7 +732,7 @@ observability:
 
 ```yaml
 networkPolicy:
-  enabled: false
+  enabled: true
   ingress:
     - from:
         - namespaceSelector:

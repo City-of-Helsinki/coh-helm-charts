@@ -8,6 +8,13 @@ global:
 nameOverride: ""  # Override chart name
 fullnameOverride: ""  # Override full resource names
 
+podSecurityContext:
+  enabled: false
+  runAsUser: ""
+  runAsGroup: ""
+  fsGroup: ""
+  fsGroupChangePolicy: ""
+
 # ==============================================================================
 # NGINX BASE CONFIGURATION
 # ==============================================================================
@@ -171,23 +178,38 @@ fileSharing:
   enabled: false
   
   storage:
+    # Storage provisioning mode: "dynamic" or "static"
+    # - dynamic: Uses cluster StorageClass to auto-create file share
+    # - static: Mounts pre-existing Azure File share via PV
+    mode: "dynamic"  # Options: "dynamic" | "static"
+    
     mountPath: "/opt/app-root/src"
     
     # Persistent Volume Claim configuration
     pvc:
       enabled: true
       size: "10Gi"
-      storageClassName: "azurefile"
       accessMode: "ReadWriteMany"
-      volumeName: ""  # Optional: bind to specific PV
-      
-      # Azure File specific configuration
+      # Storage class configuration
+      # For DYNAMIC mode: Use cluster's dynamic provisioner
+      # For STATIC mode: Can be any class or empty
+      storageClassName: "azurefile-csi"
+      # Volume name (used only in STATIC mode)
+      # For DYNAMIC mode: Leave empty
+      # For STATIC mode: Set to bind to specific PV
+      volumeName: ""
+      # Azure File specific configuration (STATIC mode only)
       azureFile:
-        enabled: true
+        # Enable only for STATIC mode with existing share
+        enabled: false
+        # Name of the existing Azure File share (STATIC mode)
         shareName: "fileshare"
-        secretName: ""  # Leave empty to auto-generate from External Secrets
-        capacity: ""  # Optional: override PV capacity
-        volumeName: ""  # Optional: custom PV name
+        # Secret name for Azure credentials (STATIC mode)
+        # Leave empty to auto-generate from External Secrets
+        secretName: ""
+        # PV capacity (STATIC mode)
+        # Leave empty to use pvc.size
+        capacity: ""
   
   # NGINX location blocks for file serving
   locations:
@@ -198,8 +220,6 @@ fileSharing:
       additionalConfig: |
         autoindex_exact_size off;
         autoindex_localtime on;
-        # Uncomment to add file download headers:
-        # add_header Content-Disposition "attachment";
 
 # ==============================================================================
 # ELASTIC PROXY USE CASE
@@ -394,7 +414,7 @@ frontProxy:
 
 # Network policies (recommended for production)
 networkPolicy:
-  enabled: false
+  enabled: true
   
   # Ingress rules
   ingress:
