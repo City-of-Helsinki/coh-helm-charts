@@ -1,0 +1,10 @@
+graph TD
+    subgraph "NGINX Cache Proxy"
+        Users --> NGINX[Nginx Pod<br/>Cache Proxy]
+        NGINX -->|Cache hit| Users
+        NGINX -->|Cache miss| Backend[Origin Server]
+        Backend -->|Store response| NGINX
+        NGINX -->|Cache to disk| Disk[(Cache Disk or<br/>ephemeral volumes)]
+        Users -->|Request 1| NGINX
+        Users -->|Request 2<br/>same resource| NGINX
+    end

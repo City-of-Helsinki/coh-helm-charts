@@ -1,14 +1,15 @@
 nginx:
-  useCase: "front-proxy" 
-# ============================================================================
-# FRONT PROXY USE CASE (All NGINX configuration elements)
-# ============================================================================
+  useCase: "front-proxy"
+  replicaCount: 2
+  image:
+    full: 'container-registry.platta-net.hel.fi/devops/nginxinc/nginx-unprivileged:alpine-perl'
+
 frontProxy:
   enabled: true
   
-  # --- 1a. PLAIN ENV VARIABLES (Value defined directly in values.yaml) ---
+  # --- 1a. PLAIN ENV VARIABLES  ---
   env:
-    HOST_PROXY: "https://backend-api.svc.cluster.local:443"
+    HOST_PROXY: "https://elasticsearch-test-es-http.nginx-demo.svc.cluster.local:9200"
     HOST_EN: "en.example.com"
     HOST_SV: "sv.example.com"
     
@@ -19,71 +20,69 @@ frontProxy:
       10.128.0.0/14 1;
     PROXY_DEFAULT: 0
 
-  # --- 1b. SECRET ENV VARIABLES (Value fetched from a K8s Secret) ---
+  # --- 1b. SECRET ENV VARIABLES (secretEnv as separate key) ---
   secretEnv:
-    # Environment variable name: DIGITRANSIT_API_KEY
     DIGITRANSIT_API_KEY:
-      secretName: "my-proxy-secrets" 
-      secretKey: "digitransit-key"  
-
-    # Environment variable name: CUSTOM_AUTH_TOKEN
+      secretName: "elasticsearch-test-es-elastic-user" 
+      secretKey: "elastic"  
     CUSTOM_AUTH_TOKEN:
-      secretName: "auth-secrets"
-      secretKey: "auth-token-value"
+      secretName: "elasticsearch-test-es-elastic-user"
+      secretKey: "elastic"
       
   # --- 2. GLOBAL NGINX CONFIGURATION INJECTIONS ---
   globalConfig:
-    # Directives inserted directly into the NGINX 'http' block (e.g., GEO block)
     httpDirectives: |
       # Defines the $allowed variable using the list in proxy_ips.conf
-      geo $$remote_addr $$allowed {
-        default $$PROXY_DEFAULT; 
+      geo $remote_addr $allowed {
+        default $PROXY_DEFAULT; 
         include /opt/app-root/etc/proxy_ips.conf;
       }
-      # map $$http_user_agent $$is_bot { 
+      # map $http_user_agent $is_bot { 
       #   default 0;
       #   ~*bot 1;
       # }
 
-
-    # Directives inserted at the beginning of *each* NGINX 'server' block
     serverDirectives:
-      - real_ip_header X-Forwarded-For;
-      - set_real_ip_from 10.128.0.0/14;
-      - client_max_body_size 100m; # Example from hauki-api
-      - proxy_buffers 1024 4k;    # Example from hauki-api
+      - real_ip_header X-Forwarded-For
+      - set_real_ip_from 10.128.0.0/14
+      - client_max_body_size 100m
+      - proxy_buffers 1024 4k
 
   # --- 3. PRIMARY SERVER BLOCKS (Simple redirects/proxies) ---
   primaryServers:
-    - serverName: $$HOST_EN
+    - serverName: "en.example.com"
       redirectPath: "/en"
       
   # --- 4. CUSTOM SERVER BLOCKS (Complex logic/API proxies) ---
   customServers:
-    # Example 1: API proxy using a secret value and complex path
     - serverName: digitransit-proxy.api.hel.fi
       locations:
         - path: "/"
           proxyPass: https://api.digitransit.fi/
           additionalConfig: |
-            # Uses the secret-backed env var $$DIGITRANSIT_API_KEY
-            proxy_set_header digitransit-subscription-key $$DIGITRANSIT_API_KEY;
+            proxy_set_header digitransit-subscription-key $DIGITRANSIT_API_KEY;
             
-    # Example 2: Location requiring the complex GEO block check
     - serverName: admin.example.com
       locations:
-        - path: "= /admin" # Exact match location
-          # The 'if' logic is placed in additionalConfig
+        - path: "= /admin"
           additionalConfig: |
-            if ($$allowed = 0) {
-              return 403 "blocked $$remote_addr";
+            if ($allowed = 0) {
+              return 403 "blocked $remote_addr";
             }
-          proxyPass: https://admin-backend.svc.cluster.local:8000/admin
+          proxyPass: https://elasticsearch-test-es-http.nginx-demo.svc.cluster.local:9200
           
-    # Example 3: Simple redirect (omits proxyPass)
     - serverName: xn--ptkset-buaa7n.hel.fi
       locations:
         - path: "/"
-          # proxyPass is omitted, and this directive terminates the request.
           additionalConfig: |
-            return 301 https://paatokset.hel.fi/$$uri;
+            return 301 https://paatokset.hel.fi/$uri;
+
+observability:
+  metrics:
+    enabled: true
+    type: "stub_status"
+    stubStatus:
+      path: "/nginx_status"
+
+routes:
+  enabled: false  # Disable routes for front-proxy, use ingress instead

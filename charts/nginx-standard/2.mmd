@@ -1,0 +1,7 @@
+graph LR
+    subgraph "Elasticsearch Proxy"
+        drupal-search-app1 --> NGINX[Nginx Pod<br/>Elastic Proxy]
+        drupal-search-app2 --> NGINX
+        drupal-search-app3 --> NGINX
+        NGINX -->|Auth + Restrictive Routing| ES[Elasticsearch<br/>Cluster]
+    end

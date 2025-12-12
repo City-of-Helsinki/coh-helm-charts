@@ -80,16 +80,6 @@ false
 {{- end -}}
 {{- end -}}
 
-{{/*
-Check if front proxy is enabled
-*/}}
-{{- define "nginx-standard.frontProxyEnabled" -}}
-{{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.enabled -}}
-true
-{{- else -}}
-false
-{{- end -}}
-{{- end -}}
 
 {{/*
 Check if cache proxy is enabled
@@ -123,6 +113,39 @@ Generate PV name
 {{- .Values.fileSharing.storage.pvc.volumeName -}}
 {{- else -}}
 {{- include "nginx-standard.fullname" . }}-pv
+{{- end -}}
+{{- end -}}
+
+{{/*
+Check if front proxy is enabled
+*/}}
+{{- define "nginx-standard.frontProxyEnabled" -}}
+{{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.enabled -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end -}}
+
+{{/*
+Get PROXY_IP value from frontProxy
+*/}}
+{{- define "nginx-standard.proxyIpValue" -}}
+{{- if .Values.frontProxy.env.PROXY_IP -}}
+{{ .Values.frontProxy.env.PROXY_IP }}
+{{- else if .Values.frontProxy.environment.plain.PROXY_IP -}}
+{{ .Values.frontProxy.environment.plain.PROXY_IP }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Check if PROXY_IP exists
+*/}}
+{{- define "nginx-standard.hasProxyIp" -}}
+{{- if or (.Values.frontProxy.env.PROXY_IP) (.Values.frontProxy.environment.plain.PROXY_IP) -}}
+true
+{{- else -}}
+false
 {{- end -}}
 {{- end -}}
 

@@ -1,0 +1,11 @@
+---
+title: File Sharing Service
+---
+graph TD
+    User[End User/Client] -->|HTTPS:443| AG[Application Gateway]
+    AG -->|HTTPS| Router[OpenShift Router]
+    Router -->|HTTP:8080| NGINX[Nginx Pod<br/>File Sharing Mode]
+    NGINX -->|Read files| Storage[(Persistent Storage <br/> Azure file)]
+    NGINX -->|Auto-index| Router
+    Router -->|HTTPS response| User
+    Storage -->|File data| NGINX

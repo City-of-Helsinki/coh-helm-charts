@@ -1,0 +1,7 @@
+graph LR
+    subgraph "NGINX Front-Proxy"
+        Browser/Client -->|Multiple domains| NGINX[Nginx Pod<br/>Front Proxy]
+        NGINX -->|Route /UI| ES[UI-app]
+        NGINX -->|Route /api| External[External API]
+        NGINX -->|301 Redirect| Website[Target Website<br/>Punycode domain redirect]
+    end
