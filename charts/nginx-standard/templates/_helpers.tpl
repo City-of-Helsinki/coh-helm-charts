@@ -702,6 +702,7 @@ server {
 }
 {{- end }}
 {{- end }}
+{{- end }}
 {{- if .Values.frontProxy.customServers }}
 # Custom Servers
 {{- range .Values.frontProxy.customServers }}
