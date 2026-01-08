@@ -1,4 +1,10 @@
 {{/*
+==============================================================================
+STANDARD HELM HELPERS
+==============================================================================
+*/}}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "nginx-standard.name" -}}
@@ -258,7 +264,7 @@ SECURITY HEADERS
 */}}
 
 {{- define "nginx-standard.securityHeaders" -}}
-{{- if .Values.nginx.security.headers.enabled }}
+{{- if .Values.nginx.security.headers.enabled -}}
 add_header X-Content-Type-Options "{{ .Values.nginx.security.headers.contentTypeOptions }}" always;
 add_header X-Frame-Options "{{ .Values.nginx.security.headers.frameOptions }}" always;
 add_header X-XSS-Protection "{{ .Values.nginx.security.headers.xssProtection }}" always;
@@ -300,15 +306,15 @@ NGINX SERVER CONFIGURATION (server.conf)
 
 {{- define "nginx-standard.nginxServerConf" -}}
 {{- if eq .Values.nginx.useCase "cache" -}}
-{{ include "nginx-standard.serverConf.cache" . }}
+{{- include "nginx-standard.serverConf.cache" . }}
 {{- else if eq .Values.nginx.useCase "elastic-proxy" -}}
-{{ include "nginx-standard.serverConf.elasticProxy" . }}
+{{- include "nginx-standard.serverConf.elasticProxy" . }}
 {{- else if eq .Values.nginx.useCase "front-proxy" -}}
-{{ include "nginx-standard.serverConf.frontProxy" . }}
+{{- include "nginx-standard.serverConf.frontProxy" . }}
 {{- else if eq .Values.nginx.useCase "file-sharing" -}}
-{{ include "nginx-standard.serverConf.fileSharing" . }}
+{{- include "nginx-standard.serverConf.fileSharing" . -}}
 {{- else -}}
-{{ include "nginx-standard.serverConf.default" . }}
+{{- include "nginx-standard.serverConf.default" . }}
 {{- end -}}
 {{- end -}}
 
@@ -319,7 +325,7 @@ COMMON BUILDING BLOCKS
 */}}
 
 {{/* Common worker and events configuration */}}
-{{- define "nginx-standard.commonWorkerEvents" -}}
+{{- define "nginx-standard.commonWorkerEvents" }}
 worker_processes auto;
 error_log {{ .Values.nginx.logging.errorLog | default "/dev/stderr" }} {{ .Values.nginx.logging.errorLevel | default "notice" }};
 pid /var/run/nginx.pid;
@@ -327,20 +333,19 @@ pid /var/run/nginx.pid;
 events {
   worker_connections 1024;
 }
-{{- end -}}
+{{ end }}
 
 {{/* Common HTTP block start */}}
-{{- define "nginx-standard.commonHttpBlockStart" -}}
+{{- define "nginx-standard.commonHttpBlockStart" }}
 http {
   include /etc/nginx/mime.types;
   default_type application/octet-stream;
-  
   sendfile on;
   tcp_nopush on;
   tcp_nodelay on;
   keepalive_timeout 65;
   types_hash_max_size 2048;
-{{- end -}}
+{{- end }}
 
 {{/* Common JSON log format */}}
 {{- define "nginx-standard.jsonLogFormat" -}}
@@ -354,7 +359,7 @@ http {
 {{- end -}}
 log_format json_log escape=json '{"time":"$time_iso8601","level":"info","source":"nginx","remote_addr":"$remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"response_time":$request_time,"bytes_sent":$body_bytes_sent,{{- if $includeCache }}"cache_status":"$upstream_cache_status",{{- end }}"referer":"$http_referer","user_agent":"$http_user_agent","x_forwarded_for":"$http_x_forwarded_for","request_id":"{{ $requestIdVar }}"}';
 access_log {{ .Values.nginx.logging.accessLog | default "/dev/stdout" }} json_log;
-{{- end -}}
+{{- end }}
 
 {{/* Request ID generation */}}
 {{- define "nginx-standard.requestIdGeneration" -}}
@@ -363,7 +368,7 @@ if ($nginx_req_id = "") {
   set $nginx_req_id "nginx-$connection-$msec";
 }
 add_header X-Request-ID $nginx_req_id;
-{{- end -}}
+{{- end }}
 
 {{/* Common server block start */}}
 {{- define "nginx-standard.commonServerBlockStart" -}}
@@ -372,15 +377,14 @@ server {
   listen [::]:{{ include "nginx-standard.servicePort" . | default "8080" }} default_server;
   server_name _;
   
-  {{ include "nginx-standard.requestIdGeneration" . | nindent 2 }}
-  
-{{ include "nginx-standard.securityHeaders" . | nindent 2 }}
-{{- end -}}
+  {{- include "nginx-standard.requestIdGeneration" . | nindent 2 }}
+{{- include "nginx-standard.securityHeaders" . | nindent 2 }}
+{{- end }}
 
 {{/* Metrics endpoint */}}
 {{- define "nginx-standard.metricsLocation" -}}
-{{- if .Values.observability.metrics.enabled }}
-{{- if eq .Values.observability.metrics.type "stub_status" }}
+{{- if .Values.observability.metrics.enabled -}}
+{{- if eq .Values.observability.metrics.type "stub_status" -}}
 location {{ .Values.observability.metrics.stubStatus.path }} {
   stub_status;
   access_log off;
@@ -391,9 +395,9 @@ location {{ .Values.observability.metrics.stubStatus.path }} {
   deny all;
   {{- end }}
 }
-{{- end }}
-{{- end }}
 {{- end -}}
+{{- end -}}
+{{- end }}
 
 {{/* Health check locations */}}
 {{- define "nginx-standard.healthCheckLocations" -}}
@@ -402,13 +406,12 @@ location = {{ include "nginx-standard.readinessPath" . }} {
   add_header Content-Type text/plain;
   return 200 'OK';
 }
-
-location = {{ include "nginx-standard.livenessPath" . }} {
+location = {{- include "nginx-standard.livenessPath" . }} {
   access_log off;
   add_header Content-Type text/plain;
   return 200 'OK';
 }
-{{- end -}}
+{{- end }}
 
 {{/*
 ==============================================================================
@@ -418,26 +421,22 @@ CACHE USE CASE
 
 {{- define "nginx-standard.nginxMainConf.cache" -}}
 # NGINX Cache Proxy Mode
-{{ include "nginx-standard.commonWorkerEvents" . }}
-
-{{ include "nginx-standard.commonHttpBlockStart" . }}
-  
+{{- include "nginx-standard.commonWorkerEvents" . }}
+{{- include "nginx-standard.commonHttpBlockStart" . }}
   # Cache zones
-  {{ include "nginx-standard.cacheHttpBlock" . | nindent 2 }}
-  
+{{- include "nginx-standard.cacheHttpBlock" . | nindent 2 }}
   # JSON log format with cache status
-  {{- $ctx := dict "Values" .Values "includeCache" true -}}
-  {{ include "nginx-standard.jsonLogFormat" $ctx | nindent 2 }}
-  
-  {{ include "nginx-standard.commonServerBlockStart" . | nindent 2 }}
-    
+{{- $ctx := dict "Values" .Values "includeCache" true }}
+{{- include "nginx-standard.jsonLogFormat" $ctx | nindent 2 }}
+{{- include "nginx-standard.commonServerBlockStart" . | nindent 2 }}
     # Include custom server configuration
     include /opt/app-root/etc/nginx.default.d/*.conf;
-    
-    {{ include "nginx-standard.metricsLocation" . | nindent 4 }}
+{{- if .Values.observability.metrics.enabled }}
+{{- include "nginx-standard.metricsLocation" . | nindent 4 }}
+{{- end }}
   }
 }
-{{- end -}}
+{{- end }}
 
 {{- define "nginx-standard.serverConf.cache" -}}
 {{ include "nginx-standard.cacheServerConfig" . }}
@@ -553,27 +552,23 @@ ELASTIC PROXY USE CASE
 {{/* Elastic proxy nginx.conf - Legacy support */}}
 {{- define "nginx-standard.nginxConf" -}}
 # NGINX Elastic Proxy Mode
-{{ include "nginx-standard.commonWorkerEvents" . }}
-
-{{ include "nginx-standard.commonHttpBlockStart" . }}
-  
+{{- include "nginx-standard.commonWorkerEvents" . }}
+{{- include "nginx-standard.commonHttpBlockStart" . }}
   # JSON log format
-  {{ include "nginx-standard.jsonLogFormat" . | nindent 2 }}
-  
+{{- include "nginx-standard.jsonLogFormat" . | nindent 2 }}
   # Upstream configuration
   upstream elasticsearch {
     server {{ .Values.elasticProxy.upstream.url | replace "https://" "" | replace "http://" "" }};
   }
-  
-  {{ include "nginx-standard.commonServerBlockStart" . | nindent 2 }}
-    
+{{- include "nginx-standard.commonServerBlockStart" . | nindent 2 }}
     # Include custom server configuration
     include /opt/app-root/etc/nginx.default.d/*.conf;
-    
-    {{ include "nginx-standard.metricsLocation" . | nindent 4 }}
+{{- if .Values.observability.metrics.enabled }}
+{{- include "nginx-standard.metricsLocation" . | nindent 4 }}
+{{- end }}
   }
 }
-{{- end -}}
+{{- end }}
 
 {{/* Elastic proxy server config - Legacy support */}}
 {{- define "nginx-standard.serverConfig" -}}
@@ -634,11 +629,9 @@ FRONT PROXY USE CASE
 
 {{- define "nginx-standard.nginxMainConf.frontProxy" -}}
 # NGINX Front Proxy Mode
-{{ include "nginx-standard.commonWorkerEvents" . }}
-
+{{- include "nginx-standard.commonWorkerEvents" . }}
 # Load Perl module for environment variable access
 load_module modules/ngx_http_perl_module.so;
-
 {{- if eq (include "nginx-standard.frontProxyEnabled" .) "true" }}
 {{- if .Values.frontProxy.env }}
 {{- range $key, $val := .Values.frontProxy.env }}
@@ -651,71 +644,58 @@ env {{ $key }};
 {{- end }}
 {{- end }}
 {{- end }}
-
-{{ include "nginx-standard.commonHttpBlockStart" . }}
-  
+{{- include "nginx-standard.commonHttpBlockStart" . }}
   # JSON log format
-  {{- $ctx := dict "Values" .Values "requestIdVar" "$request_id" -}}
-  {{ include "nginx-standard.jsonLogFormat" $ctx | nindent 2 }}
-  
-  {{- if and .Values.frontProxy.enabled .Values.frontProxy.globalConfig.httpDirectives }}
+{{- $ctx := dict "Values" .Values "requestIdVar" "$request_id" }}
+{{- include "nginx-standard.jsonLogFormat" $ctx | nindent 2 }}
+{{- if and .Values.frontProxy.enabled .Values.frontProxy.globalConfig.httpDirectives }}
   # Global HTTP directives
-  {{ .Values.frontProxy.globalConfig.httpDirectives | nindent 2 }}
-  {{- end }}
-  
+{{ .Values.frontProxy.globalConfig.httpDirectives | nindent 2 }}
+{{- end }}
   # Perl set blocks for environment variables
-  {{- if and .Values.frontProxy.enabled .Values.frontProxy.secretEnv }}
-  {{- range $key, $val := .Values.frontProxy.secretEnv }}
+{{- if and .Values.frontProxy.enabled .Values.frontProxy.secretEnv }}
+{{- range $key, $val := .Values.frontProxy.secretEnv }}
   perl_set ${{ lower $key }} 'sub { return $ENV{"{{ $key }}"} || ""; }';
-  {{- end }}
-  {{- end }}
-  
+{{- end }}
+{{- end }}
   # Perl variable for HOST_PROXY
   perl_set $host_proxy_env 'sub { return $ENV{"HOST_PROXY"} || ""; }';
-  
   # Include custom server configuration
   include /opt/app-root/etc/nginx.default.d/*.conf;
 }
-{{- end -}}
+{{- end }}
 
 {{- define "nginx-standard.serverConf.frontProxy" -}}
 {{- if and .Values.frontProxy .Values.frontProxy.enabled }}
-
 # Default server for health checks and catch-all
 server {
   listen {{ include "nginx-standard.servicePort" . }} default_server;
   server_name _;
-  
-  {{ include "nginx-standard.healthCheckLocations" . | nindent 2 }}
-  
-  {{ include "nginx-standard.metricsLocation" . | nindent 2 }}
-  
+{{- include "nginx-standard.healthCheckLocations" . | nindent 2 }}
+{{- if .Values.observability.metrics.enabled }}
+{{- include "nginx-standard.metricsLocation" . | nindent 2 }}
+{{- end }}
   # Default catch-all
   location / {
     return 404 'Not Found';
   }
 }
-
 {{- if .Values.frontProxy.primaryServers }}
 # Primary Servers
 {{- range .Values.frontProxy.primaryServers }}
 server {
   listen {{ include "nginx-standard.servicePort" $ }};
   server_name {{ .serverName }};
-
-  {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
-  {{- range . }}
+{{- with $.Values.frontProxy.globalConfig.serverDirectives }}
+{{- range . }}
   {{ . }};
-  {{- end }}
-  {{- end }}
-
-  {{ include "nginx-standard.healthCheckLocations" $ | nindent 2 }}
-
+{{- end }}
+{{- end }}
+{{- include "nginx-standard.healthCheckLocations" $ | nindent 2 }}
   # Root redirect
   location = / {
     return 301 https://{{ .serverName }}{{ .redirectPath }};
   }
-
   # Default proxy
   location / {
     proxy_pass $host_proxy_env/;
@@ -723,37 +703,33 @@ server {
 }
 {{- end }}
 {{- end }}
-
 {{- if .Values.frontProxy.customServers }}
 # Custom Servers
 {{- range .Values.frontProxy.customServers }}
 server {
   listen {{ include "nginx-standard.servicePort" $ }};
   server_name {{ .serverName }};
-
-  {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
-  {{- range . }}
+{{- with $.Values.frontProxy.globalConfig.serverDirectives }}
+{{- range . }}
   {{ . }};
-  {{- end }}
-  {{- end }}
-  
-  {{ include "nginx-standard.healthCheckLocations" $ | nindent 2 }}
-  
-  {{- range .locations }}
+{{- end }}
+{{- end }}
+{{- include "nginx-standard.healthCheckLocations" $ | nindent 2 }}
+{{- range .locations }}
   location {{ .path }} {
-    {{- if .additionalConfig }}
+{{- if .additionalConfig }}
 {{ .additionalConfig | nindent 4 }}
-    {{- end }}
-    {{- if .proxyPass }}
+{{- end }}
+{{- if .proxyPass }}
     proxy_pass {{ .proxyPass }}/;
-    {{- end }}
+{{- end }}
   }
-  {{- end }}
+{{- end }}
 }
 {{- end }}
 {{- end }}
 {{- end }}
-{{- end -}}
+{{- end }}
 
 {{/*
 ==============================================================================
@@ -766,27 +742,27 @@ FILE SHARING USE CASE
 {{- end -}}
 
 {{- define "nginx-standard.serverConf.fileSharing" -}}
-{{- if and .Values.fileSharing .Values.fileSharing.enabled }}
-{{- if .Values.fileSharing.locations }}
+{{- if and .Values.fileSharing .Values.fileSharing.enabled -}}
+{{- if .Values.fileSharing.locations -}}
 {{- range .Values.fileSharing.locations }}
 location {{ .path }} {
 {{- if .root }}
   root {{ .root }};
-{{- end }}
+{{- end -}}
 {{- if .alias }}
   alias {{ .alias }};
-{{- end }}
+{{- end -}}
 {{- if .index }}
   index {{ .index }};
-{{- end }}
+{{- end -}}
 {{- if hasKey . "autoindex" }}
   autoindex {{ if .autoindex }}on{{ else }}off{{ end }};
-{{- end }}
-{{- if .additionalConfig }}
-{{ .additionalConfig | nindent 2 }}
-{{- end }}
+{{- end -}}
+{{- if .additionalConfig -}}
+{{- .additionalConfig | nindent 2 -}}
+{{- end -}}
 }
-{{- end }}
+{{- end -}}
 {{- else }}
 # Default file sharing configuration
 location / {
@@ -797,7 +773,6 @@ location / {
   index index.html index.htm;
 }
 {{- end }}
-
 {{ include "nginx-standard.healthCheckLocations" . }}
 {{- else }}
 # Fallback
@@ -808,10 +783,9 @@ location / {
   autoindex_localtime on;
   index index.html index.htm;
 }
-
 {{ include "nginx-standard.healthCheckLocations" . }}
-{{- end }}
 {{- end -}}
+{{- end }}
 
 {{/*
 ==============================================================================
@@ -821,28 +795,24 @@ DEFAULT USE CASE
 
 {{- define "nginx-standard.nginxMainConf.default" -}}
 # NGINX Default Configuration
-{{ include "nginx-standard.commonWorkerEvents" . }}
-
-{{ include "nginx-standard.commonHttpBlockStart" . }}
-  
+{{- include "nginx-standard.commonWorkerEvents" . }}
+{{- include "nginx-standard.commonHttpBlockStart" . }}
   # JSON log format
-  {{ include "nginx-standard.jsonLogFormat" . | nindent 2 }}
-  
-  {{ include "nginx-standard.commonServerBlockStart" . | nindent 2 }}
-    
+{{- include "nginx-standard.jsonLogFormat" . | nindent 2 }}
+{{- include "nginx-standard.commonServerBlockStart" . | nindent 2 }}
     # Include custom server configuration
     include /opt/app-root/etc/nginx.default.d/*.conf;
-    
-    {{ include "nginx-standard.metricsLocation" . | nindent 4 }}
+{{- if .Values.observability.metrics.enabled }}
+{{- include "nginx-standard.metricsLocation" . | nindent 4 }}
+{{- end }}
   }
 }
-{{- end -}}
+{{- end }}
 
 {{- define "nginx-standard.serverConf.default" -}}
 location / {
   root /usr/share/nginx/html;
   index index.html index.htm;
 }
-
-{{ include "nginx-standard.healthCheckLocations" . }}
-{{- end -}}
+{{- include "nginx-standard.healthCheckLocations" . }}
+{{- end }}

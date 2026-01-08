@@ -1,5 +1,8 @@
 nginx:
   useCase: "file-sharing"
+  security:
+    headers:
+      enabled: false
 # ==============================================================================
 # FILE SHARING - STATIC PROVISIONING MODE
 # Mounts an existing Azure File share
@@ -12,7 +15,7 @@ fileSharing:
     pvc:
       enabled: true
       size: "10Gi"
-      volumeName: "my-fileshare-pv"
+      volumeName: "fileshare-test-nginx-standard-pv"
       azureFile:
         enabled: true
         shareName: "test-fileshare"

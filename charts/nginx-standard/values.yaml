@@ -83,7 +83,7 @@ nginx:
   # Security headers configuration
   security:
     headers:
-      enabled: true
+      enabled: false
       csp: "default-src 'self'"
       sts: "max-age=31536000; includeSubDomains; preload"
       frameOptions: "SAMEORIGIN"
