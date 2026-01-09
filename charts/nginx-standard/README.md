@@ -310,22 +310,33 @@ elasticProxy:
   
   clientMaxBodySize: "50m"
   
-  proxy:
-    connectTimeout: "60s"
-    sendTimeout: "60s"
-    readTimeout: "60s"
-    bufferSize: "8k"
-    buffersNumber: 4
-  
   routes:
     - path: "~ ^/([a-z][a-z_,-]*)/(_search|_msearch)$"
       methods: ["POST", "GET"]
-    
-    - path: "/_cluster/health"
-      methods: ["GET"]
-    
-    - path: "/ping"
-      methods: ["GET"]
+      additionalConfig: |
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Max-Age;
+        
+        if ($request_method = 'OPTIONS') {
+          add_header 'Access-Control-Allow-Origin' '*' always;
+          add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+          add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+          add_header 'Access-Control-Max-Age' 1728000 always;
+          add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+          add_header 'Content-Length' 0 always;
+          return 204;
+        }
+        
+        # Actual request - pass through with CORS headers
+        proxy_pass $elasticsearch_url;
+        proxy_ssl_verify off;
+        proxy_redirect off;
+        proxy_pass_header Authorization;
+        
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
 
 routes:
   enabled: true
@@ -344,9 +355,6 @@ routes:
 | `elasticProxy.authSecretName` | Secret containing `user` and `password` keys | Chart name |
 | `elasticProxy.upstream.url` | Elasticsearch URL | Required |
 | `elasticProxy.clientMaxBodySize` | Max request body size | `50m` |
-| `elasticProxy.proxy.connectTimeout` | Connection timeout | `5s` |
-| `elasticProxy.proxy.sendTimeout` | Send timeout | `60s` |
-| `elasticProxy.proxy.readTimeout` | Read timeout | `60s` |
 | `elasticProxy.routes` | List of route configurations | See values.yaml |
 
 **Required Secret Format in openshift**
