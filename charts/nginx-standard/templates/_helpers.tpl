@@ -1,10 +1,4 @@
 {{/*
-==============================================================================
-STANDARD HELM HELPERS
-==============================================================================
-*/}}
-
-{{/*
 Expand the name of the chart.
 */}}
 {{- define "nginx-standard.name" -}}
@@ -292,7 +286,7 @@ NGINX MAIN CONFIGURATION (nginx.conf)
 {{- else if eq .Values.nginx.useCase "front-proxy" -}}
 {{ include "nginx-standard.nginxMainConf.frontProxy" . }}
 {{- else if eq .Values.nginx.useCase "file-sharing" -}}
-{{ include "nginx-standard.nginxMainConf.default" . }}
+{{ include "nginx-standard.nginxMainConf.fileSharing" . }}
 {{- else -}}
 {{ include "nginx-standard.nginxMainConf.default" . }}
 {{- end -}}
