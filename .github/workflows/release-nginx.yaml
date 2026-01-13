@@ -1,4 +1,4 @@
-name: Release workflow for nginx-standard Helm Chart
+name: Release nginx-standard Helm Chart
 
 on:
   push:
