@@ -5,9 +5,17 @@ STANDARD HELM HELPERS
 */}}
 
 {{/*
+==============================================================================
+STANDARD HELM HELPERS
+==============================================================================
+*/}}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "nginx-standard.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -26,11 +34,24 @@ Create a default fully qualified app name.
 {{- end }}
 {{- end }}
 {{- end }}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
 
 {{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "nginx-standard.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -53,10 +74,19 @@ Selector labels
 app.kubernetes.io/name: {{ include "nginx-standard.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+{{- end }}
 
 {{/*
 Create the name of the service account to use
+Create the name of the service account to use
 */}}
+{{- define "nginx-standard.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "nginx-standard.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
 {{- define "nginx-standard.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
 {{- default (include "nginx-standard.fullname" .) .Values.serviceAccount.name }}
@@ -67,21 +97,40 @@ Create the name of the service account to use
 
 {{/*
 Namespace
+Namespace
 */}}
+{{- define "nginx-standard.namespace" -}}
+{{- default .Release.Namespace .Values.global.namespace }}
+{{- end }}
 {{- define "nginx-standard.namespace" -}}
 {{- default .Release.Namespace .Values.global.namespace }}
 {{- end }}
 
 {{/*
 ConfigMap name
+ConfigMap name
 */}}
+{{- define "nginx-standard.configmapName" -}}
+{{- include "nginx-standard.fullname" . }}-config
+{{- end }}
 {{- define "nginx-standard.configmapName" -}}
 {{- include "nginx-standard.fullname" . }}-config
 {{- end }}
 
 {{/*
 Service port
+Service port
 */}}
+{{- define "nginx-standard.servicePort" -}}
+{{- .Values.nginx.service.port | default 8080 }}
+{{- end }}
+
+{{/*
+Service name
+*/}}
+{{- define "nginx-standard.serviceName" -}}
+{{- .Values.nginx.service.name | default "http" }}
+{{- end }}
 {{- define "nginx-standard.servicePort" -}}
 {{- .Values.nginx.service.port | default 8080 }}
 {{- end }}
@@ -95,7 +144,15 @@ Service name
 
 {{/*
 Replica count (respects autoscaling)
+Replica count (respects autoscaling)
 */}}
+{{- define "nginx-standard.replicaCount" -}}
+{{- if .Values.autoscaling.enabled }}
+{{- .Values.autoscaling.minReplicas }}
+{{- else }}
+{{- .Values.nginx.replicaCount | default 1 }}
+{{- end }}
+{{- end }}
 {{- define "nginx-standard.replicaCount" -}}
 {{- if .Values.autoscaling.enabled }}
 {{- .Values.autoscaling.minReplicas }}
@@ -106,14 +163,22 @@ Replica count (respects autoscaling)
 
 {{/*
 Image reference
+Image reference
 */}}
+{{- define "nginx-standard.image" -}}
+{{- .Values.nginx.image.full }}
+{{- end }}
 {{- define "nginx-standard.image" -}}
 {{- .Values.nginx.image.full }}
 {{- end }}
 
 {{/*
 Health check paths
+Health check paths
 */}}
+{{- define "nginx-standard.readinessPath" -}}
+{{- .Values.nginx.healthChecks.readinessPath | default "/readiness" }}
+{{- end }}
 {{- define "nginx-standard.readinessPath" -}}
 {{- .Values.nginx.healthChecks.readinessPath | default "/readiness" }}
 {{- end }}
@@ -121,10 +186,21 @@ Health check paths
 {{- define "nginx-standard.livenessPath" -}}
 {{- .Values.nginx.healthChecks.livenessPath | default "/healthz" }}
 {{- end }}
+{{- define "nginx-standard.livenessPath" -}}
+{{- .Values.nginx.healthChecks.livenessPath | default "/healthz" }}
+{{- end }}
 
 {{/*
 Health checks enabled
+Health checks enabled
 */}}
+{{- define "nginx-standard.healthChecksEnabled" -}}
+{{- if .Values.nginx.healthChecks.enabled }}
+{{- "true" }}
+{{- else }}
+{{- "false" }}
+{{- end }}
+{{- end }}
 {{- define "nginx-standard.healthChecksEnabled" -}}
 {{- if .Values.nginx.healthChecks.enabled }}
 {{- "true" }}
@@ -137,7 +213,42 @@ Health checks enabled
 ==============================================================================
 USE CASE FEATURE FLAGS
 ==============================================================================
+==============================================================================
+USE CASE FEATURE FLAGS
+==============================================================================
 */}}
+
+{{- define "nginx-standard.cacheEnabled" -}}
+{{- if and (eq .Values.nginx.useCase "cache") .Values.cache.enabled }}
+{{- "true" }}
+{{- else }}
+{{- "false" }}
+{{- end }}
+{{- end }}
+
+{{- define "nginx-standard.elasticProxyEnabled" -}}
+{{- if and (eq .Values.nginx.useCase "elastic-proxy") .Values.elasticProxy.enabled }}
+{{- "true" }}
+{{- else }}
+{{- "false" }}
+{{- end }}
+{{- end }}
+
+{{- define "nginx-standard.frontProxyEnabled" -}}
+{{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.enabled }}
+{{- "true" }}
+{{- else }}
+{{- "false" }}
+{{- end }}
+{{- end }}
+
+{{- define "nginx-standard.fileSharingEnabled" -}}
+{{- if and (eq .Values.nginx.useCase "file-sharing") .Values.fileSharing.enabled }}
+{{- "true" }}
+{{- else }}
+{{- "false" }}
+{{- end }}
+{{- end }}
 
 {{- define "nginx-standard.cacheEnabled" -}}
 {{- if and (eq .Values.nginx.useCase "cache") .Values.cache.enabled }}
@@ -177,7 +288,18 @@ EXTERNAL SECRETS & STORAGE
 ==============================================================================
 */}}
 
+==============================================================================
+EXTERNAL SECRETS & STORAGE
+==============================================================================
+*/}}
+
 {{- define "nginx-standard.externalSecretsEnabled" -}}
+{{- if .Values.externalSecrets.enabled }}
+{{- "true" }}
+{{- else }}
+{{- "false" }}
+{{- end }}
+{{- end }}
 {{- if .Values.externalSecrets.enabled }}
 {{- "true" }}
 {{- else }}
@@ -196,13 +318,42 @@ EXTERNAL SECRETS & STORAGE
 {{- define "nginx-standard.secretName" -}}
 {{- include "nginx-standard.fullname" . }}-secret
 {{- end }}
+{{- define "nginx-standard.azureFileEnabled" -}}
+{{- if and (eq .Values.nginx.useCase "file-sharing") .Values.fileSharing.enabled .Values.fileSharing.storage.pvc.enabled (eq .Values.fileSharing.storage.mode "static") .Values.fileSharing.storage.pvc.azureFile.enabled }}
+{{- "true" }}
+{{- else }}
+{{- "false" }}
+{{- end }}
+{{- end }}
 
+{{- define "nginx-standard.secretName" -}}
+{{- include "nginx-standard.fullname" . }}-secret
+{{- end }}
+
+{{- define "nginx-standard.secretStoreName" -}}
+{{- include "nginx-standard.fullname" . }}-secretstore
+{{- end }}
 {{- define "nginx-standard.secretStoreName" -}}
 {{- include "nginx-standard.fullname" . }}-secretstore
 {{- end }}
 
 {{- define "nginx-standard.externalSecretName" -}}
 {{- include "nginx-standard.fullname" . }}-externalsecret
+{{- end }}
+{{- define "nginx-standard.externalSecretName" -}}
+{{- include "nginx-standard.fullname" . }}-externalsecret
+{{- end }}
+
+{{- define "nginx-standard.vaultUrl" -}}
+{{- printf "https://%s.vault.azure.net" .Values.externalSecrets.azureKeyVault.vaultName }}
+{{- end }}
+
+{{- define "nginx-standard.pvcName" -}}
+{{- include "nginx-standard.fullname" . }}-pvc
+{{- end }}
+
+{{- define "nginx-standard.pvName" -}}
+{{- include "nginx-standard.fullname" . }}-pv
 {{- end }}
 
 {{- define "nginx-standard.vaultUrl" -}}
@@ -220,6 +371,8 @@ EXTERNAL SECRETS & STORAGE
 {{- define "nginx-standard.azureFileShareName" -}}
 {{- .Values.fileSharing.storage.pvc.azureFile.shareName }}
 {{- end }}
+{{- .Values.fileSharing.storage.pvc.azureFile.shareName }}
+{{- end }}
 
 {{- define "nginx-standard.pvCapacity" -}}
 {{- if .Values.fileSharing.storage.pvc.azureFile.capacity }}
@@ -228,8 +381,17 @@ EXTERNAL SECRETS & STORAGE
 {{- .Values.fileSharing.storage.pvc.size }}
 {{- end }}
 {{- end }}
+{{- if .Values.fileSharing.storage.pvc.azureFile.capacity }}
+{{- .Values.fileSharing.storage.pvc.azureFile.capacity }}
+{{- else }}
+{{- .Values.fileSharing.storage.pvc.size }}
+{{- end }}
+{{- end }}
 
 {{/*
+==============================================================================
+VALIDATION HELPERS
+==============================================================================
 ==============================================================================
 VALIDATION HELPERS
 ==============================================================================
@@ -257,20 +419,54 @@ VALIDATION HELPERS
 {{- end }}
 {{- end }}
 
+{{- define "nginx-standard.validateCache" -}}
+{{- if eq .Values.nginx.useCase "cache" }}
+{{- if not .Values.cache.enabled }}
+{{- fail "cache.enabled must be true when nginx.useCase is 'cache'" }}
+{{- end }}
+{{- if not .Values.cache.zones }}
+{{- fail "cache.zones must be defined when nginx.useCase is 'cache'" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- define "nginx-standard.validateElasticProxy" -}}
+{{- if eq .Values.nginx.useCase "elastic-proxy" }}
+{{- if not .Values.elasticProxy.enabled }}
+{{- fail "elasticProxy.enabled must be true when nginx.useCase is 'elastic-proxy'" }}
+{{- end }}
+{{- if not .Values.elasticProxy.upstream.url }}
+{{- fail "elasticProxy.upstream.url must be defined when nginx.useCase is 'elastic-proxy'" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{/*
+==============================================================================
+SECURITY HEADERS
+==============================================================================
 ==============================================================================
 SECURITY HEADERS
 ==============================================================================
 */}}
 
+
 {{- define "nginx-standard.securityHeaders" -}}
 {{- if .Values.nginx.security.headers.enabled -}}
 add_header X-Content-Type-Options "{{ .Values.nginx.security.headers.contentTypeOptions }}" always;
+add_header X-Frame-Options "{{ .Values.nginx.security.headers.frameOptions }}" always;
 add_header X-Frame-Options "{{ .Values.nginx.security.headers.frameOptions }}" always;
 add_header X-XSS-Protection "{{ .Values.nginx.security.headers.xssProtection }}" always;
 add_header Referrer-Policy "{{ .Values.nginx.security.headers.referrerPolicy }}" always;
 {{- if .Values.nginx.security.headers.csp }}
 add_header Content-Security-Policy "{{ .Values.nginx.security.headers.csp }}" always;
+{{- if .Values.nginx.security.headers.csp }}
+add_header Content-Security-Policy "{{ .Values.nginx.security.headers.csp }}" always;
+{{- end }}
+{{- if .Values.nginx.security.headers.sts }}
+add_header Strict-Transport-Security "{{ .Values.nginx.security.headers.sts }}" always;
+{{- end }}
+{{- end }}
 {{- end }}
 {{- if .Values.nginx.security.headers.sts }}
 add_header Strict-Transport-Security "{{ .Values.nginx.security.headers.sts }}" always;
@@ -282,7 +478,12 @@ add_header Strict-Transport-Security "{{ .Values.nginx.security.headers.sts }}" 
 ==============================================================================
 NGINX MAIN CONFIGURATION (nginx.conf)
 ==============================================================================
+==============================================================================
+NGINX MAIN CONFIGURATION (nginx.conf)
+==============================================================================
 */}}
+
+{{- define "nginx-standard.nginxMainConf" -}}
 
 {{- define "nginx-standard.nginxMainConf" -}}
 {{- if eq .Values.nginx.useCase "cache" -}}
@@ -687,7 +888,12 @@ server {
   server_name {{ .serverName }};
 {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
 {{- range . }}
+{{- with $.Values.frontProxy.globalConfig.serverDirectives }}
+{{- range . }}
   {{ . }};
+{{- end }}
+{{- end }}
+{{- include "nginx-standard.healthCheckLocations" $ | nindent 2 }}
 {{- end }}
 {{- end }}
 {{- include "nginx-standard.healthCheckLocations" $ | nindent 2 }}
@@ -697,6 +903,7 @@ server {
   }
   # Default proxy
   location / {
+    proxy_pass $host_proxy_env/;
     proxy_pass $host_proxy_env/;
   }
 }
@@ -711,7 +918,13 @@ server {
   server_name {{ .serverName }};
 {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
 {{- range . }}
+{{- with $.Values.frontProxy.globalConfig.serverDirectives }}
+{{- range . }}
   {{ . }};
+{{- end }}
+{{- end }}
+{{- include "nginx-standard.healthCheckLocations" $ | nindent 2 }}
+{{- range .locations }}
 {{- end }}
 {{- end }}
 {{- include "nginx-standard.healthCheckLocations" $ | nindent 2 }}
@@ -725,7 +938,11 @@ server {
 {{- end }}
   }
 {{- end }}
+{{- end }}
 }
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -771,8 +988,51 @@ location / {
   autoindex_exact_size off;
   autoindex_localtime on;
   index index.html index.htm;
+{{/*
+==============================================================================
+FILE SHARING USE CASE
+==============================================================================
+*/}}
+
+{{- define "nginx-standard.nginxMainConf.fileSharing" -}}
+{{ include "nginx-standard.nginxMainConf.default" . }}
+{{- end -}}
+
+{{- define "nginx-standard.serverConf.fileSharing" -}}
+{{- if and .Values.fileSharing .Values.fileSharing.enabled -}}
+{{- if .Values.fileSharing.locations -}}
+{{- range .Values.fileSharing.locations }}
+location {{ .path }} {
+{{- if .root }}
+  root {{ .root }};
+{{- end -}}
+{{- if .alias }}
+  alias {{ .alias }};
+{{- end -}}
+{{- if .index }}
+  index {{ .index }};
+{{- end -}}
+{{- if hasKey . "autoindex" }}
+  autoindex {{ if .autoindex }}on{{ else }}off{{ end }};
+{{- end -}}
+{{- if .additionalConfig -}}
+{{- .additionalConfig | nindent 2 -}}
+{{- end -}}
+}
+{{- end -}}
+{{- else }}
+# Default file sharing configuration
+location / {
+  root /opt/app-root/src;
+  autoindex on;
+  autoindex_exact_size off;
+  autoindex_localtime on;
+  index index.html index.htm;
 }
 {{- end }}
+{{ include "nginx-standard.healthCheckLocations" . }}
+{{- else }}
+# Fallback
 {{ include "nginx-standard.healthCheckLocations" . }}
 {{- else }}
 # Fallback
@@ -781,10 +1041,16 @@ location / {
   autoindex on;
   autoindex_exact_size off;
   autoindex_localtime on;
+  root /opt/app-root/src;
+  autoindex on;
+  autoindex_exact_size off;
+  autoindex_localtime on;
   index index.html index.htm;
 }
 {{ include "nginx-standard.healthCheckLocations" . }}
+{{ include "nginx-standard.healthCheckLocations" . }}
 {{- end -}}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -804,13 +1070,36 @@ DEFAULT USE CASE
     include /opt/app-root/etc/nginx.default.d/*.conf;
 {{- if .Values.observability.metrics.enabled }}
 {{- include "nginx-standard.metricsLocation" . | nindent 4 }}
+==============================================================================
+DEFAULT USE CASE
+==============================================================================
+*/}}
+
+{{- define "nginx-standard.nginxMainConf.default" -}}
+# NGINX Default Configuration
+{{- include "nginx-standard.commonWorkerEvents" . }}
+{{- include "nginx-standard.commonHttpBlockStart" . }}
+  # JSON log format
+{{- include "nginx-standard.jsonLogFormat" . | nindent 2 }}
+{{- include "nginx-standard.commonServerBlockStart" . | nindent 2 }}
+    # Include custom server configuration
+    include /opt/app-root/etc/nginx.default.d/*.conf;
+{{- if .Values.observability.metrics.enabled }}
+{{- include "nginx-standard.metricsLocation" . | nindent 4 }}
 {{- end }}
+  }
+}
   }
 }
 {{- end }}
 
 {{- define "nginx-standard.serverConf.default" -}}
+{{- define "nginx-standard.serverConf.default" -}}
 location / {
+  root /usr/share/nginx/html;
+  index index.html index.htm;
+}
+{{- include "nginx-standard.healthCheckLocations" . }}
   root /usr/share/nginx/html;
   index index.html index.htm;
 }
