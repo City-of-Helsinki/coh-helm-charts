@@ -1,10 +1,4 @@
 {{/*
-==============================================================================
-STANDARD HELM HELPERS
-==============================================================================
-*/}}
-
-{{/*
 Expand the name of the chart.
 */}}
 {{- define "nginx-standard.name" -}}
@@ -292,7 +286,7 @@ NGINX MAIN CONFIGURATION (nginx.conf)
 {{- else if eq .Values.nginx.useCase "front-proxy" -}}
 {{ include "nginx-standard.nginxMainConf.frontProxy" . }}
 {{- else if eq .Values.nginx.useCase "file-sharing" -}}
-{{ include "nginx-standard.nginxMainConf.default" . }}
+{{ include "nginx-standard.nginxMainConf.fileSharing" . }}
 {{- else -}}
 {{ include "nginx-standard.nginxMainConf.default" . }}
 {{- end -}}
@@ -428,7 +422,7 @@ CACHE USE CASE
   # JSON log format with cache status
 {{- $ctx := dict "Values" .Values "includeCache" true }}
 {{- include "nginx-standard.jsonLogFormat" $ctx | nindent 2 }}
-{{- include "nginx-standard.commonServerBlockStart" . | nindent 2 }}
+{{- include "nginx-standard.commonServerBlockStart" . | nindent 2 -}}
     # Include custom server configuration
     include /opt/app-root/etc/nginx.default.d/*.conf;
 {{- if .Values.observability.metrics.enabled }}
@@ -459,7 +453,6 @@ location {{ .path }} {
   {{- if not $backendUrl }}
   {{- fail "backendUrl must be specified either globally (cache.defaultBackendUrl) or per location" }}
   {{- end }}
-  
   proxy_pass {{ $backendUrl }};
   
   {{- if .cache.enabled }}
@@ -512,7 +505,6 @@ location {{ .path }} {
   add_header {{ .cache.headerName | default "X-Cache-Status" }} $upstream_cache_status;
   {{- end }}
   {{- end }}
-  
   # Proxy settings
   {{- $proxySettings := .proxy | default $.Values.cache.proxy }}
   proxy_buffers {{ $proxySettings.buffersNumber | default 1024 }} {{ $proxySettings.bufferSize | default "4k" }};
@@ -520,18 +512,19 @@ location {{ .path }} {
   proxy_read_timeout {{ $proxySettings.readTimeout | default "300s" }};
   proxy_connect_timeout {{ $proxySettings.connectTimeout | default "300s" }};
   
+  {{- if .proxy }}
   {{- if .proxy.setHeaders }}
   {{- range .proxy.setHeaders }}
   proxy_set_header {{ . }};
   {{- end }}
   {{- end }}
+  {{- end }}
   
-  {{- if .additionalConfig }}
+  {{- if .additionalConfig -}}
 {{ .additionalConfig | nindent 2 }}
   {{- end }}
 }
 {{- end }}
-
 {{ include "nginx-standard.healthCheckLocations" . }}
 {{- end -}}
 
@@ -542,27 +535,56 @@ ELASTIC PROXY USE CASE
 */}}
 
 {{- define "nginx-standard.nginxMainConf.elasticProxy" -}}
-{{ include "nginx-standard.nginxConf" . }}
+{{- include "nginx-standard.nginxElasticConf" . }}
 {{- end -}}
 
 {{- define "nginx-standard.serverConf.elasticProxy" -}}
-{{ include "nginx-standard.serverConfig" . }}
+{{- include "nginx-standard.serverConfig" . }}
 {{- end -}}
+{{/* Perl script for Elastic auth */}}
+{{- define "nginx-standard.elasticUrlPerlScript" }}
+  sub {
+    return $ENV{"ELASTICSEARCH_URL"} || "";
+  }
+{{- end }}
+{{/* Perl script for Elastic auth */}}
+{{- define "nginx-standard.elasticAuthPerlScript" }}
+  sub {
+    use MIME::Base64;
+    if (exists($ENV{"ELASTIC_USER"}) && exists($ENV{"ELASTIC_PASSWORD"})) {
+      return "Basic " . encode_base64($ENV{"ELASTIC_USER"} . ":" . $ENV{"ELASTIC_PASSWORD"}, "");
+    }
+    return "";
+  }
+{{- end }}
 
-{{/* Elastic proxy nginx.conf - Legacy support */}}
-{{- define "nginx-standard.nginxConf" -}}
-# NGINX Elastic Proxy Mode
+{{- define "nginx-standard.nginxElasticConf" -}}
+env ELASTICSEARCH_URL;
+env ELASTIC_PASSWORD;
+env ELASTIC_USER;
+# Load perl module
+load_module modules/ngx_http_perl_module.so;
+
 {{- include "nginx-standard.commonWorkerEvents" . }}
+
 {{- include "nginx-standard.commonHttpBlockStart" . }}
+  
+  # Perl script to set authorization header
+  perl_set $elasticsearch_url '{{ include "nginx-standard.elasticUrlPerlScript" . }}';
+  perl_set $elastic_auth '{{ include "nginx-standard.elasticAuthPerlScript" . }}';
+
   # JSON log format
 {{- include "nginx-standard.jsonLogFormat" . | nindent 2 }}
+  
   # Upstream configuration
   upstream elasticsearch {
     server {{ .Values.elasticProxy.upstream.url | replace "https://" "" | replace "http://" "" }};
   }
+  
 {{- include "nginx-standard.commonServerBlockStart" . | nindent 2 }}
     # Include custom server configuration
     include /opt/app-root/etc/nginx.default.d/*.conf;
+    
 {{- if .Values.observability.metrics.enabled }}
 {{- include "nginx-standard.metricsLocation" . | nindent 4 }}
 {{- end }}
@@ -570,21 +592,11 @@ ELASTIC PROXY USE CASE
 }
 {{- end }}
 
-{{/* Elastic proxy server config - Legacy support */}}
 {{- define "nginx-standard.serverConfig" -}}
+# Hardcoded DNS resolver for Kubernetes/OpenShift
+resolver dns-default.openshift-dns.svc.cluster.local valid=10s ipv6=off;
 client_max_body_size {{ .Values.elasticProxy.clientMaxBodySize | default "50m" }};
-
-{{- if .Values.elasticProxy.upstreamAuth.enabled }}
-# Set authorization header from environment variables
-set $elastic_auth "";
-if ($http_authorization = "") {
-  set $elastic_auth "Basic ${ELASTIC_USER}:${ELASTIC_PASSWORD}";
-}
-if ($http_authorization != "") {
-  set $elastic_auth $http_authorization;
-}
-{{- end }}
-
+{{ include "nginx-standard.healthCheckLocations" . }}
 {{- range .Values.elasticProxy.routes }}
 location {{ .path }} {
   {{- if .methods }}
@@ -592,34 +604,15 @@ location {{ .path }} {
     deny all;
   }
   {{- end }}
-  
-  proxy_pass {{ $.Values.elasticProxy.upstream.url }};
-  proxy_ssl_verify off;
-  
   {{- if $.Values.elasticProxy.upstreamAuth.enabled }}
   proxy_set_header Authorization $elastic_auth;
-  {{- end }}
-  
-  proxy_set_header Host $host;
-  proxy_set_header X-Real-IP $remote_addr;
-  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  proxy_set_header X-Forwarded-Proto $scheme;
-  
-  {{- $proxySettings := $.Values.elasticProxy.proxy }}
-  proxy_connect_timeout {{ $proxySettings.connectTimeout | default "60s" }};
-  proxy_send_timeout {{ $proxySettings.sendTimeout | default "60s" }};
-  proxy_read_timeout {{ $proxySettings.readTimeout | default "60s" }};
-  proxy_buffer_size {{ $proxySettings.bufferSize | default "8k" }};
-  proxy_buffers {{ $proxySettings.buffersNumber | default 4 }} {{ $proxySettings.bufferSize | default "8k" }};
-  
+  {{- end }}  
   {{- if .additionalConfig }}
 {{ .additionalConfig | nindent 2 }}
   {{- end }}
 }
 {{- end }}
-
-{{ include "nginx-standard.healthCheckLocations" . }}
-{{- end -}}
+{{- end }}
 
 {{/*
 ==============================================================================
@@ -629,9 +622,9 @@ FRONT PROXY USE CASE
 
 {{- define "nginx-standard.nginxMainConf.frontProxy" -}}
 # NGINX Front Proxy Mode
-{{- include "nginx-standard.commonWorkerEvents" . }}
 # Load Perl module for environment variable access
 load_module modules/ngx_http_perl_module.so;
+{{- include "nginx-standard.commonWorkerEvents" . }}
 {{- if eq (include "nginx-standard.frontProxyEnabled" .) "true" }}
 {{- if .Values.frontProxy.env }}
 {{- range $key, $val := .Values.frontProxy.env }}
@@ -721,7 +714,7 @@ server {
 {{ .additionalConfig | nindent 4 }}
 {{- end }}
 {{- if .proxyPass }}
-    proxy_pass {{ .proxyPass }}/;
+    proxy_pass {{ .proxyPass }};
 {{- end }}
   }
 {{- end }}

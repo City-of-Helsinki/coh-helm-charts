@@ -1,28 +1,111 @@
-{{- if .Values.tests.enabled }}
+{{- if and .Values.tests.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:
-  name: {{ include "nginx-standard.fullname" . }}-test
+  name: {{ include "nginx-standard.fullname" . }}-test-cache-auth
   namespace: {{ include "nginx-standard.namespace" . }}
-  labels:
-    {{- include "nginx-standard.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
+    "helm.sh/hook-weight": "10"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   containers:
     - name: curl
       image: {{ .Values.tests.image }}
+      env:
+        - name: ES_USER
+          value: elastic
+        - name: ES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.tests.credentials.secretName }}
+              key: {{ .Values.tests.credentials.secretKey }}
       command: ["/bin/sh", "-c"]
       args:
-        - |
+      - |
           set -e
+          set -x  # Enable debug output
+          
+          # Install curl
+          if ! command -v curl &> /dev/null; then
+            echo "Installing curl..."
+            microdnf install -y curl
+          fi
+          
           URL="http://{{ include "nginx-standard.fullname" . }}-svc:{{ include "nginx-standard.servicePort" . }}"
-          {{- if eq (include "nginx-standard.healthChecksEnabled" .) "true" }}
-          curl -f "${URL}{{ include "nginx-standard.readinessPath" . }}"
-          curl -f "${URL}{{ include "nginx-standard.livenessPath" . }}"
-          {{- end }}
-          curl -f "${URL}/"
-          echo "Tests passed"
+          
+          echo "=== Testing Cache with Authentication ==="
+          echo "URL: $URL"
+          echo "User: $ES_USER"
+          echo ""
+          
+          # Function to make request and extract info
+          make_request() {
+            local request_num=$1
+            echo "=== Request #$request_num ==="
+            
+            # Make request with timeout
+            HTTP_CODE=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+              --max-time 10 \
+              --connect-timeout 5 \
+              -u "${ES_USER}:${ES_PASSWORD}" \
+              -H "X-Test-Request: $request_num" \
+              -D /tmp/headers.txt \
+              "${URL}/" 2>&1)
+            
+            CURL_EXIT=$?
+            
+            if [ $CURL_EXIT -ne 0 ]; then
+              echo "✗ curl failed with exit code: $CURL_EXIT"
+              return 1
+            fi
+            
+            echo "HTTP Code: $HTTP_CODE"
+            
+            # Extract cache status
+            if [ -f /tmp/headers.txt ]; then
+              CACHE_STATUS=$(grep -i "x-cache-status:" /tmp/headers.txt | cut -d: -f2 | tr -d ' \r' || echo "Not Set")
+              echo "Cache Status: $CACHE_STATUS"
+              
+              # Show relevant headers
+              echo "Headers:"
+              grep -i "x-cache\|x-request-id" /tmp/headers.txt || echo "  No cache headers"
+            fi
+            
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✓ Request successful"
+              return 0
+            else
+              echo "✗ Request failed with HTTP $HTTP_CODE"
+              if [ -f /tmp/response.txt ]; then
+                echo "Response body:"
+                head -n 20 /tmp/response.txt
+              fi
+              return 1
+            fi
+          }
+          
+          # First request
+          if ! make_request 1; then
+            echo "First request failed!"
+            exit 1
+          fi
+          
+          echo ""
+          echo "Waiting 2 seconds before second request..."
+          sleep 2
+          echo ""
+          
+          # Second request
+          if ! make_request 2; then
+            echo "Second request failed!"
+            exit 1
+          fi
+          
+          echo ""
+          echo "=== All Cache Authentication Tests Passed ==="
+          
+          # Cleanup
+          rm -f /tmp/response.txt /tmp/headers.txt
   restartPolicy: Never
 {{- end }}

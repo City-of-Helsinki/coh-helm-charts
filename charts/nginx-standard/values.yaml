@@ -240,34 +240,46 @@ elasticProxy:
   # Client request configuration
   clientMaxBodySize: "50m"
   
-  # Proxy timeout configuration
-  proxy:
-    connectTimeout: "60s"
-    sendTimeout: "60s"
-    readTimeout: "60s"
-    bufferSize: "8k"
-    buffersNumber: 4
-  
   # Route definitions with method restrictions
   routes:
-    - path: "= /"
+    - path: "/health"
       methods: ["GET"]
-      additionalConfig: ""
-    
-    - path: "/_cluster/health"
-      methods: ["GET"]
-      additionalConfig: ""
-    
+      additionalConfig: |
+        access_log off;
+        proxy_pass $elasticsearch_url/_cluster/health;
+        proxy_ssl_verify off;
+        proxy_redirect off;
+        proxy_pass_header Authorization;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 5s;
+        proxy_read_timeout 5s;
+        
     - path: "~ ^/([a-z][a-z_,-]*)/(_search|_msearch)$"
-      methods: ["POST", "GET"]
-      additionalConfig: ""
-
-    # Example: Restrict index creation
-    # - path: "~ ^/([a-z][a-z_,-]*)$"
-    #   methods: ["PUT"]
-    #   additionalConfig: |
-    #     return 403 "Index creation not allowed";
-
+      methods: ["POST", "GET", "OPTIONS"]
+      additionalConfig: |
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Max-Age;
+        
+        if ($request_method = 'OPTIONS') {
+          add_header 'Access-Control-Allow-Origin' '*' always;
+          add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+          add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+          add_header 'Access-Control-Max-Age' 1728000 always;
+          add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+          add_header 'Content-Length' 0 always;
+          return 204;
+        }
+        
+        # Actual request - pass through with CORS headers
+        proxy_pass $elasticsearch_url;
+        proxy_ssl_verify off;
+        proxy_redirect off;
+        proxy_pass_header Authorization;
+        
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
 # ==============================================================================
 # CACHE PROXY USE CASE
 # ==============================================================================
@@ -519,3 +531,6 @@ podAnnotations: {}
 tests:
   enabled: true
   image: "registry.access.redhat.com/ubi8/ubi-minimal:latest"
+  credentials:
+    secretName: elasticsearch-test-es-elastic-user
+    secretKey: elastic
