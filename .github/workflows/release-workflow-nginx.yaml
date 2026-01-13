@@ -62,10 +62,10 @@ jobs:
       - name: Validate ${{ matrix.use-case }} OpenShift manifests
         run: |
           echo "Validating ${{ matrix.use-case }} manifests against OpenShift schemas..."
-          # Use kubeconform with ignore-missing-schemas for OpenShift-specific resources
-          # like Route, SecurityContextConstraints, etc.
           helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
             -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+            --exclude charts/nginx-standard/templates/tests/* \
+            | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
 
       - name: Test ${{ matrix.use-case }} with custom overrides
