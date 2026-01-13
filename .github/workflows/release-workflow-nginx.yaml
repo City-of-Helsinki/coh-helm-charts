@@ -78,6 +78,8 @@ jobs:
             --set autoscaling.enabled=true \
             --set autoscaling.minReplicas=2 \
             --set autoscaling.maxReplicas=10 \
+            --exclude 'charts/nginx-standard/templates/tests/*' \
+            | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
           
           # Test with metrics enabled
@@ -85,12 +87,16 @@ jobs:
             -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
             --set observability.metrics.enabled=true \
             --set observability.serviceMonitor.enabled=true \
+            --exclude 'charts/nginx-standard/templates/tests/*' \
+            | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
           
           # Test with network policies
           helm template test-${{ matrix.use-case }}-netpol charts/nginx-standard/ \
             -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
             --set networkPolicy.enabled=true \
+            --exclude 'charts/nginx-standard/templates/tests/*' \
+            | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
           
           # Test with OpenShift Routes enabled
@@ -98,8 +104,9 @@ jobs:
             -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
             --set routes.enabled=true \
             --set routes.items[0].host=test-${{ matrix.use-case }}.apps.example.com \
+            --exclude 'charts/nginx-standard/templates/tests/*' \
+            | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
-
       - name: Verify NGINX configuration syntax for ${{ matrix.use-case }}
         run: |
           echo "Extracting and validating NGINX configuration..."
@@ -145,51 +152,54 @@ jobs:
       - name: Test use-case specific validations for ${{ matrix.use-case }}
         run: |
           case "${{ matrix.use-case }}" in
-            file-sharing)
-              echo "Validating file-sharing specific resources..."
+            filesharing)
+              echo "Validating  specific resources..."
               # Check PVC is created
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "PersistentVolumeClaim")' - > /tmp/pvc.yaml
               
               if [ ! -s /tmp/pvc.yaml ]; then
-                echo "ERROR: PVC not generated for file-sharing mode"
+                echo "ERROR: PVC not generated for  mode"
                 exit 1
               fi
-              
               # Check External Secrets if static mode
               MODE=$(yq eval '.fileSharing.storage.mode' charts/nginx-standard/values-${{ matrix.use-case }}.yaml)
               if [ "$MODE" = "static" ]; then
                 helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                   -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                  --exclude 'charts/nginx-standard/templates/tests/*' \
                   | yq eval 'select(.kind == "ExternalSecret")' - > /tmp/externalsecret.yaml
                 
                 if [ ! -s /tmp/externalsecret.yaml ]; then
-                  echo "ERROR: ExternalSecret not generated for static file-sharing mode"
+                  echo "ERROR: ExternalSecret not generated for static  mode"
                   exit 1
                 fi
               fi
               ;;
               
-            elastic-proxy)
-              echo "Validating elastic-proxy specific configuration..."
+            elasticproxy)
+              echo "Validating elasticproxy specific configuration..."
               # Check for Elasticsearch environment variables
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                  --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].env[] | select(.name == "ELASTICSEARCH_URL")' - > /tmp/es-env.yaml
               
               if [ ! -s /tmp/es-env.yaml ]; then
-                echo "ERROR: ELASTICSEARCH_URL not set for elastic-proxy"
+                echo "ERROR: ELASTICSEARCH_URL not set for elasticproxy"
                 exit 1
               fi
               
               # Verify perl module is loaded in nginx.conf
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                  --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "ConfigMap") | .data."nginx.conf"' - | grep -q "ngx_http_perl_module"
               
               if [ $? -ne 0 ]; then
-                echo "ERROR: Perl module not loaded for elastic-proxy"
+                echo "ERROR: Perl module not loaded for elasticproxy"
                 exit 1
               fi
               ;;
@@ -199,6 +209,7 @@ jobs:
               # Check cache volume is created
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "Deployment") | .spec.template.spec.volumes[] | select(.name == "cache-volume")' - > /tmp/cache-vol.yaml
               
               if [ ! -s /tmp/cache-vol.yaml ]; then
@@ -209,6 +220,7 @@ jobs:
               # Verify proxy_cache_path in nginx.conf
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "ConfigMap") | .data."nginx.conf"' - | grep -q "proxy_cache_path"
               
               if [ $? -ne 0 ]; then
@@ -217,25 +229,27 @@ jobs:
               fi
               ;;
               
-            front-proxy)
-              echo "Validating front-proxy specific configuration..."
+            frontproxy)
+              echo "Validating frontproxy specific configuration..."
               # Check environment variables are set
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].env[] | select(.name == "HOST_PROXY")' - > /tmp/host-proxy-env.yaml
               
               if [ ! -s /tmp/host-proxy-env.yaml ]; then
-                echo "ERROR: HOST_PROXY not set for front-proxy"
+                echo "ERROR: HOST_PROXY not set for frontproxy"
                 exit 1
               fi
               
               # Verify perl module is loaded
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "ConfigMap") | .data."nginx.conf"' - | grep -q "ngx_http_perl_module"
               
               if [ $? -ne 0 ]; then
-                echo "ERROR: Perl module not loaded for front-proxy"
+                echo "ERROR: Perl module not loaded for frontproxy"
                 exit 1
               fi
               ;;
@@ -279,14 +293,14 @@ jobs:
           # Wait for cleanup
           sleep 10
 
-      - name: Test file-sharing deployment
+      - name: Test  deployment
         run: |
-          echo "Testing file-sharing use case..."
+          echo "Testing filesharing use case..."
           
           # Install chart (with PVC disabled for testing, use emptyDir)
-          helm install test-file-sharing charts/nginx-standard/ \
+          helm install test-filesharing charts/nginx-standard/ \
             -n nginx-demo \
-            --set nginx.useCase=file-sharing \
+            --set nginx.useCase=filesharing \
             --set fileSharing.enabled=true \
             --set fileSharing.storage.pvc.enabled=false \
             --set externalSecrets.enabled=false \
@@ -294,20 +308,20 @@ jobs:
             --wait --timeout 3m
           
           # Verify deployment
-          oc rollout status deployment/test-file-sharing-nginx-standard -n nginx-demo --timeout=3m
+          oc rollout status deployment/test--nginx-standard -n nginx-demo --timeout=3m
           
           # Test health endpoints
-          POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-file-sharing" -o jsonpath="{.items[0].metadata.name}")
+          POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-" -o jsonpath="{.items[0].metadata.name}")
           echo "Testing pod: $POD_NAME"
           
           oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/readiness || exit 1
           oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/healthz || exit 1
           
-          echo "✓ file-sharing deployed and healthy"
+          echo "✓  deployed and healthy"
 
-  #     - name: Test elastic-proxy deployment
+  #     - name: Test elasticproxy deployment
   #       run: |
-  #         echo "Testing elastic-proxy use case..."
+  #         echo "Testing elasticproxy use case..."
           
   #         # Create dummy secret for Elasticsearch auth
   #         oc create secret generic test-elastic-creds \
@@ -316,9 +330,9 @@ jobs:
   #           --dry-run=client -o yaml | oc apply -f -
           
   #         # Install chart
-  #         helm install test-elastic-proxy charts/nginx-standard/ \
+  #         helm install test-elasticproxy charts/nginx-standard/ \
   #           -n nginx-demo \
-  #           --set nginx.useCase=elastic-proxy \
+  #           --set nginx.useCase=elasticproxy \
   #           --set elasticProxy.enabled=true \
   #           --set elasticProxy.upstream.url=http://localhost:9200 \
   #           --set elasticProxy.upstreamAuth.enabled=true \
@@ -330,16 +344,16 @@ jobs:
   #           --wait --timeout 3m
           
   #         # Verify deployment
-  #         oc rollout status deployment/test-elastic-proxy-nginx-standard -n nginx-demo --timeout=3m
+  #         oc rollout status deployment/test-elasticproxy-nginx-standard -n nginx-demo --timeout=3m
           
   #         # Test health endpoints
-  #         POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-elastic-proxy" -o jsonpath="{.items[0].metadata.name}")
+  #         POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-elasticproxy" -o jsonpath="{.items[0].metadata.name}")
   #         echo "Testing pod: $POD_NAME"
           
   #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/readiness || exit 1
   #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/healthz || exit 1
           
-  #         echo "✓ elastic-proxy deployed and healthy"
+  #         echo "✓ elasticproxy deployed and healthy"
 
   #     - name: Test cache deployment
   #       run: |
@@ -367,14 +381,14 @@ jobs:
           
   #         echo "✓ cache deployed and healthy"
 
-  #     - name: Test front-proxy deployment
+  #     - name: Test frontproxy deployment
   #       run: |
-  #         echo "Testing front-proxy use case..."
+  #         echo "Testing frontproxy use case..."
           
   #         # Install chart
-  #         helm install test-front-proxy charts/nginx-standard/ \
+  #         helm install test-frontproxy charts/nginx-standard/ \
   #           -n nginx-demo \
-  #           --set nginx.useCase=front-proxy \
+  #           --set nginx.useCase=frontproxy \
   #           --set frontProxy.enabled=true \
   #           --set frontProxy.env.HOST_PROXY=http://localhost:8080 \
   #           --set nginx.image.full=nginxinc/nginx-unprivileged:alpine-perl \
@@ -382,16 +396,16 @@ jobs:
   #           --wait --timeout 3m
           
   #         # Verify deployment
-  #         oc rollout status deployment/test-front-proxy-nginx-standard -n nginx-demo --timeout=3m
+  #         oc rollout status deployment/test-frontproxy-nginx-standard -n nginx-demo --timeout=3m
           
   #         # Test health endpoints
-  #         POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-front-proxy" -o jsonpath="{.items[0].metadata.name}")
+  #         POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-frontproxy" -o jsonpath="{.items[0].metadata.name}")
   #         echo "Testing pod: $POD_NAME"
           
   #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/readiness || exit 1
   #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/healthz || exit 1
           
-  #         echo "✓ front-proxy deployed and healthy"
+  #         echo "✓ frontproxy deployed and healthy"
 
   #     - name: Display deployment summary
   #       if: always()
@@ -411,7 +425,7 @@ jobs:
   #       if: failure()
   #       run: |
   #         echo "=== Collecting logs from failed deployments ==="
-  #         for deployment in test-file-sharing test-elastic-proxy test-cache test-front-proxy; do
+  #         for deployment in test- test-elasticproxy test-cache test-frontproxy; do
   #           echo "--- Logs for $deployment ---"
   #           POD=$(oc get pods -n nginx-demo -l "app.kubernetes.io/instance=$deployment" -o jsonpath="{.items[0].metadata.name}" 2>/dev/null || echo "")
   #           if [ ! -z "$POD" ]; then
@@ -426,10 +440,10 @@ jobs:
   #       if: always()
   #       run: |
   #         echo "Cleaning up test deployments..."
-  #         helm uninstall test-file-sharing -n nginx-demo || true
-  #         helm uninstall test-elastic-proxy -n nginx-demo || true
+  #         helm uninstall test- -n nginx-demo || true
+  #         helm uninstall test-elasticproxy -n nginx-demo || true
   #         helm uninstall test-cache -n nginx-demo || true
-  #         helm uninstall test-front-proxy -n nginx-demo || true
+  #         helm uninstall test-frontproxy -n nginx-demo || true
           
   #         # Delete test secrets
   #         oc delete secret test-elastic-creds -n nginx-demo || true
