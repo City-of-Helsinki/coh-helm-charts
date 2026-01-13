@@ -1,0 +1,637 @@
+name: Release nginx-standard Helm Chart
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: 'The semantic version to release (e.g., 1.0.1). Will override existing releases.'
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        use-case:
+          - file-sharing
+          - elastic-proxy
+          - cache
+          - front-proxy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install test dependencies
+        run: |
+          # Install kubeconform for OpenShift manifest validation
+          wget https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+          
+          # Install yq for YAML processing
+          sudo snap install yq
+          
+          # Install helm-unittest plugin
+          helm plugin install https://github.com/helm-unittest/helm-unittest.git
+
+      - name: Lint chart
+        run: |
+          helm lint charts/nginx-standard/
+
+      - name: Run unit tests
+        run: |
+          helm unittest charts/nginx-standard/
+
+      - name: Test ${{ matrix.use-case }} template rendering
+        run: |
+          echo "Testing ${{ matrix.use-case }} use case..."
+          helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+            -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+            --debug
+
+      - name: Validate ${{ matrix.use-case }} OpenShift manifests
+        run: |
+          echo "Validating ${{ matrix.use-case }} manifests against OpenShift schemas..."
+          # Use kubeconform with ignore-missing-schemas for OpenShift-specific resources
+          # like Route, SecurityContextConstraints, etc.
+          helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+            -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+            | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+
+      - name: Test ${{ matrix.use-case }} with custom overrides
+        run: |
+          echo "Testing ${{ matrix.use-case }} with various configurations..."
+          
+          # Test with autoscaling enabled
+          helm template test-${{ matrix.use-case }}-hpa charts/nginx-standard/ \
+            -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+            --set autoscaling.enabled=true \
+            --set autoscaling.minReplicas=2 \
+            --set autoscaling.maxReplicas=10 \
+            | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+          
+          # Test with metrics enabled
+          helm template test-${{ matrix.use-case }}-metrics charts/nginx-standard/ \
+            -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+            --set observability.metrics.enabled=true \
+            --set observability.serviceMonitor.enabled=true \
+            | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+          
+          # Test with network policies
+          helm template test-${{ matrix.use-case }}-netpol charts/nginx-standard/ \
+            -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+            --set networkPolicy.enabled=true \
+            | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+          
+          # Test with OpenShift Routes enabled
+          helm template test-${{ matrix.use-case }}-route charts/nginx-standard/ \
+            -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+            --set routes.enabled=true \
+            --set routes.items[0].host=test-${{ matrix.use-case }}.apps.example.com \
+            | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+
+      - name: Verify NGINX configuration syntax for ${{ matrix.use-case }}
+        run: |
+          echo "Extracting and validating NGINX configuration..."
+          
+          # Extract nginx.conf from ConfigMap
+          helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+            -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+            | yq eval 'select(.kind == "ConfigMap") | .data."nginx.conf"' - > /tmp/nginx.conf
+          
+          # Extract server.conf from ConfigMap
+          helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+            -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+            | yq eval 'select(.kind == "ConfigMap") | .data."server.conf"' - > /tmp/server.conf
+          
+          echo "=== Generated nginx.conf ==="
+          cat /tmp/nginx.conf
+          echo ""
+          echo "=== Generated server.conf ==="
+          cat /tmp/server.conf
+          
+          # Basic syntax validation (check for unclosed blocks)
+          if ! grep -q "events {" /tmp/nginx.conf; then
+            echo "ERROR: Missing events block in nginx.conf"
+            exit 1
+          fi
+          
+          if ! grep -q "http {" /tmp/nginx.conf; then
+            echo "ERROR: Missing http block in nginx.conf"
+            exit 1
+          fi
+          
+          # Count opening and closing braces
+          OPEN_BRACES=$(grep -o "{" /tmp/nginx.conf | wc -l)
+          CLOSE_BRACES=$(grep -o "}" /tmp/nginx.conf | wc -l)
+          
+          if [ "$OPEN_BRACES" -ne "$CLOSE_BRACES" ]; then
+            echo "ERROR: Unbalanced braces in nginx.conf (open: $OPEN_BRACES, close: $CLOSE_BRACES)"
+            exit 1
+          fi
+          
+          echo "✓ NGINX configuration syntax appears valid"
+
+      - name: Test use-case specific validations for ${{ matrix.use-case }}
+        run: |
+          case "${{ matrix.use-case }}" in
+            file-sharing)
+              echo "Validating file-sharing specific resources..."
+              # Check PVC is created
+              helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+                -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                | yq eval 'select(.kind == "PersistentVolumeClaim")' - > /tmp/pvc.yaml
+              
+              if [ ! -s /tmp/pvc.yaml ]; then
+                echo "ERROR: PVC not generated for file-sharing mode"
+                exit 1
+              fi
+              
+              # Check External Secrets if static mode
+              MODE=$(yq eval '.fileSharing.storage.mode' charts/nginx-standard/values-${{ matrix.use-case }}.yaml)
+              if [ "$MODE" = "static" ]; then
+                helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+                  -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                  | yq eval 'select(.kind == "ExternalSecret")' - > /tmp/externalsecret.yaml
+                
+                if [ ! -s /tmp/externalsecret.yaml ]; then
+                  echo "ERROR: ExternalSecret not generated for static file-sharing mode"
+                  exit 1
+                fi
+              fi
+              ;;
+              
+            elastic-proxy)
+              echo "Validating elastic-proxy specific configuration..."
+              # Check for Elasticsearch environment variables
+              helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+                -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].env[] | select(.name == "ELASTICSEARCH_URL")' - > /tmp/es-env.yaml
+              
+              if [ ! -s /tmp/es-env.yaml ]; then
+                echo "ERROR: ELASTICSEARCH_URL not set for elastic-proxy"
+                exit 1
+              fi
+              
+              # Verify perl module is loaded in nginx.conf
+              helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+                -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                | yq eval 'select(.kind == "ConfigMap") | .data."nginx.conf"' - | grep -q "ngx_http_perl_module"
+              
+              if [ $? -ne 0 ]; then
+                echo "ERROR: Perl module not loaded for elastic-proxy"
+                exit 1
+              fi
+              ;;
+              
+            cache)
+              echo "Validating cache specific configuration..."
+              # Check cache volume is created
+              helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+                -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                | yq eval 'select(.kind == "Deployment") | .spec.template.spec.volumes[] | select(.name == "cache-volume")' - > /tmp/cache-vol.yaml
+              
+              if [ ! -s /tmp/cache-vol.yaml ]; then
+                echo "ERROR: Cache volume not created"
+                exit 1
+              fi
+              
+              # Verify proxy_cache_path in nginx.conf
+              helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+                -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                | yq eval 'select(.kind == "ConfigMap") | .data."nginx.conf"' - | grep -q "proxy_cache_path"
+              
+              if [ $? -ne 0 ]; then
+                echo "ERROR: proxy_cache_path not configured"
+                exit 1
+              fi
+              ;;
+              
+            front-proxy)
+              echo "Validating front-proxy specific configuration..."
+              # Check environment variables are set
+              helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+                -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].env[] | select(.name == "HOST_PROXY")' - > /tmp/host-proxy-env.yaml
+              
+              if [ ! -s /tmp/host-proxy-env.yaml ]; then
+                echo "ERROR: HOST_PROXY not set for front-proxy"
+                exit 1
+              fi
+              
+              # Verify perl module is loaded
+              helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
+                -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+                | yq eval 'select(.kind == "ConfigMap") | .data."nginx.conf"' - | grep -q "ngx_http_perl_module"
+              
+              if [ $? -ne 0 ]; then
+                echo "ERROR: Perl module not loaded for front-proxy"
+                exit 1
+              fi
+              ;;
+          esac
+          
+          echo "✓ Use-case specific validations passed"
+
+  integration-test:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install OpenShift CLI
+        run: |
+          wget https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz
+          tar xvf openshift-client-linux.tar.gz
+          sudo mv oc kubectl /usr/local/bin/
+          oc version --client
+
+      - name: Login to OpenShift Dev Cluster
+        run: |
+          echo "${{ secrets.OPENSHIFT_TOKEN }}" | oc login ${{ secrets.OPENSHIFT_API_URL }} --token="${{ secrets.OPENSHIFT_TOKEN }}" --insecure-skip-tls-verify
+
+      - name: Set namespace context
+        run: |
+          oc project nginx-demo || oc new-project nginx-demo
+          echo "Using namespace: nginx-demo"
+
+      - name: Clean up previous test deployments
+        run: |
+          echo "Cleaning up any existing test deployments..."
+          helm list -n nginx-demo | grep '^test-' | awk '{print $1}' | xargs -r helm uninstall -n nginx-demo || true
+          
+          # Wait for cleanup
+          sleep 10
+
+      - name: Test file-sharing deployment
+        run: |
+          echo "Testing file-sharing use case..."
+          
+          # Install chart (with PVC disabled for testing, use emptyDir)
+          helm install test-file-sharing charts/nginx-standard/ \
+            -n nginx-demo \
+            --set nginx.useCase=file-sharing \
+            --set fileSharing.enabled=true \
+            --set fileSharing.storage.pvc.enabled=false \
+            --set externalSecrets.enabled=false \
+            --set routes.enabled=false \
+            --wait --timeout 3m
+          
+          # Verify deployment
+          oc rollout status deployment/test-file-sharing-nginx-standard -n nginx-demo --timeout=3m
+          
+          # Test health endpoints
+          POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-file-sharing" -o jsonpath="{.items[0].metadata.name}")
+          echo "Testing pod: $POD_NAME"
+          
+          oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/readiness || exit 1
+          oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/healthz || exit 1
+          
+          echo "✓ file-sharing deployed and healthy"
+
+  #     - name: Test elastic-proxy deployment
+  #       run: |
+  #         echo "Testing elastic-proxy use case..."
+          
+  #         # Create dummy secret for Elasticsearch auth
+  #         oc create secret generic test-elastic-creds \
+  #           -n nginx-demo \
+  #           --from-literal=elastic=testpass123 \
+  #           --dry-run=client -o yaml | oc apply -f -
+          
+  #         # Install chart
+  #         helm install test-elastic-proxy charts/nginx-standard/ \
+  #           -n nginx-demo \
+  #           --set nginx.useCase=elastic-proxy \
+  #           --set elasticProxy.enabled=true \
+  #           --set elasticProxy.upstream.url=http://localhost:9200 \
+  #           --set elasticProxy.upstreamAuth.enabled=true \
+  #           --set elasticProxy.upstreamAuth.secretName=test-elastic-creds \
+  #           --set elasticProxy.upstreamAuth.username=elastic \
+  #           --set elasticProxy.upstreamAuth.passwordKey=elastic \
+  #           --set nginx.image.full=nginxinc/nginx-unprivileged:alpine-perl \
+  #           --set routes.enabled=false \
+  #           --wait --timeout 3m
+          
+  #         # Verify deployment
+  #         oc rollout status deployment/test-elastic-proxy-nginx-standard -n nginx-demo --timeout=3m
+          
+  #         # Test health endpoints
+  #         POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-elastic-proxy" -o jsonpath="{.items[0].metadata.name}")
+  #         echo "Testing pod: $POD_NAME"
+          
+  #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/readiness || exit 1
+  #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/healthz || exit 1
+          
+  #         echo "✓ elastic-proxy deployed and healthy"
+
+  #     - name: Test cache deployment
+  #       run: |
+  #         echo "Testing cache use case..."
+          
+  #         # Install chart
+  #         helm install test-cache charts/nginx-standard/ \
+  #           -n nginx-demo \
+  #           --set nginx.useCase=cache \
+  #           --set cache.enabled=true \
+  #           --set cache.defaultBackendUrl=http://localhost:8080 \
+  #           --set cache.volumeSize=1Gi \
+  #           --set routes.enabled=false \
+  #           --wait --timeout 3m
+          
+  #         # Verify deployment
+  #         oc rollout status deployment/test-cache-nginx-standard -n nginx-demo --timeout=3m
+          
+  #         # Test health endpoints
+  #         POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-cache" -o jsonpath="{.items[0].metadata.name}")
+  #         echo "Testing pod: $POD_NAME"
+          
+  #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/readiness || exit 1
+  #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/healthz || exit 1
+          
+  #         echo "✓ cache deployed and healthy"
+
+  #     - name: Test front-proxy deployment
+  #       run: |
+  #         echo "Testing front-proxy use case..."
+          
+  #         # Install chart
+  #         helm install test-front-proxy charts/nginx-standard/ \
+  #           -n nginx-demo \
+  #           --set nginx.useCase=front-proxy \
+  #           --set frontProxy.enabled=true \
+  #           --set frontProxy.env.HOST_PROXY=http://localhost:8080 \
+  #           --set nginx.image.full=nginxinc/nginx-unprivileged:alpine-perl \
+  #           --set routes.enabled=false \
+  #           --wait --timeout 3m
+          
+  #         # Verify deployment
+  #         oc rollout status deployment/test-front-proxy-nginx-standard -n nginx-demo --timeout=3m
+          
+  #         # Test health endpoints
+  #         POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-front-proxy" -o jsonpath="{.items[0].metadata.name}")
+  #         echo "Testing pod: $POD_NAME"
+          
+  #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/readiness || exit 1
+  #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/healthz || exit 1
+          
+  #         echo "✓ front-proxy deployed and healthy"
+
+  #     - name: Display deployment summary
+  #       if: always()
+  #       run: |
+  #         echo "=== Deployment Summary ==="
+  #         oc get all -n nginx-demo -l 'app.kubernetes.io/name=nginx-standard'
+          
+  #         echo ""
+  #         echo "=== Pod Status ==="
+  #         oc get pods -n nginx-demo -l 'app.kubernetes.io/name=nginx-standard' -o wide
+          
+  #         echo ""
+  #         echo "=== Events ==="
+  #         oc get events -n nginx-demo --sort-by='.lastTimestamp' | tail -20
+
+  #     - name: Collect logs on failure
+  #       if: failure()
+  #       run: |
+  #         echo "=== Collecting logs from failed deployments ==="
+  #         for deployment in test-file-sharing test-elastic-proxy test-cache test-front-proxy; do
+  #           echo "--- Logs for $deployment ---"
+  #           POD=$(oc get pods -n nginx-demo -l "app.kubernetes.io/instance=$deployment" -o jsonpath="{.items[0].metadata.name}" 2>/dev/null || echo "")
+  #           if [ ! -z "$POD" ]; then
+  #             oc logs -n nginx-demo $POD --tail=100 || echo "No logs available"
+  #             echo ""
+  #             oc describe pod -n nginx-demo $POD || echo "Cannot describe pod"
+  #           fi
+  #           echo ""
+  #         done
+
+  #     - name: Cleanup test deployments
+  #       if: always()
+  #       run: |
+  #         echo "Cleaning up test deployments..."
+  #         helm uninstall test-file-sharing -n nginx-demo || true
+  #         helm uninstall test-elastic-proxy -n nginx-demo || true
+  #         helm uninstall test-cache -n nginx-demo || true
+  #         helm uninstall test-front-proxy -n nginx-demo || true
+          
+  #         # Delete test secrets
+  #         oc delete secret test-elastic-creds -n nginx-demo || true
+          
+  #         echo "Cleanup complete"
+
+  # generate-changelog:
+  #   needs: [test, integration-test]
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     changelog: ${{ steps.changelog.outputs.changelog }}
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+
+  #     - name: Generate changelog
+  #       id: changelog
+  #       run: |
+  #         # Get previous tag
+  #         PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+  #         if [ -z "$PREVIOUS_TAG" ]; then
+  #           echo "No previous tag found, generating full history"
+  #           COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+  #         else
+  #           echo "Generating changelog from $PREVIOUS_TAG to HEAD"
+  #           COMMITS=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges)
+  #         fi
+          
+  #         # Categorize commits
+  #         FEATURES=$(echo "$COMMITS" | grep -i "^- feat" || echo "")
+  #         FIXES=$(echo "$COMMITS" | grep -i "^- fix" || echo "")
+  #         DOCS=$(echo "$COMMITS" | grep -i "^- docs" || echo "")
+  #         CHORES=$(echo "$COMMITS" | grep -i "^- chore" || echo "")
+  #         OTHERS=$(echo "$COMMITS" | grep -iv "^- \(feat\|fix\|docs\|chore\)" || echo "")
+          
+  #         # Build changelog
+  #         CHANGELOG="## Changes\n\n"
+          
+  #         if [ ! -z "$FEATURES" ]; then
+  #           CHANGELOG="${CHANGELOG}### ✨ Features\n${FEATURES}\n\n"
+  #         fi
+          
+  #         if [ ! -z "$FIXES" ]; then
+  #           CHANGELOG="${CHANGELOG}### 🐛 Bug Fixes\n${FIXES}\n\n"
+  #         fi
+          
+  #         if [ ! -z "$DOCS" ]; then
+  #           CHANGELOG="${CHANGELOG}### 📚 Documentation\n${DOCS}\n\n"
+  #         fi
+          
+  #         if [ ! -z "$CHORES" ]; then
+  #           CHANGELOG="${CHANGELOG}### 🔧 Maintenance\n${CHORES}\n\n"
+  #         fi
+          
+  #         if [ ! -z "$OTHERS" ]; then
+  #           CHANGELOG="${CHANGELOG}### Other Changes\n${OTHERS}\n\n"
+  #         fi
+          
+  #         # Save to output (handle multiline)
+  #         echo "changelog<<EOF" >> $GITHUB_OUTPUT
+  #         echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+  #         echo "EOF" >> $GITHUB_OUTPUT
+
+  # release:
+  #   needs: [test, integration-test, generate-changelog]
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: write
+  #     packages: write
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+
+  #     - name: Set up Helm
+  #       uses: azure/setup-helm@v3
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+  #     - name: Install yq
+  #       run: sudo snap install yq
+
+  #     - name: Determine Chart Version
+  #       id: version
+  #       run: |
+  #         # Use manual input if available
+  #         VERSION="${{ github.event.inputs.chart_version }}"
+          
+  #         # If no manual input, extract version from the git tag
+  #         if [ -z "$VERSION" ] && [[ "${{ github.ref }}" == "refs/tags/v"* ]]; then
+  #           VERSION=${GITHUB_REF#refs/tags/v}
+  #         fi
+          
+  #         if [ -z "$VERSION" ]; then
+  #           echo "Error: Chart version could not be determined. Set 'chart_version' input or push a 'v*' tag."
+  #           exit 1
+  #         fi
+
+  #         echo "version=$VERSION" >> $GITHUB_OUTPUT
+  #         echo "Using determined Version: $VERSION"
+
+  #     - name: Get chart name
+  #       id: chart
+  #       run: |
+  #         CHART_NAME=$(yq eval '.name' charts/nginx-standard/Chart.yaml)
+  #         echo "chart_name=$CHART_NAME" >> $GITHUB_OUTPUT
+  #         echo "Chart: $CHART_NAME"
+
+  #     - name: Update Chart.yaml version
+  #       run: |
+  #         yq eval -i '.version = "${{ steps.version.outputs.version }}"' charts/nginx-standard/Chart.yaml
+  #         git config --global user.name "GitHub Actions"
+  #         git config --global user.email "actions@github.com"
+  #         git add charts/nginx-standard/Chart.yaml
+  #         git commit -m "chore: bump chart version to ${{ steps.version.outputs.version }}" || echo "No version change needed"
+
+  #     - name: Package chart
+  #       run: |
+  #         helm package charts/nginx-standard/ --version ${{ steps.version.outputs.version }}
+
+  #     - name: Configure Git
+  #       run: |
+  #         git config --global user.name "GitHub Actions"
+  #         git config --global user.email "actions@github.com"
+
+  #     - name: Publish to Helm Repository
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+  #       run: |
+  #         # Clone the artifacts repository using token
+  #         git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git artifacts-repo
+  #         cd artifacts-repo
+          
+  #         # Checkout or create gh-pages branch
+  #         git checkout gh-pages || git checkout -b gh-pages
+          
+  #         # Create chart directory if it doesn't exist
+  #         mkdir -p ${{ steps.chart.outputs.chart_name }}
+          
+  #         # Copy packaged chart to its folder
+  #         cp ../*.tgz ${{ steps.chart.outputs.chart_name }}/
+          
+  #         # Update repository index
+  #         helm repo index . --url https://${{ github.repository_owner }}.github.io/coh-helm-repo --merge index.yaml
+          
+  #         # Commit and push
+  #         git add .
+  #         git commit -m "feat: Release ${{ steps.chart.outputs.chart_name }} ${{ steps.version.outputs.version }}" || echo "No changes to commit"
+  #         git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git gh-pages
+
+  #     - name: Create GitHub Release
+  #       uses: ncipollo/release-action@v1
+  #       with:
+  #         artifacts: "*.tgz"
+  #         body: |
+  #           # nginx-standard Helm Chart v${{ steps.version.outputs.version }}
+            
+  #           ## Installation (OpenShift)
+            
+  #           ```bash
+  #           # Add Helm repository
+  #           helm repo add coh-helm-repo https://${{ github.repository_owner }}.github.io/coh-helm-repo
+  #           helm repo update
+            
+  #           # Install chart in OpenShift
+  #           oc new-project my-nginx
+  #           helm install my-nginx coh-helm-repo/${{ steps.chart.outputs.chart_name }} \
+  #             --version ${{ steps.version.outputs.version }} \
+  #             -n my-nginx
+  #           ```
+            
+  #           ## Supported Use Cases
+            
+  #           - **File Sharing** - Serve static files with Azure File Storage integration
+  #           - **Elastic Proxy** - Secure Elasticsearch proxy with authentication
+  #           - **Cache Proxy** - Advanced caching with multiple zones
+  #           - **Front Proxy** - Complex routing with environment-based config
+            
+  #           ## Changelog
+            
+  #           ${{ needs.generate-changelog.outputs.changelog }}
+            
+  #           ## Test Results
+            
+  #           All 4 use cases have been tested and validated on OpenShift:
+  #           - ✓ Helm lint passed
+  #           - ✓ Template rendering validated
+  #           - ✓ OpenShift manifest validation passed
+  #           - ✓ NGINX configuration syntax verified
+  #           - ✓ Integration tests completed on OpenShift dev cluster (nginx-demo namespace)
+  #           - ✓ Health endpoints verified
+  #           - ✓ Pod deployments successful
+            
+  #           ## Documentation
+            
+  #           - [Full Documentation](https://github.com/${{ github.repository }}/blob/main/charts/nginx-standard/README.md)
+  #           - [Values Reference](https://github.com/${{ github.repository }}/blob/main/charts/nginx-standard/values.yaml)
+  #         tag: v${{ steps.version.outputs.version }}
+  #         name: Release v${{ steps.version.outputs.version }}
+  #         draft: false
+  #         prerelease: false
+  #         token: ${{ secrets.GITHUB_TOKEN }}
