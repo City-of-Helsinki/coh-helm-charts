@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       chart_version:
-        description: 'The semantic version to release (e.g., 1.0.1). Will override existing releases.'
+        description: 'Chart version (e.g., 1.0.1 or v1.0.1 - v prefix optional)'
         required: true
         type: string
 
@@ -113,6 +113,7 @@ jobs:
             --exclude 'charts/nginx-standard/templates/tests/*' \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+
       - name: Verify NGINX configuration syntax for ${{ matrix.use-case }}
         run: |
           echo "Extracting and validating NGINX configuration..."
@@ -512,16 +513,22 @@ jobs:
       - name: Determine Chart Version and Git Tag
         id: version
         run: |
-          # Use manual input if available
-          CHART_VERSION="${{ github.event.inputs.chart_version }}"
-          
-          # If no manual input, extract version from the git tag
-          if [ -z "$CHART_VERSION" ] && [[ "${{ github.ref }}" == refs/tags/nginx-standard-v* ]]; then
-            CHART_VERSION=${GITHUB_REF#refs/tags/nginx-standard-v}
+          if [[ "${{ github.ref }}" == refs/tags/nginx-standard-v* ]]; then
+            # Extract version from git tag
+            CHART_VERSION=${GITHUB_REF#refs/tags/nginx-standard-}
             GIT_TAG=${GITHUB_REF#refs/tags/}
-          elif [ -n "$CHART_VERSION" ]; then
-            # Manual dispatch - create git tag name
-            GIT_TAG="nginx-standard-v${CHART_VERSION}"
+          elif [ -n "${{ github.event.inputs.chart_version }}" ]; then
+            # Manual dispatch - normalize version
+            INPUT_VERSION="${{ github.event.inputs.chart_version }}"
+            
+            # Strip 'v' prefix if present, then add it back
+            CLEAN_VERSION="${INPUT_VERSION#v}"
+            
+            # Chart version always has 'v' prefix
+            CHART_VERSION="v${CLEAN_VERSION}"
+            
+            # Create git tag name
+            GIT_TAG="nginx-standard-${CHART_VERSION}"
           else
             echo "Error: Chart version could not be determined"
             exit 1
@@ -542,10 +549,7 @@ jobs:
       - name: Update Chart.yaml version
         run: |
           yq eval -i '.version = "${{ steps.version.outputs.chart_version }}"' charts/nginx-standard/Chart.yaml
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add charts/nginx-standard/Chart.yaml
-          git commit -m "chore: bump chart version to ${{ steps.version.outputs.chart_version }}" || echo "No version change needed"
+          echo "Updated Chart.yaml version to ${{ steps.version.outputs.chart_version }} for packaging"
 
       - name: Package chart
         run: |
@@ -586,7 +590,7 @@ jobs:
         with:
           artifacts: "*.tgz"
           body: |
-            # nginx-standard Helm Chart v${{ steps.version.outputs.chart_version }}
+            # nginx-standard Helm Chart ${{ steps.version.outputs.chart_version }}
             
             ## Changelog
             
@@ -596,8 +600,8 @@ jobs:
             
             - [Full Documentation](https://github.com/${{ github.repository }}/blob/main/charts/nginx-standard/README.md)
             - [Values Reference](https://github.com/${{ github.repository }}/blob/main/charts/nginx-standard/values.yaml)
-          tag: v${{ steps.version.outputs.git_tag }}
-          name: "nginx-standard v${{ steps.version.outputs.chart_version }}"
+          tag: ${{ steps.version.outputs.git_tag }}
+          name: "nginx-standard ${{ steps.version.outputs.chart_version }}"
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
