@@ -285,67 +285,55 @@ jobs:
           # Wait for cleanup
           sleep 10
 
-      - name: Test  deployment
-        run: |
-          echo "Testing filesharing use case..."
+      # - name: Test  deployment
+      #   run: |
+      #     echo "Testing filesharing use case..."
           
-          # Install chart (with PVC disabled for testing, use emptyDir)
-          helm install test-filesharing charts/nginx-standard/ \
+      #     # Install chart (with PVC disabled for testing, use emptyDir)
+      #     helm install test-filesharing charts/nginx-standard/ \
+      #       -n nginx-demo \
+      #       -f values-filesharing.yaml \
+      #       --wait --timeout 3m
+          
+      #     # Verify deployment
+      #     oc rollout status deployment/test--nginx-standard -n nginx-demo --timeout=3m
+          
+      #     # Test health endpoints
+      #     POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-" -o jsonpath="{.items[0].metadata.name}")
+      #     echo "Testing pod: $POD_NAME"
+          
+      #     oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/readiness || exit 1
+      #     oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/healthz || exit 1
+          
+      #     echo "✓  deployed and healthy"
+
+      - name: Test elasticproxy deployment
+        run: |
+          echo "Testing elasticproxy use case..."
+          
+          # Create dummy secret for Elasticsearch auth
+          oc create secret generic test-elastic-creds \
             -n nginx-demo \
-            --set nginx.useCase=filesharing \
-            --set fileSharing.enabled=true \
-            --set fileSharing.storage.pvc.enabled=false \
-            --set externalSecrets.enabled=false \
-            --set routes.enabled=false \
+            --from-literal=elastic=testpass123 \
+            --dry-run=client -o yaml | oc apply -f -
+          
+          # Install chart
+          helm install test-elasticproxy charts/nginx-standard/ \
+            -n nginx-demo \
+            -f values-elasticproxy.yaml \
             --wait --timeout 3m
           
           # Verify deployment
-          oc rollout status deployment/test--nginx-standard -n nginx-demo --timeout=3m
+          oc rollout status deployment/test-elasticproxy-nginx-standard -n nginx-demo --timeout=3m
           
           # Test health endpoints
-          POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-" -o jsonpath="{.items[0].metadata.name}")
+          POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-elasticproxy" -o jsonpath="{.items[0].metadata.name}")
           echo "Testing pod: $POD_NAME"
           
           oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/readiness || exit 1
           oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/healthz || exit 1
           
-          echo "✓  deployed and healthy"
-
-  #     - name: Test elasticproxy deployment
-  #       run: |
-  #         echo "Testing elasticproxy use case..."
-          
-  #         # Create dummy secret for Elasticsearch auth
-  #         oc create secret generic test-elastic-creds \
-  #           -n nginx-demo \
-  #           --from-literal=elastic=testpass123 \
-  #           --dry-run=client -o yaml | oc apply -f -
-          
-  #         # Install chart
-  #         helm install test-elasticproxy charts/nginx-standard/ \
-  #           -n nginx-demo \
-  #           --set nginx.useCase=elasticproxy \
-  #           --set elasticProxy.enabled=true \
-  #           --set elasticProxy.upstream.url=http://localhost:9200 \
-  #           --set elasticProxy.upstreamAuth.enabled=true \
-  #           --set elasticProxy.upstreamAuth.secretName=test-elastic-creds \
-  #           --set elasticProxy.upstreamAuth.username=elastic \
-  #           --set elasticProxy.upstreamAuth.passwordKey=elastic \
-  #           --set nginx.image.full=nginxinc/nginx-unprivileged:alpine-perl \
-  #           --set routes.enabled=false \
-  #           --wait --timeout 3m
-          
-  #         # Verify deployment
-  #         oc rollout status deployment/test-elasticproxy-nginx-standard -n nginx-demo --timeout=3m
-          
-  #         # Test health endpoints
-  #         POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-elasticproxy" -o jsonpath="{.items[0].metadata.name}")
-  #         echo "Testing pod: $POD_NAME"
-          
-  #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/readiness || exit 1
-  #         oc exec -n nginx-demo $POD_NAME -- curl -f http://localhost:8080/healthz || exit 1
-          
-  #         echo "✓ elasticproxy deployed and healthy"
+          echo "✓ elasticproxy deployed and healthy"
 
   #     - name: Test cache deployment
   #       run: |
