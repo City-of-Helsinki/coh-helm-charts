@@ -320,7 +320,7 @@ jobs:
           # Install chart
           helm install test-elasticproxy charts/nginx-standard/ \
             -n nginx-demo \
-            -f values-elasticproxy.yaml \
+            -f charts/nginx-standard/values-elasticproxy.yaml \
             --wait --timeout 3m
           
           # Verify deployment
