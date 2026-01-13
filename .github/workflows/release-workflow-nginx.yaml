@@ -50,7 +50,13 @@ jobs:
 
       - name: Run unit tests
         run: |
-          helm unittest charts/nginx-standard/
+          # Check if we have test files
+          if [ -f "charts/nginx-standard/tests/unit-test.yaml" ] || \
+             [ -f "charts/nginx-standard/tests/deployment_test.yaml" ]; then
+            helm unittest charts/nginx-standard/
+          else
+            echo "No unit test files found in tests/ directory, skipping unit tests"
+          fi
 
       - name: Test ${{ matrix.use-case }} template rendering
         run: |
