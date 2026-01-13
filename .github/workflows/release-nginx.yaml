@@ -38,10 +38,11 @@ jobs:
           sudo mv kubeconform /usr/local/bin/
           
           # Install yq for YAML processing
-          sudo snap install yq
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
           
           # Install helm-unittest plugin
-          helm plugin install https://github.com/helm-unittest/helm-unittest.git
+          helm plugin install https://github.com/helm-unittest/helm-unittest
 
       - name: Lint chart
         run: |
