@@ -291,7 +291,7 @@ jobs:
           # Wait for cleanup
           sleep 10
 
-      # - name: Test  deployment
+      # - name: Test fileshare deployment
       #   run: |
       #     echo "Testing filesharing use case..."
           
@@ -348,11 +348,7 @@ jobs:
   #         # Install chart
   #         helm install test-cache charts/nginx-standard/ \
   #           -n nginx-demo \
-  #           --set nginx.useCase=cache \
-  #           --set cache.enabled=true \
-  #           --set cache.defaultBackendUrl=http://localhost:8080 \
-  #           --set cache.volumeSize=1Gi \
-  #           --set routes.enabled=false \
+  #           -f charts/nginx-standard/values-cache.yaml \
   #           --wait --timeout 3m
           
   #         # Verify deployment
@@ -374,11 +370,7 @@ jobs:
   #         # Install chart
   #         helm install test-frontproxy charts/nginx-standard/ \
   #           -n nginx-demo \
-  #           --set nginx.useCase=frontproxy \
-  #           --set frontProxy.enabled=true \
-  #           --set frontProxy.env.HOST_PROXY=http://localhost:8080 \
-  #           --set nginx.image.full=nginxinc/nginx-unprivileged:alpine-perl \
-  #           --set routes.enabled=false \
+  #           -f charts/nginx-standard/values-frontproxy.yaml \
   #           --wait --timeout 3m
           
   #         # Verify deployment
@@ -393,246 +385,214 @@ jobs:
           
   #         echo "✓ frontproxy deployed and healthy"
 
-  #     - name: Display deployment summary
-  #       if: always()
-  #       run: |
-  #         echo "=== Deployment Summary ==="
-  #         oc get all -n nginx-demo -l 'app.kubernetes.io/name=nginx-standard'
+      - name: Display deployment summary
+        if: always()
+        run: |
+          echo "=== Deployment Summary ==="
+          oc get all -n nginx-demo -l 'app.kubernetes.io/name=nginx-standard'
           
-  #         echo ""
-  #         echo "=== Pod Status ==="
-  #         oc get pods -n nginx-demo -l 'app.kubernetes.io/name=nginx-standard' -o wide
+          echo ""
+          echo "=== Pod Status ==="
+          oc get pods -n nginx-demo -l 'app.kubernetes.io/name=nginx-standard' -o wide
           
-  #         echo ""
-  #         echo "=== Events ==="
-  #         oc get events -n nginx-demo --sort-by='.lastTimestamp' | tail -20
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== Collecting logs from failed deployments ==="
+          for deployment in test-filesharing test-elasticproxy test-cache test-frontproxy; do
+            echo "--- Logs for $deployment ---"
+            POD=$(oc get pods -n nginx-demo -l "app.kubernetes.io/instance=$deployment" -o jsonpath="{.items[0].metadata.name}" 2>/dev/null || echo "")
+            if [ ! -z "$POD" ]; then
+              oc logs -n nginx-demo $POD --tail=100 || echo "No logs available"
+              echo ""
+              oc describe pod -n nginx-demo $POD || echo "Cannot describe pod"
+            fi
+            echo ""
+          done
 
-  #     - name: Collect logs on failure
-  #       if: failure()
-  #       run: |
-  #         echo "=== Collecting logs from failed deployments ==="
-  #         for deployment in test- test-elasticproxy test-cache test-frontproxy; do
-  #           echo "--- Logs for $deployment ---"
-  #           POD=$(oc get pods -n nginx-demo -l "app.kubernetes.io/instance=$deployment" -o jsonpath="{.items[0].metadata.name}" 2>/dev/null || echo "")
-  #           if [ ! -z "$POD" ]; then
-  #             oc logs -n nginx-demo $POD --tail=100 || echo "No logs available"
-  #             echo ""
-  #             oc describe pod -n nginx-demo $POD || echo "Cannot describe pod"
-  #           fi
-  #           echo ""
-  #         done
+      - name: Cleanup test deployments
+        if: always()
+        run: |
+          echo "Cleaning up test deployments..."
+          helm uninstall test-filesharing -n nginx-demo || true
+          helm uninstall test-elasticproxy -n nginx-demo || true
+          helm uninstall test-cache -n nginx-demo || true
+          helm uninstall test-frontproxy -n nginx-demo || true
+          
+          # Delete test secrets
+          oc delete secret test-elastic-creds -n nginx-demo || true
+          
+          echo "Cleanup complete"
 
-  #     - name: Cleanup test deployments
-  #       if: always()
-  #       run: |
-  #         echo "Cleaning up test deployments..."
-  #         helm uninstall test- -n nginx-demo || true
-  #         helm uninstall test-elasticproxy -n nginx-demo || true
-  #         helm uninstall test-cache -n nginx-demo || true
-  #         helm uninstall test-frontproxy -n nginx-demo || true
-          
-  #         # Delete test secrets
-  #         oc delete secret test-elastic-creds -n nginx-demo || true
-          
-  #         echo "Cleanup complete"
+  generate-changelog:
+    needs: [test, integration-test]
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.changelog.outputs.changelog }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-  # generate-changelog:
-  #   needs: [test, integration-test]
-  #   runs-on: ubuntu-latest
-  #   outputs:
-  #     changelog: ${{ steps.changelog.outputs.changelog }}
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag found, generating full history"
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            echo "Generating changelog from $PREVIOUS_TAG to HEAD"
+            COMMITS=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+          
+          # Categorize commits
+          FEATURES=$(echo "$COMMITS" | grep -i "^- feat" || echo "")
+          FIXES=$(echo "$COMMITS" | grep -i "^- fix" || echo "")
+          DOCS=$(echo "$COMMITS" | grep -i "^- docs" || echo "")
+          CHORES=$(echo "$COMMITS" | grep -i "^- chore" || echo "")
+          OTHERS=$(echo "$COMMITS" | grep -iv "^- \(feat\|fix\|docs\|chore\)" || echo "")
+          
+          # Build changelog
+          CHANGELOG=""
+          
+          if [ ! -z "$FEATURES" ]; then
+            CHANGELOG="${CHANGELOG}### ✨ Features\n${FEATURES}\n\n"
+          fi
+          
+          if [ ! -z "$FIXES" ]; then
+            CHANGELOG="${CHANGELOG}### 🐛 Bug Fixes\n${FIXES}\n\n"
+          fi
+          
+          if [ ! -z "$DOCS" ]; then
+            CHANGELOG="${CHANGELOG}### 📚 Documentation\n${DOCS}\n\n"
+          fi
+          
+          if [ ! -z "$CHORES" ]; then
+            CHANGELOG="${CHANGELOG}### 🔧 Maintenance\n${CHORES}\n\n"
+          fi
+          
+          if [ ! -z "$OTHERS" ]; then
+            CHANGELOG="${CHANGELOG}### Other Changes\n${OTHERS}\n\n"
+          fi
+          
+          # If no changelog content, add a default message
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="No significant changes detected."
+          fi
+          
+          # Save to output using EOF method
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+  release:
+    needs: [test, integration-test, generate-changelog]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-  #     - name: Generate changelog
-  #       id: changelog
-  #       run: |
-  #         # Get previous tag
-  #         PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
-  #         if [ -z "$PREVIOUS_TAG" ]; then
-  #           echo "No previous tag found, generating full history"
-  #           COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
-  #         else
-  #           echo "Generating changelog from $PREVIOUS_TAG to HEAD"
-  #           COMMITS=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges)
-  #         fi
-          
-  #         # Categorize commits
-  #         FEATURES=$(echo "$COMMITS" | grep -i "^- feat" || echo "")
-  #         FIXES=$(echo "$COMMITS" | grep -i "^- fix" || echo "")
-  #         DOCS=$(echo "$COMMITS" | grep -i "^- docs" || echo "")
-  #         CHORES=$(echo "$COMMITS" | grep -i "^- chore" || echo "")
-  #         OTHERS=$(echo "$COMMITS" | grep -iv "^- \(feat\|fix\|docs\|chore\)" || echo "")
-          
-  #         # Build changelog
-  #         CHANGELOG="## Changes\n\n"
-          
-  #         if [ ! -z "$FEATURES" ]; then
-  #           CHANGELOG="${CHANGELOG}### ✨ Features\n${FEATURES}\n\n"
-  #         fi
-          
-  #         if [ ! -z "$FIXES" ]; then
-  #           CHANGELOG="${CHANGELOG}### 🐛 Bug Fixes\n${FIXES}\n\n"
-  #         fi
-          
-  #         if [ ! -z "$DOCS" ]; then
-  #           CHANGELOG="${CHANGELOG}### 📚 Documentation\n${DOCS}\n\n"
-  #         fi
-          
-  #         if [ ! -z "$CHORES" ]; then
-  #           CHANGELOG="${CHANGELOG}### 🔧 Maintenance\n${CHORES}\n\n"
-  #         fi
-          
-  #         if [ ! -z "$OTHERS" ]; then
-  #           CHANGELOG="${CHANGELOG}### Other Changes\n${OTHERS}\n\n"
-  #         fi
-          
-  #         # Save to output (handle multiline)
-  #         echo "changelog<<EOF" >> $GITHUB_OUTPUT
-  #         echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
-  #         echo "EOF" >> $GITHUB_OUTPUT
-
-  # release:
-  #   needs: [test, integration-test, generate-changelog]
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: write
-  #     packages: write
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-
-  #     - name: Set up Helm
-  #       uses: azure/setup-helm@v3
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
-  #     - name: Install yq
-  #       run: sudo snap install yq
+      - name: Install yq
+        run: sudo snap install yq
 
-  #     - name: Determine Chart Version
-  #       id: version
-  #       run: |
-  #         # Use manual input if available
-  #         VERSION="${{ github.event.inputs.chart_version }}"
+      - name: Determine Chart Version
+        id: version
+        run: |
+          # Use manual input if available
+          VERSION="${{ github.event.inputs.chart_version }}"
           
-  #         # If no manual input, extract version from the git tag
-  #         if [ -z "$VERSION" ] && [[ "${{ github.ref }}" == "refs/tags/v"* ]]; then
-  #           VERSION=${GITHUB_REF#refs/tags/v}
-  #         fi
+          # If no manual input, extract version from the git tag
+          if [ -z "$VERSION" ] && [[ "${{ github.ref }}" == "refs/tags/v"* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
           
-  #         if [ -z "$VERSION" ]; then
-  #           echo "Error: Chart version could not be determined. Set 'chart_version' input or push a 'v*' tag."
-  #           exit 1
-  #         fi
+          if [ -z "$VERSION" ]; then
+            echo "Error: Chart version could not be determined. Set 'chart_version' input or push a 'v*' tag."
+            exit 1
+          fi
 
-  #         echo "version=$VERSION" >> $GITHUB_OUTPUT
-  #         echo "Using determined Version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using determined Version: $VERSION"
 
-  #     - name: Get chart name
-  #       id: chart
-  #       run: |
-  #         CHART_NAME=$(yq eval '.name' charts/nginx-standard/Chart.yaml)
-  #         echo "chart_name=$CHART_NAME" >> $GITHUB_OUTPUT
-  #         echo "Chart: $CHART_NAME"
+      - name: Get chart name
+        id: chart
+        run: |
+          CHART_NAME=$(yq eval '.name' charts/nginx-standard/Chart.yaml)
+          echo "chart_name=$CHART_NAME" >> $GITHUB_OUTPUT
+          echo "Chart: $CHART_NAME"
 
-  #     - name: Update Chart.yaml version
-  #       run: |
-  #         yq eval -i '.version = "${{ steps.version.outputs.version }}"' charts/nginx-standard/Chart.yaml
-  #         git config --global user.name "GitHub Actions"
-  #         git config --global user.email "actions@github.com"
-  #         git add charts/nginx-standard/Chart.yaml
-  #         git commit -m "chore: bump chart version to ${{ steps.version.outputs.version }}" || echo "No version change needed"
+      - name: Update Chart.yaml version
+        run: |
+          yq eval -i '.version = "${{ steps.version.outputs.version }}"' charts/nginx-standard/Chart.yaml
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add charts/nginx-standard/Chart.yaml
+          git commit -m "chore: bump chart version to ${{ steps.version.outputs.version }}" || echo "No version change needed"
 
-  #     - name: Package chart
-  #       run: |
-  #         helm package charts/nginx-standard/ --version ${{ steps.version.outputs.version }}
+      - name: Package chart
+        run: |
+          helm package charts/nginx-standard/ --version ${{ steps.version.outputs.version }}
 
-  #     - name: Configure Git
-  #       run: |
-  #         git config --global user.name "GitHub Actions"
-  #         git config --global user.email "actions@github.com"
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
-  #     - name: Publish to Helm Repository
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-  #       run: |
-  #         # Clone the artifacts repository using token
-  #         git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git artifacts-repo
-  #         cd artifacts-repo
+      - name: Publish to Helm Repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          # Clone the artifacts repository using token
+          git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git artifacts-repo
+          cd artifacts-repo
           
-  #         # Checkout or create gh-pages branch
-  #         git checkout gh-pages || git checkout -b gh-pages
+          # Checkout or create gh-pages branch
+          git checkout gh-pages || git checkout -b gh-pages
           
-  #         # Create chart directory if it doesn't exist
-  #         mkdir -p ${{ steps.chart.outputs.chart_name }}
+          # Create chart directory if it doesn't exist
+          mkdir -p ${{ steps.chart.outputs.chart_name }}
           
-  #         # Copy packaged chart to its folder
-  #         cp ../*.tgz ${{ steps.chart.outputs.chart_name }}/
+          # Copy packaged chart to its folder
+          cp ../*.tgz ${{ steps.chart.outputs.chart_name }}/
           
-  #         # Update repository index
-  #         helm repo index . --url https://${{ github.repository_owner }}.github.io/coh-helm-repo --merge index.yaml
+          # Update repository index
+          helm repo index . --url https://${{ github.repository_owner }}.github.io/coh-helm-repo --merge index.yaml
           
-  #         # Commit and push
-  #         git add .
-  #         git commit -m "feat: Release ${{ steps.chart.outputs.chart_name }} ${{ steps.version.outputs.version }}" || echo "No changes to commit"
-  #         git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git gh-pages
+          # Commit and push
+          git add .
+          git commit -m "feat: Release ${{ steps.chart.outputs.chart_name }} ${{ steps.version.outputs.version }}" || echo "No changes to commit"
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git gh-pages
 
-  #     - name: Create GitHub Release
-  #       uses: ncipollo/release-action@v1
-  #       with:
-  #         artifacts: "*.tgz"
-  #         body: |
-  #           # nginx-standard Helm Chart v${{ steps.version.outputs.version }}
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "*.tgz"
+          body: |
+            # nginx-standard Helm Chart v${{ steps.version.outputs.version }}
             
-  #           ## Installation (OpenShift)
+            ## Changelog
             
-  #           ```bash
-  #           # Add Helm repository
-  #           helm repo add coh-helm-repo https://${{ github.repository_owner }}.github.io/coh-helm-repo
-  #           helm repo update
+            ${{ needs.generate-changelog.outputs.changelog }}
+
+            ## Documentation
             
-  #           # Install chart in OpenShift
-  #           oc new-project my-nginx
-  #           helm install my-nginx coh-helm-repo/${{ steps.chart.outputs.chart_name }} \
-  #             --version ${{ steps.version.outputs.version }} \
-  #             -n my-nginx
-  #           ```
-            
-  #           ## Supported Use Cases
-            
-  #           - **File Sharing** - Serve static files with Azure File Storage integration
-  #           - **Elastic Proxy** - Secure Elasticsearch proxy with authentication
-  #           - **Cache Proxy** - Advanced caching with multiple zones
-  #           - **Front Proxy** - Complex routing with environment-based config
-            
-  #           ## Changelog
-            
-  #           ${{ needs.generate-changelog.outputs.changelog }}
-            
-  #           ## Test Results
-            
-  #           All 4 use cases have been tested and validated on OpenShift:
-  #           - ✓ Helm lint passed
-  #           - ✓ Template rendering validated
-  #           - ✓ OpenShift manifest validation passed
-  #           - ✓ NGINX configuration syntax verified
-  #           - ✓ Integration tests completed on OpenShift dev cluster (nginx-demo namespace)
-  #           - ✓ Health endpoints verified
-  #           - ✓ Pod deployments successful
-            
-  #           ## Documentation
-            
-  #           - [Full Documentation](https://github.com/${{ github.repository }}/blob/main/charts/nginx-standard/README.md)
-  #           - [Values Reference](https://github.com/${{ github.repository }}/blob/main/charts/nginx-standard/values.yaml)
-  #         tag: v${{ steps.version.outputs.version }}
-  #         name: Release v${{ steps.version.outputs.version }}
-  #         draft: false
-  #         prerelease: false
-  #         token: ${{ secrets.GITHUB_TOKEN }}
+            - [Full Documentation](https://github.com/${{ github.repository }}/blob/main/charts/nginx-standard/README.md)
+            - [Values Reference](https://github.com/${{ github.repository }}/blob/main/charts/nginx-standard/values.yaml)
+          tag: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
