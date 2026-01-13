@@ -321,6 +321,7 @@ jobs:
           helm install test-elasticproxy charts/nginx-standard/ \
             -n nginx-demo \
             -f charts/nginx-standard/values-elasticproxy.yaml \
+            --exclude 'charts/nginx-standard/templates/tests/*' \
             --wait --timeout 3m
           
           # Verify deployment
