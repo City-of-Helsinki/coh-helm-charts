@@ -422,7 +422,7 @@ CACHE USE CASE
   # JSON log format with cache status
 {{- $ctx := dict "Values" .Values "includeCache" true }}
 {{- include "nginx-standard.jsonLogFormat" $ctx | nindent 2 }}
-{{- include "nginx-standard.commonServerBlockStart" . | nindent 2 }}
+{{- include "nginx-standard.commonServerBlockStart" . | nindent 2 -}}
     # Include custom server configuration
     include /opt/app-root/etc/nginx.default.d/*.conf;
 {{- if .Values.observability.metrics.enabled }}
@@ -453,7 +453,6 @@ location {{ .path }} {
   {{- if not $backendUrl }}
   {{- fail "backendUrl must be specified either globally (cache.defaultBackendUrl) or per location" }}
   {{- end }}
-  
   proxy_pass {{ $backendUrl }};
   
   {{- if .cache.enabled }}
@@ -506,7 +505,6 @@ location {{ .path }} {
   add_header {{ .cache.headerName | default "X-Cache-Status" }} $upstream_cache_status;
   {{- end }}
   {{- end }}
-  
   # Proxy settings
   {{- $proxySettings := .proxy | default $.Values.cache.proxy }}
   proxy_buffers {{ $proxySettings.buffersNumber | default 1024 }} {{ $proxySettings.bufferSize | default "4k" }};
@@ -514,18 +512,19 @@ location {{ .path }} {
   proxy_read_timeout {{ $proxySettings.readTimeout | default "300s" }};
   proxy_connect_timeout {{ $proxySettings.connectTimeout | default "300s" }};
   
+  {{- if .proxy }}
   {{- if .proxy.setHeaders }}
   {{- range .proxy.setHeaders }}
   proxy_set_header {{ . }};
   {{- end }}
   {{- end }}
+  {{- end }}
   
-  {{- if .additionalConfig }}
+  {{- if .additionalConfig -}}
 {{ .additionalConfig | nindent 2 }}
   {{- end }}
 }
 {{- end }}
-
 {{ include "nginx-standard.healthCheckLocations" . }}
 {{- end -}}
 
