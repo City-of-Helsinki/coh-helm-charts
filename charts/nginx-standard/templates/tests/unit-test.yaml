@@ -1,0 +1,537 @@
+suite: nginx-standard unit tests
+templates:
+  - deployment.yaml
+  - service.yaml
+  - configmap.yaml
+  - route.yaml
+  - pvc.yaml
+  - externalsecret.yaml
+  - hpa.yaml
+  - networkpolicy.yaml
+  - pdb.yaml
+
+tests:
+  # ===========================================================================
+  # DEPLOYMENT TESTS
+  # ===========================================================================
+  - it: should create deployment with correct metadata
+    template: deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-nginx-standard
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: should set correct image
+    template: deployment.yaml
+    set:
+      nginx:
+        image:
+          full: "nginx:1.24"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "nginx:1.24"
+
+  - it: should mount config volume correctly
+    template: deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: config-volume
+            configMap:
+              name: RELEASE-NAME-nginx-standard-config
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: config-volume
+            mountPath: /opt/app-root/etc
+
+  # ===========================================================================
+  # FILE SHARING TESTS
+  # ===========================================================================
+  - it: should create PVC for file-sharing with dynamic mode
+    template: pvc.yaml
+    set:
+      nginx:
+        useCase: "file-sharing"
+      fileSharing:
+        enabled: true
+        storage:
+          mode: "dynamic"
+          pvc:
+            enabled: true
+            size: "10Gi"
+            storageClassName: "azurefile-csi"
+            volumeName: ""
+            azureFile:
+              enabled: false
+    asserts:
+      - isKind:
+          of: PersistentVolumeClaim
+      - equal:
+          path: spec.resources.requests.storage
+          value: "10Gi"
+      - equal:
+          path: spec.storageClassName
+          value: "azurefile-csi"
+      - isNull:
+          path: spec.volumeName
+
+  - it: should create PV and PVC for file-sharing with static mode
+    set:
+      nginx:
+        useCase: "file-sharing"
+      fileSharing:
+        enabled: true
+        storage:
+          mode: "static"
+          pvc:
+            enabled: true
+            size: "10Gi"
+            volumeName: "my-pv"
+            azureFile:
+              enabled: true
+              shareName: "myshare"
+    templates:
+      - pvc.yaml
+      - pv.yaml
+    asserts:
+      - template: pvc.yaml
+        isKind:
+          of: PersistentVolumeClaim
+      - template: pvc.yaml
+        equal:
+          path: spec.volumeName
+          value: "my-pv"
+      - template: pv.yaml
+        isKind:
+          of: PersistentVolume
+
+  - it: should create ExternalSecret for static file-sharing
+    template: externalsecret.yaml
+    set:
+      nginx:
+        useCase: "file-sharing"
+      fileSharing:
+        enabled: true
+        storage:
+          mode: "static"
+          pvc:
+            azureFile:
+              enabled: true
+      externalSecrets:
+        enabled: true
+        azureKeyVault:
+          vaultName: "my-vault"
+          tenantId: "tenant-123"
+    asserts:
+      - isKind:
+          of: ExternalSecret
+      - equal:
+          path: spec.secretStoreRef.name
+          value: RELEASE-NAME-nginx-standard-secretstore
+
+  - it: should mount file-content-volume for file-sharing
+    template: deployment.yaml
+    set:
+      nginx:
+        useCase: "file-sharing"
+      fileSharing:
+        enabled: true
+        storage:
+          pvc:
+            enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: file-content-volume
+            persistentVolumeClaim:
+              claimName: RELEASE-NAME-nginx-standard-pvc
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: file-content-volume
+            mountPath: /opt/app-root/src
+
+  # ===========================================================================
+  # ELASTIC PROXY TESTS
+  # ===========================================================================
+  - it: should set ELASTICSEARCH_URL for elastic-proxy
+    template: deployment.yaml
+    set:
+      nginx:
+        useCase: "elastic-proxy"
+      elasticProxy:
+        enabled: true
+        upstream:
+          url: "https://elasticsearch:9200"
+        upstreamAuth:
+          enabled: true
+          secretName: "elastic-secret"
+          username: "elastic"
+          passwordKey: "password"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ELASTICSEARCH_URL
+            value: "https://elasticsearch:9200"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ELASTIC_USER
+            value: "elastic"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ELASTIC_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: "elastic-secret"
+                key: "password"
+
+  - it: should use nginx command for elastic-proxy
+    template: deployment.yaml
+    set:
+      nginx:
+        useCase: "elastic-proxy"
+      elasticProxy:
+        enabled: true
+        upstream:
+          url: "https://elasticsearch:9200"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].command[0]
+          value: "nginx"
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "daemon off;"
+
+  # ===========================================================================
+  # CACHE TESTS
+  # ===========================================================================
+  - it: should create cache volume for cache use case
+    template: deployment.yaml
+    set:
+      nginx:
+        useCase: "cache"
+      cache:
+        enabled: true
+        volumeSize: "5Gi"
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: cache-volume
+            emptyDir:
+              sizeLimit: "5Gi"
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: cache-volume
+            mountPath: /srv/cache
+
+  - it: should validate cache configuration in ConfigMap
+    template: configmap.yaml
+    set:
+      nginx:
+        useCase: "cache"
+      cache:
+        enabled: true
+        zones:
+          - name: "test_cache"
+            path: "/srv/cache/test"
+            levels: "1:2"
+            keysZone: "test_cache:10m"
+            maxSize: "1g"
+            inactive: "60m"
+            useTempPath: "off"
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: "proxy_cache_path /srv/cache/test"
+
+  # ===========================================================================
+  # FRONT PROXY TESTS
+  # ===========================================================================
+  - it: should set environment variables for front-proxy
+    template: deployment.yaml
+    set:
+      nginx:
+        useCase: "front-proxy"
+      frontProxy:
+        enabled: true
+        env:
+          HOST_PROXY: "http://backend:8080"
+          HOST_EN: "en.example.com"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HOST_PROXY
+            value: "http://backend:8080"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HOST_EN
+            value: "en.example.com"
+
+  - it: should mount proxy_ips.conf for front-proxy with PROXY_IP
+    template: deployment.yaml
+    set:
+      nginx:
+        useCase: "front-proxy"
+      frontProxy:
+        enabled: true
+        env:
+          PROXY_IP: "10.0.0.0/8 1;"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: config-volume
+            mountPath: /opt/app-root/etc/proxy_ips.conf
+            subPath: proxy_ips.conf
+
+  - it: should use nginx command for front-proxy
+    template: deployment.yaml
+    set:
+      nginx:
+        useCase: "front-proxy"
+      frontProxy:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].command[0]
+          value: "nginx"
+
+  - it: should set secret-based environment variables
+    template: deployment.yaml
+    set:
+      nginx:
+        useCase: "front-proxy"
+      frontProxy:
+        enabled: true
+        secretEnv:
+          API_KEY:
+            secretName: "api-secrets"
+            secretKey: "key"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: "api-secrets"
+                key: "key"
+
+  # ===========================================================================
+  # SERVICE TESTS
+  # ===========================================================================
+  - it: should create service with correct port
+    template: service.yaml
+    set:
+      nginx:
+        service:
+          port: 8080
+          name: "http"
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.ports[0].port
+          value: 8080
+      - equal:
+          path: spec.ports[0].name
+          value: "http"
+
+  # ===========================================================================
+  # ROUTE TESTS
+  # ===========================================================================
+  - it: should create OpenShift route when enabled
+    template: route.yaml
+    set:
+      routes:
+        enabled: true
+        items:
+          - nameSuffix: ""
+            host: "test.example.com"
+            tls:
+              termination: "edge"
+    asserts:
+      - isKind:
+          of: Route
+      - equal:
+          path: spec.host
+          value: "test.example.com"
+      - equal:
+          path: spec.tls.termination
+          value: "edge"
+
+  - it: should create multiple routes
+    template: route.yaml
+    set:
+      routes:
+        enabled: true
+        items:
+          - nameSuffix: ""
+            host: "app.example.com"
+          - nameSuffix: "-internal"
+            host: "internal.example.com"
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  # ===========================================================================
+  # AUTOSCALING TESTS
+  # ===========================================================================
+  - it: should create HPA when autoscaling enabled
+    template: hpa.yaml
+    set:
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 10
+        targetCPUUtilizationPercentage: 80
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 10
+
+  # ===========================================================================
+  # NETWORK POLICY TESTS
+  # ===========================================================================
+  - it: should create NetworkPolicy when enabled
+    template: networkpolicy.yaml
+    set:
+      networkPolicy:
+        enabled: true
+        ingress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    network: ingress
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+      - isNotEmpty:
+          path: spec.ingress
+
+  # ===========================================================================
+  # POD DISRUPTION BUDGET TESTS
+  # ===========================================================================
+  - it: should create PDB when enabled
+    template: pdb.yaml
+    set:
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: spec.minAvailable
+          value: 1
+
+  # ===========================================================================
+  # OBSERVABILITY TESTS
+  # ===========================================================================
+  - it: should enable metrics endpoint
+    template: configmap.yaml
+    set:
+      observability:
+        metrics:
+          enabled: true
+          type: "stub_status"
+          stubStatus:
+            path: "/nginx_status"
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: "location /nginx_status"
+
+  # ===========================================================================
+  # SECURITY TESTS
+  # ===========================================================================
+  - it: should add security headers when enabled
+    template: configmap.yaml
+    set:
+      nginx:
+        security:
+          headers:
+            enabled: true
+            csp: "default-src 'self'"
+            sts: "max-age=31536000"
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: "add_header X-Content-Type-Options"
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: "Content-Security-Policy"
+
+  # ===========================================================================
+  # RESOURCE TESTS
+  # ===========================================================================
+  - it: should set resource limits and requests
+    template: deployment.yaml
+    set:
+      nginx:
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: "256Mi"
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: "500m"
+
+  # ===========================================================================
+  # HEALTH CHECK TESTS
+  # ===========================================================================
+  - it: should create readiness and liveness probes
+    template: deployment.yaml
+    set:
+      nginx:
+        healthChecks:
+          enabled: true
+          readinessPath: "/readiness"
+          livenessPath: "/healthz"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: "/readiness"
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: "/healthz"
+
+  - it: should not create probes when health checks disabled
+    template: deployment.yaml
+    set:
+      nginx:
+        healthChecks:
+          enabled: false
+    asserts:
+      - isNull:
+          path: spec.template.spec.containers[0].readinessProbe
+      - isNull:
+          path: spec.template.spec.containers[0].livenessProbe
