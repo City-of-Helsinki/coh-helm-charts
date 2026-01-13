@@ -270,7 +270,7 @@ jobs:
 
       - name: Login to OpenShift Dev Cluster
         run: |
-          echo "${{ secrets.OPENSHIFT_TOKEN }}" | oc login ${{ secrets.OPENSHIFT_API_URL }} --token="${{ secrets.OPENSHIFT_TOKEN }}" --insecure-skip-tls-verify
+          oc login ${{ secrets.OPENSHIFT_API_URL }} --token="${{ secrets.OPENSHIFT_TOKEN }}" --insecure-skip-tls-verify
 
       - name: Set namespace context
         run: |
