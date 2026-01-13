@@ -42,7 +42,7 @@ jobs:
           chmod +x /usr/local/bin/yq
           
           # Install helm-unittest plugin
-          helm plugin install https://github.com/helm-unittest/helm-unittest
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version 0.2.11 --verify=false
 
       - name: Lint chart
         run: |
