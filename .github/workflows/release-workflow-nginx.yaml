@@ -3,7 +3,7 @@ name: Release workflow for nginx-standard Helm Chart
 on:
   push:
     tags:
-      - 'v*'
+      - 'nginx-standard-v*'  # e.g., nginx-standard-v1.2.3
   workflow_dispatch:
     inputs:
       chart_version:
@@ -159,14 +159,14 @@ jobs:
         run: |
           case "${{ matrix.use-case }}" in
             filesharing)
-              echo "Validating  specific resources..."
+              echo "Validating filesharing specific resources..."
               # Check PVC is created
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
                 | yq eval 'select(.kind == "PersistentVolumeClaim")' - > /tmp/pvc.yaml
               
               if [ ! -s /tmp/pvc.yaml ]; then
-                echo "ERROR: PVC not generated for  mode"
+                echo "ERROR: PVC not generated for filesharing mode"
                 exit 1
               fi
               # Check External Secrets if static mode
@@ -177,7 +177,7 @@ jobs:
                   | yq eval 'select(.kind == "ExternalSecret")' - > /tmp/externalsecret.yaml
                 
                 if [ ! -s /tmp/externalsecret.yaml ]; then
-                  echo "ERROR: ExternalSecret not generated for static  mode"
+                  echo "ERROR: ExternalSecret not generated for static filesharing mode"
                   exit 1
                 fi
               fi
@@ -341,7 +341,7 @@ jobs:
           
           echo "✓ elasticproxy deployed and healthy"
 
-  #     - name: Test cache deployment
+            #     - name: Test cache deployment
   #       run: |
   #         echo "Testing cache use case..."
           
@@ -438,15 +438,15 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          # Get previous tag
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          # Get previous tag for this chart
+          PREVIOUS_TAG=$(git tag -l "nginx-standard-v*" --sort=-v:refname | head -n 2 | tail -n 1 || echo "")
           
           if [ -z "$PREVIOUS_TAG" ]; then
-            echo "No previous tag found, generating full history"
-            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+            echo "No previous tag found for nginx-standard, generating full history"
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
           else
             echo "Generating changelog from $PREVIOUS_TAG to HEAD"
-            COMMITS=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges)
+            COMMITS=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
           fi
           
           # Categorize commits
@@ -488,6 +488,7 @@ jobs:
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
   release:
     needs: [test, integration-test, generate-changelog]
     runs-on: ubuntu-latest
@@ -508,24 +509,28 @@ jobs:
       - name: Install yq
         run: sudo snap install yq
 
-      - name: Determine Chart Version
+      - name: Determine Chart Version and Git Tag
         id: version
         run: |
           # Use manual input if available
-          VERSION="${{ github.event.inputs.chart_version }}"
+          CHART_VERSION="${{ github.event.inputs.chart_version }}"
           
           # If no manual input, extract version from the git tag
-          if [ -z "$VERSION" ] && [[ "${{ github.ref }}" == "refs/tags/v"* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          fi
-          
-          if [ -z "$VERSION" ]; then
-            echo "Error: Chart version could not be determined. Set 'chart_version' input or push a 'v*' tag."
+          if [ -z "$CHART_VERSION" ] && [[ "${{ github.ref }}" == refs/tags/nginx-standard-v* ]]; then
+            CHART_VERSION=${GITHUB_REF#refs/tags/nginx-standard-v}
+            GIT_TAG=${GITHUB_REF#refs/tags/}
+          elif [ -n "$CHART_VERSION" ]; then
+            # Manual dispatch - create git tag name
+            GIT_TAG="nginx-standard-v${CHART_VERSION}"
+          else
+            echo "Error: Chart version could not be determined"
             exit 1
           fi
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Using determined Version: $VERSION"
+          
+          echo "chart_version=$CHART_VERSION" >> $GITHUB_OUTPUT
+          echo "git_tag=$GIT_TAG" >> $GITHUB_OUTPUT
+          echo "Chart Version: $CHART_VERSION"
+          echo "Git Tag: $GIT_TAG"
 
       - name: Get chart name
         id: chart
@@ -536,15 +541,15 @@ jobs:
 
       - name: Update Chart.yaml version
         run: |
-          yq eval -i '.version = "${{ steps.version.outputs.version }}"' charts/nginx-standard/Chart.yaml
+          yq eval -i '.version = "${{ steps.version.outputs.chart_version }}"' charts/nginx-standard/Chart.yaml
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add charts/nginx-standard/Chart.yaml
-          git commit -m "chore: bump chart version to ${{ steps.version.outputs.version }}" || echo "No version change needed"
+          git commit -m "chore: bump chart version to ${{ steps.version.outputs.chart_version }}" || echo "No version change needed"
 
       - name: Package chart
         run: |
-          helm package charts/nginx-standard/ --version ${{ steps.version.outputs.version }}
+          helm package charts/nginx-standard/ --version ${{ steps.version.outputs.chart_version }}
 
       - name: Configure Git
         run: |
@@ -573,7 +578,7 @@ jobs:
           
           # Commit and push
           git add .
-          git commit -m "feat: Release ${{ steps.chart.outputs.chart_name }} ${{ steps.version.outputs.version }}" || echo "No changes to commit"
+          git commit -m "feat: Release ${{ steps.chart.outputs.chart_name }} ${{ steps.version.outputs.chart_version }}" || echo "No changes to commit"
           git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git gh-pages
 
       - name: Create GitHub Release
@@ -581,7 +586,7 @@ jobs:
         with:
           artifacts: "*.tgz"
           body: |
-            # nginx-standard Helm Chart v${{ steps.version.outputs.version }}
+            # nginx-standard Helm Chart v${{ steps.version.outputs.chart_version }}
             
             ## Changelog
             
@@ -591,8 +596,8 @@ jobs:
             
             - [Full Documentation](https://github.com/${{ github.repository }}/blob/main/charts/nginx-standard/README.md)
             - [Values Reference](https://github.com/${{ github.repository }}/blob/main/charts/nginx-standard/values.yaml)
-          tag: v${{ steps.version.outputs.version }}
-          name: Release v${{ steps.version.outputs.version }}
+          tag: v${{ steps.version.outputs.git_tag }}
+          name: "nginx-standard v${{ steps.version.outputs.chart_version }}"
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
