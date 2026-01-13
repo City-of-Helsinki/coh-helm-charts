@@ -157,7 +157,6 @@ jobs:
               # Check PVC is created
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
-                --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "PersistentVolumeClaim")' - > /tmp/pvc.yaml
               
               if [ ! -s /tmp/pvc.yaml ]; then
@@ -169,7 +168,6 @@ jobs:
               if [ "$MODE" = "static" ]; then
                 helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                   -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
-                  --exclude 'charts/nginx-standard/templates/tests/*' \
                   | yq eval 'select(.kind == "ExternalSecret")' - > /tmp/externalsecret.yaml
                 
                 if [ ! -s /tmp/externalsecret.yaml ]; then
@@ -184,7 +182,6 @@ jobs:
               # Check for Elasticsearch environment variables
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
-                  --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].env[] | select(.name == "ELASTICSEARCH_URL")' - > /tmp/es-env.yaml
               
               if [ ! -s /tmp/es-env.yaml ]; then
@@ -195,7 +192,6 @@ jobs:
               # Verify perl module is loaded in nginx.conf
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
-                  --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "ConfigMap") | .data."nginx.conf"' - | grep -q "ngx_http_perl_module"
               
               if [ $? -ne 0 ]; then
@@ -209,7 +205,6 @@ jobs:
               # Check cache volume is created
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
-                --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "Deployment") | .spec.template.spec.volumes[] | select(.name == "cache-volume")' - > /tmp/cache-vol.yaml
               
               if [ ! -s /tmp/cache-vol.yaml ]; then
@@ -220,7 +215,6 @@ jobs:
               # Verify proxy_cache_path in nginx.conf
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
-                --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "ConfigMap") | .data."nginx.conf"' - | grep -q "proxy_cache_path"
               
               if [ $? -ne 0 ]; then
@@ -234,7 +228,6 @@ jobs:
               # Check environment variables are set
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
-                --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].env[] | select(.name == "HOST_PROXY")' - > /tmp/host-proxy-env.yaml
               
               if [ ! -s /tmp/host-proxy-env.yaml ]; then
@@ -245,7 +238,6 @@ jobs:
               # Verify perl module is loaded
               helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
                 -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
-                --exclude 'charts/nginx-standard/templates/tests/*' \
                 | yq eval 'select(.kind == "ConfigMap") | .data."nginx.conf"' - | grep -q "ngx_http_perl_module"
               
               if [ $? -ne 0 ]; then
