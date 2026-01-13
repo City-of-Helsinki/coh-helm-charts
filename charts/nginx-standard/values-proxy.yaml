@@ -55,27 +55,27 @@ frontProxy:
       
   # --- 4. CUSTOM SERVER BLOCKS (Complex logic/API proxies) ---
   customServers:
-    - serverName: digitransit-proxy.api.hel.fi
-      locations:
-        - path: "/"
-          proxyPass: https://api.digitransit.fi/
-          additionalConfig: |
-            proxy_set_header digitransit-subscription-key $DIGITRANSIT_API_KEY;
+    # - serverName: digitransit-proxy.api.hel.fi
+    #   locations:
+    #     - path: "/"
+    #       proxyPass: https://api.digitransit.fi/
+    #       additionalConfig: |
+    #         proxy_set_header digitransit-subscription-key $digitransit_api_key;
             
-    - serverName: admin.example.com
+    - serverName: localhost
       locations:
-        - path: "= /admin"
+        - path: "= /"
           additionalConfig: |
             if ($allowed = 0) {
               return 403 "blocked $remote_addr";
             }
           proxyPass: https://elasticsearch-test-es-http.nginx-demo.svc.cluster.local:9200
           
-    - serverName: xn--ptkset-buaa7n.hel.fi
-      locations:
-        - path: "/"
-          additionalConfig: |
-            return 301 https://paatokset.hel.fi/$uri;
+    # - serverName: xn--ptkset-buaa7n.hel.fi
+    #   locations:
+    #     - path: "/"
+    #       additionalConfig: |
+    #         return 301 https://paatokset.hel.fi/$uri;
 
 observability:
   metrics:

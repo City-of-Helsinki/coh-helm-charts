@@ -622,9 +622,9 @@ FRONT PROXY USE CASE
 
 {{- define "nginx-standard.nginxMainConf.frontProxy" -}}
 # NGINX Front Proxy Mode
-{{- include "nginx-standard.commonWorkerEvents" . }}
 # Load Perl module for environment variable access
 load_module modules/ngx_http_perl_module.so;
+{{- include "nginx-standard.commonWorkerEvents" . }}
 {{- if eq (include "nginx-standard.frontProxyEnabled" .) "true" }}
 {{- if .Values.frontProxy.env }}
 {{- range $key, $val := .Values.frontProxy.env }}
@@ -714,7 +714,7 @@ server {
 {{ .additionalConfig | nindent 4 }}
 {{- end }}
 {{- if .proxyPass }}
-    proxy_pass {{ .proxyPass }}/;
+    proxy_pass {{ .proxyPass }};
 {{- end }}
   }
 {{- end }}
