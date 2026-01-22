@@ -99,11 +99,27 @@ Replica count (respects autoscaling)
 {{- end }}
 
 {{/*
-Image reference
+Image reference - Selects image based on use case
 */}}
 {{- define "nginx-standard.image" -}}
-{{- .Values.nginx.image.full }}
-{{- end }}
+{{- $useCase := default "file-sharing" .Values.nginx.useCase -}}
+
+{{/* Check if there's a custom image specified in values */}}
+{{- if .Values.nginx.image.full -}}
+{{- .Values.nginx.image.full -}}
+{{- else -}}
+  {{/* Default images for each use case */}}
+  {{- if eq $useCase "file-sharing" -}}
+registry.redhat.io/rhel9/nginx-124:latest
+  {{- else if eq $useCase "elastic-proxy" -}}
+container-registry.platta-net.hel.fi/devops/nginxinc/nginx-unprivileged:alpine-perl
+  {{- else if eq $useCase "cache" -}}
+registry.redhat.io/rhel9/nginx-124:latest
+  {{- else if eq $useCase "front-proxy" -}}
+container-registry.platta-net.hel.fi/devops/nginxinc/nginx-unprivileged:alpine-perl
+  {{- end -}}
+{{- end -}}
+{{- end -}}
 
 {{/*
 Health check paths

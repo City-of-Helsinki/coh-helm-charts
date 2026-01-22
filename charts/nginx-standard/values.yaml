@@ -29,7 +29,7 @@ nginx:
   # Container image configuration
   image:
     # Full image reference including registry, repository, and tag
-    full: 'registry.redhat.io/rhel8/nginx-120:latest'
+    full: ''
     pullPolicy: "IfNotPresent"
     pullSecrets: 
       - name: "quay-secret-new"
@@ -529,7 +529,7 @@ podAnnotations: {}
 # TESTING
 # ==============================================================================
 tests:
-  enabled: true
+  enabled: false
   image: "registry.access.redhat.com/ubi8/ubi-minimal:latest"
   credentials:
     secretName: elasticsearch-test-es-elastic-user
