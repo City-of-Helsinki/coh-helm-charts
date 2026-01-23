@@ -99,9 +99,9 @@ spec:
             - name: ELASTICSEARCH_URL
               value: {{ .Values.elasticProxy.upstream.url | required "elasticProxy.upstream.url is required" }}  
             {{- if and (eq .Values.nginx.useCase "elastic-proxy") .Values.elasticProxy.upstreamAuth.enabled }}
-            - name: ELASTIC_USER
+            - name: ELASTIC_READER_USER
               value: {{ .Values.elasticProxy.upstreamAuth.username | required "elasticProxy.upstreamAuth.username is required when upstreamAuth is enabled" }}
-            - name: ELASTIC_PASSWORD
+            - name: ELASTIC_READER_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.elasticProxy.upstreamAuth.secretName | default (include "nginx-standard.fullname" .) }}
