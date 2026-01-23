@@ -567,8 +567,8 @@ ELASTIC PROXY USE CASE
 {{- define "nginx-standard.elasticAuthPerlScript" }}
   sub {
     use MIME::Base64;
-    if (exists($ENV{"ELASTIC_USER"}) && exists($ENV{"ELASTIC_PASSWORD"})) {
-      return "Basic " . encode_base64($ENV{"ELASTIC_USER"} . ":" . $ENV{"ELASTIC_PASSWORD"}, "");
+    if (exists($ENV{"ELASTIC_READER_USER"}) && exists($ENV{"ELASTIC_READER_PASSWORD"})) {
+      return "Basic " . encode_base64($ENV{"ELASTIC_READER_USER"} . ":" . $ENV{"ELASTIC_READER_PASSWORD"}, "");
     }
     return "";
   }
@@ -576,8 +576,8 @@ ELASTIC PROXY USE CASE
 
 {{- define "nginx-standard.nginxElasticConf" -}}
 env ELASTICSEARCH_URL;
-env ELASTIC_PASSWORD;
-env ELASTIC_USER;
+env ELASTIC_READER_PASSWORD;
+env ELASTIC_READER_USER;
 # Load perl module
 load_module modules/ngx_http_perl_module.so;
 

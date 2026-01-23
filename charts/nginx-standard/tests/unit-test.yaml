@@ -186,12 +186,12 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: ELASTIC_USER
+            name: ELASTIC_READER_USER
             value: "elastic"
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: ELASTIC_PASSWORD
+            name: ELASTIC_READER_PASSWORD
             valueFrom:
               secretKeyRef:
                 name: "elastic-secret"

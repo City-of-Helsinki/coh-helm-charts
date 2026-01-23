@@ -1,8 +1,5 @@
 nginx:
   useCase: "elastic-proxy"
-  image:
-    full: 'container-registry.platta-net.hel.fi/devops/nginxinc/nginx-unprivileged:alpine-perl'
-
 # ============================================================================
 # ELASTIC PROXY USE CASE CONFIGURATION (Overrides)
 # ============================================================================
