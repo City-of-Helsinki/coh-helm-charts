@@ -697,6 +697,7 @@ server {
 server {
   listen {{ include "nginx-standard.servicePort" $ }};
   server_name {{ .serverName }};
+  resolver dns-default.openshift-dns.svc.cluster.local valid=30s ipv6=off;
 {{- with $.Values.frontProxy.globalConfig.serverDirectives }}
 {{- range . }}
   {{ . }};
