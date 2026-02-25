@@ -667,8 +667,10 @@ env {{ $key }};
   perl_set ${{ lower $key }} 'sub { return $ENV{"{{ $key }}"} || ""; }';
 {{- end }}
 {{- end }}
+  {{- if and .Values.frontProxy.env (index .Values.frontProxy.env "HOST_PROXY") }}
   # Perl variable for HOST_PROXY
   perl_set $host_proxy_env 'sub { return $ENV{"HOST_PROXY"} || ""; }';
+  {{- end }}
   # Include custom server configuration
   include /opt/app-root/etc/nginx.default.d/*.conf;
 }
