@@ -245,12 +245,12 @@ jobs:
           echo "✓ Secret generated when existingSecret is unset"
 
           echo "Checking Secret is NOT generated when existingSecret is provided..."
-          COUNT=$(helm template test-redis-cluster charts/redis-cluster/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             --set redis.password.existingSecret=my-redis-secret \
-            | yq eval 'select(.kind == "Secret") | .metadata.name' - | wc -l)
+            | yq eval 'select(.kind == "Secret")' - > /tmp/secret-suppressed.yaml
 
-          if [ "$COUNT" -ne 0 ]; then
-            echo "ERROR: Secret should not be generated when existingSecret is set (found $COUNT)"
+          if [ -s /tmp/secret-suppressed.yaml ]; then
+            echo "ERROR: Secret should not be generated when existingSecret is set"
             exit 1
           fi
           echo "✓ Secret suppressed when existingSecret is set"
@@ -258,10 +258,10 @@ jobs:
       - name: Validate PDB behaviour
         run: |
           echo "Checking PDB is NOT generated when disabled (default)..."
-          COUNT=$(helm template test-redis-cluster charts/redis-cluster/ \
-            | yq eval 'select(.kind == "PodDisruptionBudget")' - | wc -l)
+          helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "PodDisruptionBudget")' - > /tmp/pdb-disabled.yaml
 
-          if [ "$COUNT" -ne 0 ]; then
+          if [ -s /tmp/pdb-disabled.yaml ]; then
             echo "ERROR: PDB should not be generated when redis.pdb.enabled=false"
             exit 1
           fi
