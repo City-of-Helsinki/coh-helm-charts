@@ -280,6 +280,16 @@ elasticProxy:
         
         add_header 'Access-Control-Allow-Origin' '*' always;
         add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+
+    # PSD-7846 - Index existence check via HEAD /<index>
+    - path: "~ ^/([a-z][a-z_,-]*)$"
+      methods: ["HEAD"]
+      additionalConfig: |
+        proxy_pass $elasticsearch_url;
+        proxy_ssl_verify off;
+        proxy_redirect off;
+        proxy_pass_header Authorization;
+
 # ==============================================================================
 # CACHE PROXY USE CASE
 # ==============================================================================
