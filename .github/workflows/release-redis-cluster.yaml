@@ -1,9 +1,9 @@
-name: Release workflow for redis-sentinel Helm Chart
+name: Release redis-cluster Helm Chart
 
 on:
   push:
     tags:
-      - 'redis-sentinel-v*'  # e.g., redis-sentinel-v1.2.3
+      - 'redis-cluster-v*'  # e.g., redis-cluster-v1.2.3
   workflow_dispatch:
     inputs:
       chart_version:
@@ -39,67 +39,67 @@ jobs:
 
       - name: Lint chart
         run: |
-          helm lint charts/redis-sentinel/
+          helm lint charts/redis-cluster/
 
       - name: Run unit tests
         run: |
-          if ls charts/redis-sentinel/tests/*_test.yaml 1>/dev/null 2>&1; then
-            helm unittest charts/redis-sentinel/
+          if ls charts/redis-cluster/tests/*_test.yaml 1>/dev/null 2>&1; then
+            helm unittest charts/redis-cluster/
           else
             echo "No unit test files found in tests/ directory, skipping unit tests"
           fi
 
       - name: Test default template rendering
         run: |
-          helm template test-redis-sentinel charts/redis-sentinel/ --debug
+          helm template test-redis-cluster charts/redis-cluster/ --debug
 
       - name: Validate manifests against Kubernetes schemas
         run: |
-          helm template test-redis-sentinel charts/redis-sentinel/ \
-            --exclude charts/redis-sentinel/templates/tests/* \
+          helm template test-redis-cluster charts/redis-cluster/ \
+            --exclude charts/redis-cluster/templates/tests/* \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
 
       - name: Validate manifests with persistence enabled
         run: |
-          helm template test-redis-sentinel-pvc charts/redis-sentinel/ \
+          helm template test-redis-cluster-pvc charts/redis-cluster/ \
             --set redis.persistence.enabled=true \
             --set redis.persistence.size=2Gi \
-            --exclude charts/redis-sentinel/templates/tests/* \
+            --exclude charts/redis-cluster/templates/tests/* \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
 
       - name: Validate manifests with PDB enabled
         run: |
-          helm template test-redis-sentinel-pdb charts/redis-sentinel/ \
+          helm template test-redis-cluster-pdb charts/redis-cluster/ \
             --set redis.pdb.enabled=true \
             --set redis.pdb.minAvailable=1 \
-            --exclude charts/redis-sentinel/templates/tests/* \
+            --exclude charts/redis-cluster/templates/tests/* \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
 
       - name: Validate manifests with existing secret
         run: |
-          helm template test-redis-sentinel-secret charts/redis-sentinel/ \
+          helm template test-redis-cluster-secret charts/redis-cluster/ \
             --set redis.password.existingSecret=my-redis-secret \
             --set redis.password.secretKey=REDIS_PASSWORD \
-            --exclude charts/redis-sentinel/templates/tests/* \
+            --exclude charts/redis-cluster/templates/tests/* \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
 
       - name: Validate manifests with custom replica counts
         run: |
-          helm template test-redis-sentinel-replicas charts/redis-sentinel/ \
+          helm template test-redis-cluster-replicas charts/redis-cluster/ \
             --set redis.replicaCount=3 \
             --set sentinel.replicaCount=3 \
-            --exclude charts/redis-sentinel/templates/tests/* \
+            --exclude charts/redis-cluster/templates/tests/* \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
 
       - name: Validate Redis StatefulSet structure
         run: |
           echo "Checking Redis StatefulSet is generated..."
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "StatefulSet" and .metadata.name == "*-redis")' - > /tmp/redis-sts.yaml
 
           if [ ! -s /tmp/redis-sts.yaml ]; then
@@ -109,7 +109,7 @@ jobs:
           echo "✓ Redis StatefulSet present"
 
           # Confirm the init container for config bootstrapping is present
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "StatefulSet") | .spec.template.spec.initContainers[].name' - \
             | grep -q "config"
 
@@ -122,7 +122,7 @@ jobs:
       - name: Validate Sentinel StatefulSet structure
         run: |
           echo "Checking Sentinel StatefulSet is generated..."
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "StatefulSet" and .metadata.name == "*-sentinel")' - > /tmp/sentinel-sts.yaml
 
           if [ ! -s /tmp/sentinel-sts.yaml ]; then
@@ -132,7 +132,7 @@ jobs:
           echo "✓ Sentinel StatefulSet present"
 
           # Confirm sentinel init container is present
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "StatefulSet" and .metadata.name == "*-sentinel") | .spec.template.spec.initContainers[].name' - \
             | grep -q "config"
 
@@ -145,7 +145,7 @@ jobs:
       - name: Validate Services
         run: |
           echo "Checking all required Services are generated..."
-          SERVICES=$(helm template test-redis-sentinel charts/redis-sentinel/ \
+          SERVICES=$(helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "Service") | .metadata.name' -)
 
           # Headless service for Redis
@@ -175,7 +175,7 @@ jobs:
       - name: Validate ConfigMaps
         run: |
           echo "Checking ConfigMaps are generated..."
-          CONFIGMAPS=$(helm template test-redis-sentinel charts/redis-sentinel/ \
+          CONFIGMAPS=$(helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "ConfigMap") | .metadata.name' -)
 
           # Scripts ConfigMap
@@ -195,7 +195,7 @@ jobs:
           echo "✓ Config ConfigMap present"
 
           # Verify redis.conf and sentinel.conf are present in the config ConfigMap
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "ConfigMap" and .metadata.name == "*-config") | .data | keys' - \
             | grep -q "redis.conf"
           if [ $? -ne 0 ]; then
@@ -204,7 +204,7 @@ jobs:
           fi
           echo "✓ redis.conf present in config ConfigMap"
 
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "ConfigMap" and .metadata.name == "*-config") | .data | keys' - \
             | grep -q "sentinel.conf"
           if [ $? -ne 0 ]; then
@@ -214,7 +214,7 @@ jobs:
           echo "✓ sentinel.conf present in config ConfigMap"
 
           # Verify redis_init.sh and sentinel_init.sh are present in scripts ConfigMap
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "ConfigMap" and .metadata.name == "*-scripts") | .data | keys' - \
             | grep -q "redis_init.sh"
           if [ $? -ne 0 ]; then
@@ -223,7 +223,7 @@ jobs:
           fi
           echo "✓ redis_init.sh present in scripts ConfigMap"
 
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "ConfigMap" and .metadata.name == "*-scripts") | .data | keys' - \
             | grep -q "sentinel_init.sh"
           if [ $? -ne 0 ]; then
@@ -235,7 +235,7 @@ jobs:
       - name: Validate Secret behaviour
         run: |
           echo "Checking Secret is generated when no existingSecret is set..."
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "Secret")' - > /tmp/secret.yaml
 
           if [ ! -s /tmp/secret.yaml ]; then
@@ -245,7 +245,7 @@ jobs:
           echo "✓ Secret generated when existingSecret is unset"
 
           echo "Checking Secret is NOT generated when existingSecret is provided..."
-          COUNT=$(helm template test-redis-sentinel charts/redis-sentinel/ \
+          COUNT=$(helm template test-redis-cluster charts/redis-cluster/ \
             --set redis.password.existingSecret=my-redis-secret \
             | yq eval 'select(.kind == "Secret") | .metadata.name' - | wc -l)
 
@@ -258,7 +258,7 @@ jobs:
       - name: Validate PDB behaviour
         run: |
           echo "Checking PDB is NOT generated when disabled (default)..."
-          COUNT=$(helm template test-redis-sentinel charts/redis-sentinel/ \
+          COUNT=$(helm template test-redis-cluster charts/redis-cluster/ \
             | yq eval 'select(.kind == "PodDisruptionBudget")' - | wc -l)
 
           if [ "$COUNT" -ne 0 ]; then
@@ -268,7 +268,7 @@ jobs:
           echo "✓ PDB absent when disabled"
 
           echo "Checking PDB IS generated when enabled..."
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             --set redis.pdb.enabled=true \
             | yq eval 'select(.kind == "PodDisruptionBudget")' - > /tmp/pdb.yaml
 
@@ -281,7 +281,7 @@ jobs:
       - name: Validate persistence behaviour
         run: |
           echo "Checking emptyDir is used when persistence is disabled..."
-          VOLUMES=$(helm template test-redis-sentinel charts/redis-sentinel/ \
+          VOLUMES=$(helm template test-redis-cluster charts/redis-cluster/ \
             --set redis.persistence.enabled=false \
             | yq eval 'select(.kind == "StatefulSet" and .metadata.name == "*-redis") | .spec.template.spec.volumes[] | select(.name == "data") | .emptyDir' -)
 
@@ -292,7 +292,7 @@ jobs:
           echo "✓ emptyDir used when persistence disabled"
 
           echo "Checking volumeClaimTemplates are set when persistence is enabled..."
-          helm template test-redis-sentinel charts/redis-sentinel/ \
+          helm template test-redis-cluster charts/redis-cluster/ \
             --set redis.persistence.enabled=true \
             --set redis.persistence.size=2Gi \
             | yq eval 'select(.kind == "StatefulSet" and .metadata.name == "*-redis") | .spec.volumeClaimTemplates' - > /tmp/vct.yaml
@@ -344,9 +344,9 @@ jobs:
             --from-literal=REDIS_PASSWORD=testpass123 \
             --dry-run=client -o yaml | oc apply -f -
 
-      - name: Deploy redis-sentinel chart
+      - name: Deploy redis-cluster chart
         run: |
-          helm install test-redis-sentinel charts/redis-sentinel/ \
+          helm install test-redis-cluster charts/redis-cluster/ \
             -n redis-demo \
             --set redis.password.existingSecret=test-redis-secret \
             --set redis.password.secretKey=REDIS_PASSWORD \
@@ -354,18 +354,18 @@ jobs:
 
       - name: Verify Redis StatefulSet rollout
         run: |
-          oc rollout status statefulset/test-redis-sentinel-redis -n redis-demo --timeout=5m
+          oc rollout status statefulset/test-redis-cluster-redis -n redis-demo --timeout=5m
           echo "✓ Redis StatefulSet rolled out"
 
       - name: Verify Sentinel StatefulSet rollout
         run: |
-          oc rollout status statefulset/test-redis-sentinel-sentinel -n redis-demo --timeout=5m
+          oc rollout status statefulset/test-redis-cluster-sentinel -n redis-demo --timeout=5m
           echo "✓ Sentinel StatefulSet rolled out"
 
       - name: Smoke test Redis pods
         run: |
           for i in 0 1 2; do
-            POD="test-redis-sentinel-redis-${i}"
+            POD="test-redis-cluster-redis-${i}"
             echo "Testing pod: $POD"
             oc exec -n redis-demo $POD -- \
               redis-cli -a testpass123 --no-auth-warning ping | grep -q "PONG"
@@ -375,7 +375,7 @@ jobs:
       - name: Smoke test Sentinel pods
         run: |
           for i in 0 1 2; do
-            POD="test-redis-sentinel-sentinel-${i}"
+            POD="test-redis-cluster-sentinel-${i}"
             echo "Testing pod: $POD"
             oc exec -n redis-demo $POD -- \
               redis-cli -p 26379 -a testpass123 --no-auth-warning ping | grep -q "PONG"
@@ -384,7 +384,7 @@ jobs:
 
       - name: Verify Sentinel knows the master
         run: |
-          POD="test-redis-sentinel-sentinel-0"
+          POD="test-redis-cluster-sentinel-0"
           echo "Querying sentinel for master info..."
           oc exec -n redis-demo $POD -- \
             redis-cli -p 26379 -a testpass123 --no-auth-warning sentinel master mymaster \
@@ -408,7 +408,7 @@ jobs:
           for component in redis sentinel; do
             echo "--- Logs for component: $component ---"
             for POD in $(oc get pods -n redis-demo \
-              -l "app.kubernetes.io/instance=test-redis-sentinel,app.kubernetes.io/component=$component" \
+              -l "app.kubernetes.io/instance=test-redis-cluster,app.kubernetes.io/component=$component" \
               -o jsonpath="{.items[*].metadata.name}"); do
               echo "  Pod: $POD"
               oc logs -n redis-demo $POD --all-containers --tail=100 || echo "No logs available"
@@ -422,7 +422,7 @@ jobs:
         if: always()
         run: |
           echo "Cleaning up..."
-          helm uninstall test-redis-sentinel -n redis-demo || true
+          helm uninstall test-redis-cluster -n redis-demo || true
           oc delete secret test-redis-secret -n redis-demo || true
           echo "Cleanup complete"
 
@@ -440,14 +440,14 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          PREVIOUS_TAG=$(git tag -l "redis-sentinel-v*" --sort=-v:refname | head -n 2 | tail -n 1 || echo "")
+          PREVIOUS_TAG=$(git tag -l "redis-cluster-v*" --sort=-v:refname | head -n 2 | tail -n 1 || echo "")
 
           if [ -z "$PREVIOUS_TAG" ]; then
             echo "No previous tag found, generating full history"
-            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges -- charts/redis-sentinel/)
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges -- charts/redis-cluster/)
           else
             echo "Generating changelog from $PREVIOUS_TAG to HEAD"
-            COMMITS=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges -- charts/redis-sentinel/)
+            COMMITS=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges -- charts/redis-cluster/)
           fi
 
           FEATURES=$(echo "$COMMITS" | grep -i "^- feat"  || echo "")
@@ -492,14 +492,14 @@ jobs:
       - name: Determine Chart Version and Git Tag
         id: version
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/redis-sentinel-v* ]]; then
-            CHART_VERSION=${GITHUB_REF#refs/tags/redis-sentinel-}
+          if [[ "${{ github.ref }}" == refs/tags/redis-cluster-v* ]]; then
+            CHART_VERSION=${GITHUB_REF#refs/tags/redis-cluster-}
             GIT_TAG=${GITHUB_REF#refs/tags/}
           elif [ -n "${{ github.event.inputs.chart_version }}" ]; then
             INPUT_VERSION="${{ github.event.inputs.chart_version }}"
             CLEAN_VERSION="${INPUT_VERSION#v}"
             CHART_VERSION="v${CLEAN_VERSION}"
-            GIT_TAG="redis-sentinel-${CHART_VERSION}"
+            GIT_TAG="redis-cluster-${CHART_VERSION}"
           else
             echo "Error: Chart version could not be determined"
             exit 1
@@ -513,18 +513,18 @@ jobs:
       - name: Get chart name
         id: chart
         run: |
-          CHART_NAME=$(yq eval '.name' charts/redis-sentinel/Chart.yaml)
+          CHART_NAME=$(yq eval '.name' charts/redis-cluster/Chart.yaml)
           echo "chart_name=$CHART_NAME" >> $GITHUB_OUTPUT
           echo "Chart: $CHART_NAME"
 
       - name: Update Chart.yaml version
         run: |
-          yq eval -i '.version = "${{ steps.version.outputs.chart_version }}"' charts/redis-sentinel/Chart.yaml
+          yq eval -i '.version = "${{ steps.version.outputs.chart_version }}"' charts/redis-cluster/Chart.yaml
           echo "Updated Chart.yaml to ${{ steps.version.outputs.chart_version }}"
 
       - name: Package chart
         run: |
-          helm package charts/redis-sentinel/ --version ${{ steps.version.outputs.chart_version }}
+          helm package charts/redis-cluster/ --version ${{ steps.version.outputs.chart_version }}
 
       - name: Configure Git
         run: |
@@ -554,7 +554,7 @@ jobs:
         with:
           artifacts: "*.tgz"
           body: |
-            # redis-sentinel Helm Chart ${{ steps.version.outputs.chart_version }}
+            # redis-cluster Helm Chart ${{ steps.version.outputs.chart_version }}
 
             ## Changelog
 
@@ -562,10 +562,10 @@ jobs:
 
             ## Documentation
 
-            - [Full Documentation](https://github.com/${{ github.repository }}/blob/main/charts/redis-sentinel/README.md)
-            - [Values Reference](https://github.com/${{ github.repository }}/blob/main/charts/redis-sentinel/values.yaml)
+            - [Full Documentation](https://github.com/${{ github.repository }}/blob/main/charts/redis-cluster/README.md)
+            - [Values Reference](https://github.com/${{ github.repository }}/blob/main/charts/redis-cluster/values.yaml)
           tag: ${{ steps.version.outputs.git_tag }}
-          name: "redis-sentinel ${{ steps.version.outputs.chart_version }}"
+          name: "redis-cluster ${{ steps.version.outputs.chart_version }}"
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
