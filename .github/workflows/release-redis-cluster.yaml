@@ -1,4 +1,4 @@
-name: Release redis-sentinel Helm Chart
+name: Release workflow for redis-sentinel Helm Chart
 
 on:
   push:
