@@ -114,10 +114,17 @@ spec:
           image: {{ include "redis-sentinel.redis.image" . }}
           imagePullPolicy: IfNotPresent
           command:
-            - "sh"
-            - "-c"
+            - sh
+            - '-c'
             - |
-              echo "maxmemory $$(( ($$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes )/5)*4))" >> /etc/redis/redis.conf
+              if [ -f /sys/fs/cgroup/memory.max ]; then
+                MEM_LIMIT=$$(cat /sys/fs/cgroup/memory.max)
+              else
+                MEM_LIMIT=$$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+              fi
+              if [ "$$MEM_LIMIT" != "max" ] && [ "$$MEM_LIMIT" -gt 0 ]; then
+                echo "maxmemory $$(( ($$MEM_LIMIT / 5) * 4 ))" >> /etc/redis/redis.conf
+              fi
               exec redis-server /etc/redis/redis.conf
           resources:
             {{- toYaml .Values.redis.resources | nindent 12 }}
