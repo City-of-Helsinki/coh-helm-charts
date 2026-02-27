@@ -98,7 +98,7 @@ Get the Redis image
 {{- if .Values.redis.image -}}
 {{- .Values.redis.image -}}
 {{- else -}}
-registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3
+registry.redhat.io/rhel9/redis-7:9.7-1771417604
 {{- end -}}
 {{- end }}
 
@@ -109,7 +109,7 @@ Get the Sentinel image
 {{- if .Values.sentinel.image -}}
 {{- .Values.sentinel.image -}}
 {{- else -}}
-registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3
+registry.redhat.io/rhel9/redis-7:9.7-1771417604
 {{- end -}}
 {{- end }}
 
