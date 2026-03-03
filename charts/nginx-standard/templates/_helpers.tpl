@@ -542,6 +542,19 @@ location {{ .path }} {
 }
 {{- end }}
 {{ include "nginx-standard.healthCheckLocations" . }}
+{{- if .Values.cache.namedLocations }}
+# Named locations
+{{- range .Values.cache.namedLocations }}
+location @{{ .name }} {
+  {{- if .internal }}
+  internal;
+  {{- end }}
+  {{- if .additionalConfig }}
+{{ .additionalConfig | nindent 2 }}
+  {{- end }}
+}
+{{- end }}
+{{- end }}
 {{- end -}}
 
 {{/*

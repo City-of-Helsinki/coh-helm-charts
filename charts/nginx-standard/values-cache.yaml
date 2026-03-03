@@ -22,6 +22,11 @@ cache:
       maxSize: "100m"
       inactive: "5m"
       useTempPath: "off"
+      
+  namedLocations:
+  - name: dummy
+    internal: true
+    additionalConfig: "return 404;"
   
   locations:
     - path: "/"
