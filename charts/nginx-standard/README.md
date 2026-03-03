@@ -377,6 +377,7 @@ Advanced caching proxy with flexible zone configuration and per-location cache p
 **Key Features:**
 - Multiple cache zones with independent configurations
 - Per-location cache policies
+- Named locations supported
 - Cache bypass and invalidation rules
 - Background cache updates
 - Stale content serving
@@ -418,6 +419,10 @@ cache:
       inactive: "7d"
       useTempPath: "off"
   
+  namedLocations:
+  - name: dummy
+    internal: true
+    additionalConfig: "return 404;"
   # Configure locations with different caching strategies
   locations:
     # Dynamic content with short cache
@@ -905,7 +910,12 @@ cache:
       maxSize: "5g"
       inactive: "30d"
       useTempPath: "off"
-  
+
+  namedLocations:
+  - name: dummy
+    internal: true
+    additionalConfig: "return 404;"
+
   locations:
     - path: "/api"
       cache:

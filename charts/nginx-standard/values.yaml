@@ -322,7 +322,10 @@ cache:
       maxSize: "1g"  # Maximum cache size
       inactive: "60m"  # Remove cached items not accessed in this time
       useTempPath: "off"  # Don't use temp path for better performance
-  
+  namedLocations:
+  - name: dummy
+    internal: true
+    additionalConfig: "return 404;"
   # Location-specific cache configurations
   locations:
     - path: "/"

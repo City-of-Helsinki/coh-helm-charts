@@ -39,7 +39,12 @@ cache:
       maxSize: "500m"         
       inactive: "1h"          
       useTempPath: "off"
-  
+
+  namedLocations:
+  - name: dummy
+    internal: true
+    additionalConfig: "return 404;"
+
   locations:
     # Location 1: Root path - General content caching
     - path: "/"               # Match all requests to root
