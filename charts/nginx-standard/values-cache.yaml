@@ -7,6 +7,7 @@ cache:
   defaultBackendUrl: "https://elasticsearch-test-es-http.nginx-demo.svc.cluster.local:9200"
   clientMaxBodySize: "50m"
   volumeSize: "1Gi"
+  httpDirectives: ""
   serverDirectives: []
   proxy:
     buffersNumber: 1024

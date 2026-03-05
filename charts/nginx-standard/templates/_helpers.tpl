@@ -438,6 +438,10 @@ CACHE USE CASE
   # JSON log format with cache status
 {{- $ctx := dict "Values" .Values "includeCache" true }}
 {{- include "nginx-standard.jsonLogFormat" $ctx | nindent 2 }}
+{{- if .Values.cache.httpDirectives }}
+  # Global HTTP directives
+{{ .Values.cache.httpDirectives | nindent 2 }}
+{{- end }}
 {{- include "nginx-standard.commonServerBlockStart" . | nindent 2 -}}
     # Include custom server configuration
     include /opt/app-root/etc/nginx.default.d/*.conf;
