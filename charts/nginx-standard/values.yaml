@@ -304,6 +304,7 @@ cache:
   
   # Cache storage volume size (uses emptyDir)
   volumeSize: "2Gi"
+  httpDirectives: ""
   serverDirectives: []
   # Global proxy configuration (can be overridden per location)
   proxy:
