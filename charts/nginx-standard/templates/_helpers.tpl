@@ -470,11 +470,13 @@ client_max_body_size {{ .Values.cache.clientMaxBodySize | default "50m" }};
 
 {{- range .Values.cache.locations }}
 location {{ .path }} {
+  {{- if not .noProxyPass }}
   {{- $backendUrl := .backendUrl | default $.Values.cache.defaultBackendUrl }}
   {{- if not $backendUrl }}
   {{- fail "backendUrl must be specified either globally (cache.defaultBackendUrl) or per location" }}
   {{- end }}
   proxy_pass {{ $backendUrl }};
+  {{- end }}
   
   {{- if .cache.enabled }}
   # Cache configuration
