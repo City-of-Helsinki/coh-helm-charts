@@ -462,6 +462,11 @@ proxy_cache_path {{ .path }} levels={{ .levels }} keys_zone={{ .keysZone }} max_
 {{/* Cache server configuration */}}
 {{- define "nginx-standard.cacheServerConfig" -}}
 client_max_body_size {{ .Values.cache.clientMaxBodySize | default "50m" }};
+{{- if .Values.cache.serverDirectives }}
+{{- range .Values.cache.serverDirectives }}
+{{ . }};
+{{- end }}
+{{- end }}
 
 {{- range .Values.cache.locations }}
 location {{ .path }} {

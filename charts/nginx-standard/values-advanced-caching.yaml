@@ -7,7 +7,7 @@ cache:
   defaultBackendUrl: "https://backend-api.svc:8000" 
   clientMaxBodySize: "50m"    
   volumeSize: "5Gi"           
-  
+  serverDirectives: []
   proxy:
     buffersNumber: 1024       # Number of buffers for reading backend responses
     bufferSize: "4k"          # Size of each buffer (standard page size)
