@@ -30,7 +30,7 @@ nginx:
   image:
     # Full image reference including registry, repository, and tag
     full: ''
-    pullPolicy: "IfNotPresent"
+    pullPolicy: "Always"
     pullSecrets: 
       - name: "quay-secret-new"
   
