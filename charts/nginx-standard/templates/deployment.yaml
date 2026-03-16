@@ -67,10 +67,6 @@ spec:
                 path: nginx.conf
               - key: server.conf
                 path: nginx.default.d/server.conf
-              {{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.enabled (.Values.frontProxy.env.PROXY_IP) }}
-              - key: proxy_ips.conf
-                path: proxy_ips.conf
-              {{- end }}
             defaultMode: 420
         - name: nginx-cache
           emptyDir: {}
@@ -159,13 +155,6 @@ spec:
             - name: config-volume
               mountPath: /opt/app-root/etc/nginx.default.d/server.conf 
               subPath: nginx.default.d/server.conf
-            
-            {{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.enabled (.Values.frontProxy.env.PROXY_IP) }}
-            # Mount proxy_ips.conf for front-proxy
-            - name: config-volume
-              mountPath: /opt/app-root/etc/proxy_ips.conf
-              subPath: proxy_ips.conf
-            {{- end }}
             
             # The rest of the necessary mounts
             - name: nginx-cache

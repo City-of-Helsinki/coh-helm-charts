@@ -242,7 +242,7 @@ elasticProxy:
   
   # Route definitions with method restrictions
   routes:
-    - path: "/health"
+    - path: "= /health"
       methods: ["GET"]
       additionalConfig: |
         access_log off;
@@ -304,8 +304,37 @@ cache:
   
   # Cache storage volume size (uses emptyDir)
   volumeSize: "2Gi"
+
+  # HTTP block directives (map blocks, geo blocks at http level)
+  # Use for variables that need to be defined before server block
+  # Example:
+  # httpDirectives: |
+  #   map $request_uri $cache_bypass {
+  #     default         1;
+  #     ~*\.(png|pbf)$  0;
+  #   }
   httpDirectives: ""
+
+  # Server block directives (real_ip, resolver, server_tokens etc.)
+  # Example:
+  # serverDirectives:
+  #   - real_ip_header X-Forwarded-For
+  #   - set_real_ip_from 10.128.0.0/14
+  #   - server_tokens off
+  #   - resolver dns-default.openshift-dns.svc.cluster.local
   serverDirectives: []
+
+  # Named locations (@name) for redirect handling etc.
+  # Example:
+  # namedLocations:
+  #   - name: handle_redirect
+  #     internal: true
+  #     additionalConfig: |
+  #       set $location '$upstream_http_location';
+  #       proxy_pass $location;
+  #       proxy_ssl_server_name on;
+  namedLocations: []
+
   # Global proxy configuration (can be overridden per location)
   proxy:
     buffersNumber: 1024
@@ -316,25 +345,22 @@ cache:
   
   # Cache zone definitions (proxy_cache_path)
   zones:
-    - name: "default_cache"
-      path: "/srv/cache/default"
+    - path: "/srv/cache/default"
       levels: "1:2"  # Cache directory hierarchy
       keysZone: "default_cache:10m"  # Shared memory zone (name:size)
       maxSize: "1g"  # Maximum cache size
       inactive: "60m"  # Remove cached items not accessed in this time
       useTempPath: "off"  # Don't use temp path for better performance
-  namedLocations:
-  - name: dummy
-    internal: true
-    additionalConfig: "return 404;"
+
   # Location-specific cache configurations
   locations:
     - path: "/"
+      # noProxyPass: true  # Set to true to skip proxy_pass (e.g. for return 403)
       # backendUrl: ""  # Optional: override defaultBackendUrl
       
       cache:
         enabled: true
-        zone: "default_cache"  # Must match a zone name above
+        zone: "default_cache"  # Must match a zone keysZone above
         
         # Cache behavior
         backgroundUpdate: "on"  # Update cache in background
@@ -390,15 +416,12 @@ frontProxy:
   enabled: false
   
   # Plain environment variables (values defined here)
-  env:
-    HOST_APP: "www.example.com"
-    HOST_PROXY: "http://upstream:8080"
-    PROXY_DEFAULT: "0"
-    
-    # IP whitelist for GEO blocking (generates proxy_ips.conf)
-    PROXY_IP: |
-      10.0.0.0/8 1;
-      172.16.0.0/12 1;
+  # Use for passing dynamic values like backend URLs into nginx config via envsubst
+  env: {}
+  # Example:
+  # env:
+  #   HOST_PROXY: "http://upstream:8080"
+  #   HOST_EN: "en.example.com"
   
   # Secret-based environment variables (values from Kubernetes Secrets)
   secretEnv: {}
@@ -410,34 +433,39 @@ frontProxy:
   
   # Global NGINX configuration
   globalConfig:
-    # HTTP block directives (applied to http block)
+    # HTTP block directives (applied to http {} block)
+    # Use for geo blocks, map blocks, and other http-level directives
     httpDirectives: |
       geo $remote_addr $allowed {
-        default $PROXY_DEFAULT;
-        include /opt/app-root/etc/proxy_ips.conf;
+        default 0;
+        10.128.0.0/14 1;
+        172.30.0.0/16 1;
       }
     
-    # Server block directives (applied to all server blocks)
+    # Server block directives (applied to all custom server blocks)
     serverDirectives:
-      - "real_ip_header X-Forwarded-For;"
-      - "set_real_ip_from 10.128.0.0/14;"
-      - "client_max_body_size 50m;"
+      - real_ip_header X-Forwarded-For
+      - set_real_ip_from 10.128.0.0/14
+      - client_max_body_size 50m
   
-  # Simple server configurations (redirect/basic proxy)
+  # Simple server configurations (root redirect + proxy to single backend)
+  # Use when: simple pattern of redirect / + proxy all traffic to one upstream
   primaryServers:
-    - serverName: "$HOST_APP"
+    - serverName: "en.example.com"
       redirectPath: "/en"
   
-  # Complex server configurations (advanced routing)
+  # Complex server configurations (advanced routing, access control, multiple locations)
+  # Use when: different proxy targets per location, conditional logic, named locations,
+  #           access control, upstream issues redirects
   customServers: []
   # Example:
   # customServers:
   #   - serverName: "api.example.com"
   #     locations:
   #       - path: "/"
-  #         proxyPass: "https://backend-api:8443"
   #         additionalConfig: |
-  #           proxy_set_header X-API-Key $API_KEY;
+  #           proxy_pass https://backend-api:8443;
+  #           proxy_set_header X-API-Key $api_key;
 
 # ==============================================================================
 # NETWORKING

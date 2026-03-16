@@ -41,10 +41,7 @@ cache:
       inactive: "1h"          
       useTempPath: "off"
 
-  namedLocations:
-  - name: dummy
-    internal: true
-    additionalConfig: "return 404;"
+  namedLocations: []
 
   locations:
     # Location 1: Root path - General content caching
@@ -174,4 +171,4 @@ routes:
       path: "/"              
       tls:
         termination: "edge"   
-        insecureEdgeTerminationPolicy: "Redirect"  
+        insecureEdgeTerminationPolicy: "Redirect"

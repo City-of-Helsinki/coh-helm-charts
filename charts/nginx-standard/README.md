@@ -403,26 +403,21 @@ cache:
   
   # Define cache zones
   zones:
-    - name: "hot_cache"
-      path: "/srv/cache/hot"
+    - path: "/srv/cache/hot"
       levels: "1:2"
       keysZone: "hot_cache:20m"
       maxSize: "2g"
       inactive: "30m"
       useTempPath: "off"
     
-    - name: "static_cache"
-      path: "/srv/cache/static"
+    - path: "/srv/cache/static"
       levels: "1:2"
       keysZone: "static_cache:50m"
       maxSize: "10g"
       inactive: "7d"
       useTempPath: "off"
   
-  namedLocations:
-  - name: dummy
-    internal: true
-    additionalConfig: "return 404;"
+  namedLocations: []
   # Configure locations with different caching strategies
   locations:
     # Dynamic content with short cache
@@ -488,8 +483,10 @@ observability:
 | `cache.defaultBackendUrl` | Default backend URL | Required |
 | `cache.clientMaxBodySize` | Max request body size | `50m` |
 | `cache.volumeSize` | Cache volume size | `2Gi` |
+| `cache.httpDirectives` | HTTP block directives (map/geo blocks) | `""` |
+| `cache.serverDirectives` | Server block directives (real_ip, resolver etc.) | `[]` |
+| `cache.namedLocations` | Named locations (@name) for redirect handling | `[]` |
 | `cache.zones` | List of cache zones | See values.yaml |
-| `cache.zones[].name` | Zone identifier | - |
 | `cache.zones[].path` | Cache storage path | - |
 | `cache.zones[].levels` | Cache directory levels | `1:2` |
 | `cache.zones[].keysZone` | Shared memory zone size | - |
@@ -498,6 +495,7 @@ observability:
 | `cache.zones[].useTempPath` | Use temp path | `off` |
 | `cache.locations` | List of location configurations | See values.yaml |
 | `cache.locations[].path` | Location path/pattern | - |
+| `cache.locations[].noProxyPass` | Skip proxy_pass (e.g. for return 403) | `false` |
 | `cache.locations[].backendUrl` | Override backend URL | Uses default |
 | `cache.locations[].cache.enabled` | Enable caching for location | `true` |
 | `cache.locations[].cache.zone` | Cache zone to use | - |
@@ -533,13 +531,6 @@ frontProxy:
     HOST_PROXY: "https://backend-api.svc.cluster.local:443"
     HOST_EN: "en.example.com"
     HOST_SV: "sv.example.com"
-    PROXY_DEFAULT: "0"
-    
-    # IP whitelist (generates proxy_ips.conf)
-    PROXY_IP: |
-      137.163.145.226/32 1;
-      129.0.0.0/8 1;
-      10.128.0.0/14 1;
   
   # Secret-based environment variables
   secretEnv:
@@ -553,23 +544,25 @@ frontProxy:
   
   # Global NGINX configuration
   globalConfig:
-    # HTTP block directives (e.g., GEO block)
+    # HTTP block directives - put geo/map blocks here directly
     httpDirectives: |
       geo $remote_addr $allowed {
-        default $PROXY_DEFAULT;
-        include /opt/app-root/etc/proxy_ips.conf;
+        default 0;
+        137.163.145.226/32 1;
+        129.0.0.0/8 1;
+        10.128.0.0/14 1;
       }
     
     # Server block directives (applied to all servers)
     serverDirectives:
-      - "real_ip_header X-Forwarded-For;"
-      - "set_real_ip_from 10.128.0.0/14;"
-      - "client_max_body_size 100m;"
-      - "proxy_buffers 1024 4k;"
+      - real_ip_header X-Forwarded-For
+      - set_real_ip_from 10.128.0.0/14
+      - client_max_body_size 100m
+      - proxy_buffers 1024 4k
   
   # Simple redirect/proxy servers
   primaryServers:
-    - serverName: "$HOST_EN"
+    - serverName: "en.example.com"
       redirectPath: "/en"
   
   # Complex routing servers
@@ -580,9 +573,9 @@ frontProxy:
         - path: "/"
           proxyPass: "https://api.digitransit.fi/"
           additionalConfig: |
-            proxy_set_header digitransit-subscription-key $DIGITRANSIT_API_KEY;
+            proxy_set_header digitransit-subscription-key $digitransit_api_key;
     
-    # GEO-restricted admin
+    # GEO-restricted admin - use additionalConfig when combining with other directives
     - serverName: "admin.example.com"
       locations:
         - path: "= /admin"
@@ -590,7 +583,7 @@ frontProxy:
             if ($allowed = 0) {
               return 403 "blocked $remote_addr";
             }
-          proxyPass: "https://admin-backend.svc:8000/admin"
+            proxy_pass https://admin-backend.svc:8000/admin;
     
     # Simple redirect
     - serverName: "old.example.com"
@@ -607,17 +600,17 @@ frontProxy:
 | `frontProxy.enabled` | Enable front proxy mode | `false` |
 | `frontProxy.env` | Plain environment variables | `{}` |
 | `frontProxy.secretEnv` | Secret-based environment variables | `{}` |
-| `frontProxy.globalConfig.httpDirectives` | HTTP block directives | - |
-| `frontProxy.globalConfig.serverDirectives` | Server block directives | `[]` |
-| `frontProxy.primaryServers` | Simple server configurations | `[]` |
+| `frontProxy.globalConfig.httpDirectives` | HTTP block directives (geo/map blocks) | `""` |
+| `frontProxy.globalConfig.serverDirectives` | Server block directives (no trailing semicolons) | `[]` |
+| `frontProxy.primaryServers` | Simple server configurations (redirect + proxy) | `[]` |
 | `frontProxy.primaryServers[].serverName` | Server name | - |
 | `frontProxy.primaryServers[].redirectPath` | Root redirect path | - |
 | `frontProxy.customServers` | Complex server configurations | `[]` |
 | `frontProxy.customServers[].serverName` | Server name | - |
 | `frontProxy.customServers[].locations` | Location blocks | `[]` |
 | `frontProxy.customServers[].locations[].path` | Location path | - |
-| `frontProxy.customServers[].locations[].proxyPass` | Proxy target | - |
-| `frontProxy.customServers[].locations[].additionalConfig` | Custom NGINX config | - |
+| `frontProxy.customServers[].locations[].proxyPass` | Proxy target (simple cases) | - |
+| `frontProxy.customServers[].locations[].additionalConfig` | Custom NGINX config (complex cases) | - |
 
 ## Configuration
 
@@ -871,8 +864,10 @@ elasticProxy:
   routes:
     - path: "~ ^/([a-z][a-z_,-]*)/(_search)$"
       methods: ["POST"]
-    - path: "/_cluster/health"
+    - path: "= /_cluster/health"
       methods: ["GET"]
+    - path: "~ ^/([a-z][a-z_,-]*)$"
+      methods: ["HEAD"]
 
 routes:
   enabled: true
@@ -895,26 +890,21 @@ cache:
   volumeSize: "10Gi"
   
   zones:
-    - name: "api_cache"
-      path: "/srv/cache/api"
+    - path: "/srv/cache/api"
       levels: "1:2"
       keysZone: "api_cache:10m"
       maxSize: "1g"
       inactive: "1h"
       useTempPath: "off"
     
-    - name: "static_cache"
-      path: "/srv/cache/static"
+    - path: "/srv/cache/static"
       levels: "1:2"
       keysZone: "static_cache:50m"
       maxSize: "5g"
       inactive: "30d"
       useTempPath: "off"
 
-  namedLocations:
-  - name: dummy
-    internal: true
-    additionalConfig: "return 404;"
+  namedLocations: []
 
   locations:
     - path: "/api"
@@ -943,15 +933,14 @@ nginx:
 frontProxy:
   enabled: true
   env:
-    HOST_APP: "www.example.com"
     HOST_PROXY: "http://backend:8080"
   
   globalConfig:
     serverDirectives:
-      - "client_max_body_size 50m;"
+      - client_max_body_size 50m
   
   primaryServers:
-    - serverName: "$HOST_APP"
+    - serverName: "www.example.com"
       redirectPath: "/home"
   
   customServers:
@@ -1019,11 +1008,3 @@ For issues and questions:
 - Create an issue in the repository
 - Contact the platform team
 - Check existing documentation
-
-## Version History
-
-| Version | Changes |
-|---------|---------|
-| 1.0.0 | Initial release with four use cases |
-
----

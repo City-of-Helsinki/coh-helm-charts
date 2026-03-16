@@ -12,7 +12,3 @@ data:
 {{- include "nginx-standard.nginxMainConf" . | nindent 4 }}
   server.conf: |-
 {{- include "nginx-standard.nginxServerConf" . | nindent 4 -}}
-{{- if and (eq .Values.nginx.useCase "front-proxy") .Values.frontProxy.enabled (.Values.frontProxy.env.PROXY_IP) }}
-  proxy_ips.conf: |-
-{{ .Values.frontProxy.env.PROXY_IP | trim | nindent 4 }}
-{{- end }}
