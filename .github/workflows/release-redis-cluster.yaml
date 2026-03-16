@@ -438,17 +438,35 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Determine version outputs
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/redis-cluster-v* ]]; then
+            GIT_TAG=${GITHUB_REF#refs/tags/}
+          elif [ -n "${{ github.event.inputs.chart_version }}" ]; then
+            INPUT_VERSION="${{ github.event.inputs.chart_version }}"
+            CLEAN_VERSION="${INPUT_VERSION#v}"
+            GIT_TAG="redis-cluster-v${CLEAN_VERSION}"
+          else
+            echo "Error: Chart version could not be determined"
+            exit 1
+          fi
+          echo "git_tag=$GIT_TAG" >> $GITHUB_OUTPUT
+
       - name: Generate changelog
         id: changelog
         run: |
-          PREVIOUS_TAG=$(git tag -l "redis-cluster-v*" --sort=-v:refname | head -n 2 | tail -n 1 || echo "")
+          CURRENT_TAG="${{ steps.version.outputs.git_tag }}"
+
+          # Get previous tag — exclude current tag explicitly
+          PREVIOUS_TAG=$(git tag -l "redis-cluster-v*" --sort=-v:refname | grep -v "^${CURRENT_TAG}$" | head -n 1 || echo "")
 
           if [ -z "$PREVIOUS_TAG" ]; then
             echo "No previous tag found, generating full history"
-            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges -- charts/redis-cluster/)
+            COMMITS=$(git log ${CURRENT_TAG} --pretty=format:"- %s (%h)" --no-merges -- charts/redis-cluster/)
           else
-            echo "Generating changelog from $PREVIOUS_TAG to HEAD"
-            COMMITS=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges -- charts/redis-cluster/)
+            echo "Generating changelog from $PREVIOUS_TAG to $CURRENT_TAG"
+            COMMITS=$(git log ${PREVIOUS_TAG}..${CURRENT_TAG} --pretty=format:"- %s (%h)" --no-merges -- charts/redis-cluster/)
           fi
 
           FEATURES=$(echo "$COMMITS" | grep -i "^- feat"  || echo "")
@@ -518,10 +536,10 @@ jobs:
           echo "chart_name=$CHART_NAME" >> $GITHUB_OUTPUT
           echo "Chart: $CHART_NAME"
 
-      - name: Update Chart.yaml version
+      - name: Update Chart.yaml version for packaging
         run: |
           yq eval -i '.version = "${{ steps.version.outputs.chart_version }}"' charts/redis-cluster/Chart.yaml
-          echo "Updated Chart.yaml to ${{ steps.version.outputs.chart_version }}"
+          echo "Updated Chart.yaml to ${{ steps.version.outputs.chart_version }} for packaging only (not committed)"
 
       - name: Package chart
         run: |
