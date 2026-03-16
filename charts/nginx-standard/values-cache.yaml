@@ -24,10 +24,7 @@ cache:
       inactive: "5m"
       useTempPath: "off"
       
-  namedLocations:
-  - name: dummy
-    internal: true
-    additionalConfig: "return 404;"
+  namedLocations: []
   
   locations:
     - path: "/"
