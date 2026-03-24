@@ -281,7 +281,7 @@ elasticProxy:
         add_header 'Access-Control-Allow-Origin' '*' always;
         add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
 
-    - path: "/_msearch"
+    - path: "= /_msearch"
       methods: ["POST", "GET", "OPTIONS"]
       additionalConfig: |
         proxy_hide_header Access-Control-Allow-Origin;
