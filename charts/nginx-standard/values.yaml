@@ -253,7 +253,7 @@ elasticProxy:
         proxy_connect_timeout 5s;
         proxy_send_timeout 5s;
         proxy_read_timeout 5s;
-        
+
     - path: "~ ^/([a-z][a-z_,-]*)/(_search|_msearch)$"
       methods: ["POST", "GET", "OPTIONS"]
       additionalConfig: |
@@ -278,6 +278,33 @@ elasticProxy:
         proxy_redirect off;
         proxy_pass_header Authorization;
         
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+
+    - path: "/_msearch"
+      methods: ["POST", "GET", "OPTIONS"]
+      additionalConfig: |
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Max-Age;
+
+        if ($request_method = 'OPTIONS') {
+          add_header 'Access-Control-Allow-Origin' '*' always;
+          add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+          add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+          add_header 'Access-Control-Max-Age' 1728000 always;
+          add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+          add_header 'Content-Length' 0 always;
+          return 204;
+        }
+
+        # Actual request - pass through with CORS headers
+        proxy_pass $elasticsearch_url;
+        proxy_ssl_verify off;
+        proxy_redirect off;
+        proxy_pass_header Authorization;
+
         add_header 'Access-Control-Allow-Origin' '*' always;
         add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
 
