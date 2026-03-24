@@ -435,9 +435,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch all tags
-        run: git fetch --tags --force
-
       - name: Determine version outputs
         id: version
         run: |
@@ -453,26 +450,39 @@ jobs:
           fi
           echo "git_tag=$GIT_TAG" >> $GITHUB_OUTPUT
 
+      - name: Fetch all tags
+        run: |
+          git fetch --tags --force
+          git fetch origin refs/tags/${{ steps.version.outputs.git_tag }}:refs/tags/${{ steps.version.outputs.git_tag }} --force || true
+          echo "Available tags:"
+          git tag -l "nginx-standard-v*" --sort=-v:refname | head -5
+
       - name: Generate changelog
         id: changelog
         run: |
+          # Set CURRENT_TAG from the version step output
           CURRENT_TAG="${{ steps.version.outputs.git_tag }}"
 
-          # Get previous tag — exclude current tag explicitly
+          # Verify current tag — use HEAD as fallback
+          if ! git rev-parse "${CURRENT_TAG}" >/dev/null 2>&1; then
+            echo "WARNING: Current tag ${CURRENT_TAG} not resolvable, using HEAD"
+            CURRENT_REF="HEAD"
+          else
+            CURRENT_REF="${CURRENT_TAG}"
+          fi
+
+          # Get previous tag
           PREVIOUS_TAG=$(git tag -l "nginx-standard-v*" --sort=-v:refname | grep -v "^${CURRENT_TAG}$" | head -n 1 || echo "")
 
           if [ -z "$PREVIOUS_TAG" ]; then
             echo "No previous tag found, generating full history"
-            COMMITS=$(git log ${CURRENT_TAG} --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
+            COMMITS=$(git log ${CURRENT_REF} --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
           elif ! git rev-parse "${PREVIOUS_TAG}" >/dev/null 2>&1; then
             echo "WARNING: Previous tag ${PREVIOUS_TAG} not resolvable, falling back to full history"
-            COMMITS=$(git log ${CURRENT_TAG} --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
-          elif ! git rev-parse "${CURRENT_TAG}" >/dev/null 2>&1; then
-            echo "ERROR: Current tag ${CURRENT_TAG} not resolvable"
-            exit 1
+            COMMITS=$(git log ${CURRENT_REF} --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
           else
-            echo "Generating changelog from $PREVIOUS_TAG to $CURRENT_TAG"
-            COMMITS=$(git log ${PREVIOUS_TAG}..${CURRENT_TAG} --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
+            echo "Generating changelog from $PREVIOUS_TAG to $CURRENT_REF"
+            COMMITS=$(git log ${PREVIOUS_TAG}..${CURRENT_REF} --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
           fi
 
           # Categorize commits
@@ -488,29 +498,23 @@ jobs:
           if [ ! -z "$FEATURES" ]; then
             CHANGELOG="${CHANGELOG}### ✨ Features\n${FEATURES}\n\n"
           fi
-
           if [ ! -z "$FIXES" ]; then
             CHANGELOG="${CHANGELOG}### 🐛 Bug Fixes\n${FIXES}\n\n"
           fi
-
           if [ ! -z "$DOCS" ]; then
             CHANGELOG="${CHANGELOG}### 📚 Documentation\n${DOCS}\n\n"
           fi
-
           if [ ! -z "$CHORES" ]; then
             CHANGELOG="${CHANGELOG}### 🔧 Maintenance\n${CHORES}\n\n"
           fi
-
           if [ ! -z "$OTHERS" ]; then
             CHANGELOG="${CHANGELOG}### Other Changes\n${OTHERS}\n\n"
           fi
 
-          # If no changelog content, add a default message
           if [ -z "$CHANGELOG" ]; then
             CHANGELOG="No significant changes detected."
           fi
 
-          # Save to output using EOF method
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
