@@ -435,6 +435,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fetch all tags
+        run: git fetch --tags --force
+
       - name: Determine version outputs
         id: version
         run: |
@@ -454,53 +457,59 @@ jobs:
         id: changelog
         run: |
           CURRENT_TAG="${{ steps.version.outputs.git_tag }}"
-          
+
           # Get previous tag — exclude current tag explicitly
           PREVIOUS_TAG=$(git tag -l "nginx-standard-v*" --sort=-v:refname | grep -v "^${CURRENT_TAG}$" | head -n 1 || echo "")
-          
+
           if [ -z "$PREVIOUS_TAG" ]; then
             echo "No previous tag found, generating full history"
             COMMITS=$(git log ${CURRENT_TAG} --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
+          elif ! git rev-parse "${PREVIOUS_TAG}" >/dev/null 2>&1; then
+            echo "WARNING: Previous tag ${PREVIOUS_TAG} not resolvable, falling back to full history"
+            COMMITS=$(git log ${CURRENT_TAG} --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
+          elif ! git rev-parse "${CURRENT_TAG}" >/dev/null 2>&1; then
+            echo "ERROR: Current tag ${CURRENT_TAG} not resolvable"
+            exit 1
           else
             echo "Generating changelog from $PREVIOUS_TAG to $CURRENT_TAG"
             COMMITS=$(git log ${PREVIOUS_TAG}..${CURRENT_TAG} --pretty=format:"- %s (%h)" --no-merges -- charts/nginx-standard/)
           fi
-          
+
           # Categorize commits
           FEATURES=$(echo "$COMMITS" | grep -i "^- feat" || echo "")
           FIXES=$(echo "$COMMITS" | grep -i "^- fix" || echo "")
           DOCS=$(echo "$COMMITS" | grep -i "^- docs" || echo "")
           CHORES=$(echo "$COMMITS" | grep -i "^- chore" || echo "")
           OTHERS=$(echo "$COMMITS" | grep -iv "^- \(feat\|fix\|docs\|chore\)" || echo "")
-          
+
           # Build changelog
           CHANGELOG=""
-          
+
           if [ ! -z "$FEATURES" ]; then
             CHANGELOG="${CHANGELOG}### ✨ Features\n${FEATURES}\n\n"
           fi
-          
+
           if [ ! -z "$FIXES" ]; then
             CHANGELOG="${CHANGELOG}### 🐛 Bug Fixes\n${FIXES}\n\n"
           fi
-          
+
           if [ ! -z "$DOCS" ]; then
             CHANGELOG="${CHANGELOG}### 📚 Documentation\n${DOCS}\n\n"
           fi
-          
+
           if [ ! -z "$CHORES" ]; then
             CHANGELOG="${CHANGELOG}### 🔧 Maintenance\n${CHORES}\n\n"
           fi
-          
+
           if [ ! -z "$OTHERS" ]; then
             CHANGELOG="${CHANGELOG}### Other Changes\n${OTHERS}\n\n"
           fi
-          
+
           # If no changelog content, add a default message
           if [ -z "$CHANGELOG" ]; then
             CHANGELOG="No significant changes detected."
           fi
-          
+
           # Save to output using EOF method
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
@@ -517,6 +526,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Fetch all tags
+        run: git fetch --tags --force
 
       - name: Set up Helm
         uses: azure/setup-helm@v3
