@@ -83,7 +83,7 @@ jobs:
         run: |
           helm upgrade --install integration-test charts/varnish-drupal \
             --namespace hki-kanslia-asuminen-test \
-            --set route.host="varnish-sample-test1.apps.arodevtest.hel.fi" \
+            --set route.host="varnish-sample-test1.test.hel.ninja" \
             --set externalSecretName="asuminen-secret" \
             --wait
 
@@ -93,7 +93,7 @@ jobs:
           oc rollout status statefulset/integration-test-varnish-drupal -n hki-kanslia-asuminen-test
 
           # Verification check
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://varnish-sample-test1.apps.arodevtest.hel.fi/varnishstatus)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://varnish-sample-test1.test.hel.ninja/varnishstatus)
           echo "Status Code: $STATUS"
           
           if [ "$STATUS" -ne 200 ]; then
