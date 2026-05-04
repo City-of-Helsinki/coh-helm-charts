@@ -179,7 +179,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          git clone https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git artifacts-repo
+          git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git artifacts-repo
           cd artifacts-repo
           git fetch origin
           git checkout gh-pages || git checkout -b gh-pages
