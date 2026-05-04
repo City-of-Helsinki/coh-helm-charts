@@ -1,4 +1,4 @@
-name: Varnish Drupal Helm CI/CD
+name: Release workflow for varnish-drupal Helm Chart
 
 on:
   pull_request:
@@ -33,7 +33,7 @@ jobs:
           sudo mv kubeconform /usr/local/bin/
 
           # Install helm-unittest plugin
-          helm plugin install https://github.com/helm-unittest/helm-unittest --version v0.4.1 --verify=false
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version v0.4.1
 
       - name: Lint and Validate
         run: |
