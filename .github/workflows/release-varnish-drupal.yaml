@@ -147,6 +147,27 @@ jobs:
           echo "chart_name=$CHART_NAME" >> $GITHUB_OUTPUT
           echo "Chart: $CHART_NAME"
 
+      - name: Determine Chart Version and Git Tag
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/varnish-drupal-v* ]]; then
+            CHART_VERSION=${GITHUB_REF#refs/tags/varnish-drupal-}
+            GIT_TAG=${GITHUB_REF#refs/tags/}
+          elif [ -n "${{ github.event.inputs.chart_version }}" ]; then
+            INPUT_VERSION="${{ github.event.inputs.chart_version }}"
+            CLEAN_VERSION="${INPUT_VERSION#v}"
+            CHART_VERSION="v${CLEAN_VERSION}"
+            GIT_TAG="varnish-drupal-${CHART_VERSION}"
+          else
+            echo "Error: Chart version could not be determined"
+            exit 1
+          fi
+
+          echo "chart_version=$CHART_VERSION" >> $GITHUB_OUTPUT
+          echo "git_tag=$GIT_TAG"             >> $GITHUB_OUTPUT
+          echo "Chart Version : $CHART_VERSION"
+          echo "Git Tag       : $GIT_TAG"
+
       - name: Update Chart Version
         run: |
           sed -i "s/^version: .*/version: ${{ inputs.chart_version }}/" charts/varnish-drupal/Chart.yaml
