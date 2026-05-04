@@ -2,8 +2,8 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: varnish
-  namespace: {{ .Values.project }}
+  name: {{ include "varnish-drupal.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "varnish-drupal.labels" . | nindent 4 }}
 spec:
@@ -24,8 +24,8 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: varnish-headless
-  namespace: {{ .Values.project }}
+  name: {{ include "varnish-drupal.headlessServiceName" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "varnish-drupal.labels" . | nindent 4 }}
 spec:

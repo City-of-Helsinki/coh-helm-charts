@@ -1,7 +1,8 @@
 # ──────────────────────────────────────────────
-# Project / namespace
+# Name overrides (optional)
 # ──────────────────────────────────────────────
-project: ""                        # OpenShift namespace (required)
+nameOverride: ""
+fullnameOverride: ""
 
 # ──────────────────────────────────────────────
 # Routing
@@ -20,6 +21,12 @@ image:
   pullPolicy: Always
 
 # ──────────────────────────────────────────────
+# Image pull secrets (for private registries)
+# ──────────────────────────────────────────────
+imagePullSecrets: []
+# - name: my-registry-secret
+
+# ──────────────────────────────────────────────
 # Scaling & scheduling
 # ──────────────────────────────────────────────
 replicaCount: 2
@@ -35,12 +42,14 @@ resources:
       cpu: "200m"
       memory: "1Gi"
     limits:
+      cpu: ""                      # leave empty to omit (avoids CPU throttling); set e.g. "1000m" if your cluster requires a limit
       memory: "1Gi"
   logger:
     requests:
       cpu: "50m"
       memory: "50Mi"
     limits:
+      cpu: ""                      # leave empty to omit
       memory: "50Mi"
 
 # ──────────────────────────────────────────────
@@ -76,8 +85,7 @@ vcl:
     mode: "single"
 
   # ── /varnishstatus health endpoint in vcl_recv ─────────────────
-  # Set to false for apps using director.mode "multi" where the
-  # health synth is handled elsewhere (e.g. palvelukeskus).
+  # Must be false when director.mode is "multi" (enforced at render time).
   healthEndpoint:
     enabled: true
 

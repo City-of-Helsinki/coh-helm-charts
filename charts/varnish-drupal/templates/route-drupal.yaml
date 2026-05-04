@@ -1,8 +1,8 @@
 kind: Route
 apiVersion: route.openshift.io/v1
 metadata:
-  name: varnish-drupal
-  namespace: {{ .Values.project }}
+  name: {{ include "varnish-drupal.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "varnish-drupal.labels" . | nindent 4 }}
   annotations:
@@ -15,7 +15,7 @@ spec:
   {{- end }}
   to:
     kind: Service
-    name: varnish
+    name: {{ include "varnish-drupal.fullname" . }}
     weight: 100
   port:
     targetPort: "8080"

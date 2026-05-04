@@ -1,13 +1,13 @@
 kind: StatefulSet
 apiVersion: apps/v1
 metadata:
-  name: varnish-drupal
-  namespace: {{ .Values.project }}
+  name: {{ include "varnish-drupal.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "varnish-drupal.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
-  serviceName: varnish-cluster
+  serviceName: {{ include "varnish-drupal.headlessServiceName" . }}
   podManagementPolicy: OrderedReady
   updateStrategy:
     type: RollingUpdate
@@ -24,6 +24,10 @@ spec:
       nodeSelector:
         env: {{ .Values.nodeSelector }}
       {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       restartPolicy: Always
       serviceAccountName: kube-httpcache
       serviceAccount: kube-httpcache
@@ -35,7 +39,7 @@ spec:
           emptyDir: {}
         - name: template
           configMap:
-            name: varnish-drupal-config-map
+            name: {{ include "varnish-drupal.configMapName" . }}
             defaultMode: 420
         - name: secret
           secret:
@@ -54,6 +58,9 @@ spec:
               cpu: {{ .Values.resources.varnish.requests.cpu | quote }}
               memory: {{ .Values.resources.varnish.requests.memory | quote }}
             limits:
+              {{- if .Values.resources.varnish.limits.cpu }}
+              cpu: {{ .Values.resources.varnish.limits.cpu | quote }}
+              {{- end }}
               memory: {{ .Values.resources.varnish.limits.memory | quote }}
           env:
             - name: VARNISH_SECRET
@@ -80,10 +87,10 @@ spec:
             - "-signaller-enable"
             - "-signaller-port=8090"
             - "-frontend-watch"
-            - "-frontend-namespace={{ .Values.project }}"
-            - "-frontend-service=varnish-headless"
+            - "-frontend-namespace={{ .Release.Namespace }}"
+            - "-frontend-service={{ include "varnish-drupal.headlessServiceName" . }}"
             - "-backend-watch=false"
-            - "-backend-namespace={{ .Values.project }}"
+            - "-backend-namespace={{ .Release.Namespace }}"
             - "-backend-service={{ .Values.backend.host }}"
             - "-varnish-secret-file=/etc/varnish/k8s-secret/VARNISH_SECRET"
             - "-varnish-vcl-template=/etc/varnish/tmpl/default.vcl.tmpl"
@@ -101,7 +108,11 @@ spec:
               mountPath: /usr/apps/varnish
           readinessProbe:
             httpGet:
+              {{- if .Values.vcl.healthEndpoint.enabled }}
               path: /varnishstatus
+              {{- else }}
+              path: /
+              {{- end }}
               port: 8080
               scheme: HTTP
             initialDelaySeconds: 5
@@ -111,7 +122,11 @@ spec:
             failureThreshold: 40
           livenessProbe:
             httpGet:
+              {{- if .Values.vcl.healthEndpoint.enabled }}
               path: /varnishstatus
+              {{- else }}
+              path: /
+              {{- end }}
               port: 8080
               scheme: HTTP
             initialDelaySeconds: 30
@@ -138,6 +153,9 @@ spec:
               cpu: {{ .Values.resources.logger.requests.cpu | quote }}
               memory: {{ .Values.resources.logger.requests.memory | quote }}
             limits:
+              {{- if .Values.resources.logger.limits.cpu }}
+              cpu: {{ .Values.resources.logger.limits.cpu | quote }}
+              {{- end }}
               memory: {{ .Values.resources.logger.limits.memory | quote }}
           volumeMounts:
             - name: varnish-working-dir
