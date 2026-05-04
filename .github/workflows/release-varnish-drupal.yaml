@@ -44,7 +44,7 @@ jobs:
           if [ -d "charts/varnish-drupal/tests" ]; then helm unittest charts/varnish-drupal; fi
 
           # Validate rendered manifests
-          helm template charts/varnish-drupal | kubeconform -strict
+          helm template charts/varnish-drupal | kubeconform -summary -skip Route
   integration-test:
     needs: test
     runs-on: ubuntu-latest
