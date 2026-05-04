@@ -1,0 +1,169 @@
+name: Release workflow for varnish-drupal Helm Chart
+
+on:
+  pull_request:
+    branches: [ main ]
+    # Only run this workflow if the varnish-drupal chart changes
+    paths:
+      - 'charts/varnish-drupal/**'
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: 'New chart version (e.g., 1.0.1)'
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.20.2'
+
+      - name: Install test dependencies
+        run: |
+          # Install kubeconform for manifest validation
+          wget https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+
+          # Install helm-unittest plugin
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version v0.4.1
+
+      - name: Lint and Validate
+        run: |
+          # Validate Helm chart structure
+          helm lint charts/varnish-drupal
+          
+          # Run unit tests
+          if [ -d "charts/varnish-drupal/tests" ]; then helm unittest charts/varnish-drupal; fi
+
+          # Validate rendered manifests
+          helm template charts/varnish-drupal | kubeconform -summary -skip Route
+  integration-test:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.20.2'
+
+      - name: Install OpenShift CLI
+        run: |
+          wget https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz
+          tar xvf openshift-client-linux.tar.gz
+          sudo mv oc kubectl /usr/local/bin/
+          oc version --client
+
+      - name: Login to OpenShift Dev Cluster
+        run: |
+          oc login ${{ secrets.OPENSHIFT_API_URL }} --token="${{ secrets.OPENSHIFT_TOKEN }}" --insecure-skip-tls-verify
+
+      - name: Set namespace context
+        run: |
+          oc project hki-kanslia-asuminen-test
+          echo "Using namespace: hki-kanslia-asuminen-test"
+
+      - name: Clean up previous test deployments
+        run: |
+          echo "Cleaning up any existing test deployments..."
+          helm list -n hki-kanslia-asuminen-test | grep '^integration-test' | awk '{print $1}' | xargs -r helm uninstall -n hki-kanslia-asuminen-test || true
+          sleep 10
+
+      - name: Deploy to Test Namespace
+        run: |
+          helm upgrade --install integration-test charts/varnish-drupal \
+            --namespace hki-kanslia-asuminen-test \
+            --set route.host="varnish-sample-test1.test.hel.ninja" \
+            --set externalSecretName="asuminen-secret" \
+            --wait
+
+      - name: Verify /varnishstatus
+        run: |
+          # Use oc to check if the statefulset is ready
+          oc rollout status statefulset/integration-test-varnish-drupal -n hki-kanslia-asuminen-test
+
+          # Verification check
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://varnish-sample-test1.test.hel.ninja/varnishstatus)
+          echo "Status Code: $STATUS"
+          
+          if [ "$STATUS" -ne 200 ]; then
+            echo "Verification failed! Expected 200 but got $STATUS"
+            # Get logs to debug
+            oc logs statefulset/integration-test-varnish-drupal -c varnish -n hki-kanslia-asuminen-test --tail=20
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always() # Runs even if verify fails
+        run: |
+          helm uninstall integration-test -n hki-kanslia-asuminen-test
+  release:
+    needs: test
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required to see git history and tags for changelog
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          # Get the latest tag, if none exist, default to empty
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$PREV_TAG" ]; then
+            echo "CHANGELOG=Initial release of varnish-drupal." >> $GITHUB_OUTPUT
+          else
+            # Get commit messages between previous tag and now
+            LOG=$(git log $PREV_TAG..HEAD --pretty=format:"- %s")
+            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+            echo "$LOG" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update Chart Version
+        run: |
+          sed -i "s/^version: .*/version: ${{ inputs.chart_version }}/" charts/varnish-drupal/Chart.yaml
+
+      - name: Package Chart
+        run: helm package charts/varnish-drupal
+
+      - name: Release to GitHub Pages
+        run: |
+          git fetch origin gh-pages || true
+          git checkout gh-pages || git checkout -b gh-pages
+          mv varnish-drupal-*.tgz .
+          helm repo index . --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+          git add .
+          git commit -m "feat: Release varnish-drupal ${{ inputs.chart_version }}" || echo "No changes to commit"
+          git push origin gh-pages
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "varnish-drupal-*.tgz"
+          tag: "v${{ inputs.chart_version }}"
+          name: "varnish-drupal v${{ inputs.chart_version }}"
+          body: |
+            ## Changelog
+            ${{ steps.changelog.outputs.CHANGELOG }}
+          draft: false

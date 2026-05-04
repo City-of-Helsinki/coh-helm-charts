@@ -1,0 +1,17 @@
+Varnish-Drupal ({{ include "varnish-drupal.fullname" . }}) deployed to namespace {{ .Release.Namespace }}.
+
+  Route:     https://{{ .Values.route.host }}{{ .Values.route.path }}
+  Backend:   {{ .Values.backend.host }}:{{ .Values.backend.port }}
+  Replicas:  {{ .Values.replicaCount }}
+  Storage:   {{ .Values.varnishStorage }}
+  Director:  {{ .Values.vcl.director.mode }}
+
+Resources:
+  kubectl get statefulset {{ include "varnish-drupal.fullname" . }} -n {{ .Release.Namespace }}
+  kubectl get pods -l {{ "app.kubernetes.io/instance=" }}{{ .Release.Name }} -n {{ .Release.Namespace }}
+
+{{- if not .Values.externalSecretName }}
+WARNING: externalSecretName is not set. The StatefulSet will fail to start
+         until a Secret containing VARNISH_SECRET and VARNISH_PURGE_KEY exists
+         and is referenced via externalSecretName in your values.
+{{- end }}
