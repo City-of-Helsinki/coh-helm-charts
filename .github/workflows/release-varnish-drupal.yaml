@@ -108,7 +108,7 @@ jobs:
         run: |
           helm uninstall integration-test -n hki-kanslia-asuminen-test
   release:
-    needs: test
+    needs: [test, integration-test]
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
@@ -181,8 +181,6 @@ jobs:
         run: |
           git clone https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git artifacts-repo
           cd artifacts-repo
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
           git fetch origin
           git checkout gh-pages || git checkout -b gh-pages
           mkdir -p ${{ steps.chart.outputs.chart_name }}
