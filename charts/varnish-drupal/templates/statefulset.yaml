@@ -1,0 +1,144 @@
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: varnish-drupal
+  namespace: {{ .Values.project }}
+  labels:
+    {{- include "varnish-drupal.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  serviceName: varnish-cluster
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "varnish-drupal.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "varnish-drupal.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        env: {{ .Values.nodeSelector }}
+      {{- end }}
+      restartPolicy: Always
+      serviceAccountName: kube-httpcache
+      serviceAccount: kube-httpcache
+      terminationGracePeriodSeconds: 30
+      securityContext: {}
+      dnsPolicy: ClusterFirst
+      volumes:
+        - name: varnish-working-dir
+          emptyDir: {}
+        - name: template
+          configMap:
+            name: varnish-drupal-config-map
+            defaultMode: 420
+        - name: secret
+          secret:
+            secretName: {{ .Values.externalSecretName }}
+            defaultMode: 420
+            items:
+              - key: VARNISH_SECRET
+                path: VARNISH_SECRET
+      containers:
+        # ── Varnish ──────────────────────────────────────────────
+        - name: varnish
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          resources:
+            requests:
+              cpu: {{ .Values.resources.varnish.requests.cpu | quote }}
+              memory: {{ .Values.resources.varnish.requests.memory | quote }}
+            limits:
+              memory: {{ .Values.resources.varnish.limits.memory | quote }}
+          env:
+            - name: VARNISH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecretName }}
+                  key: VARNISH_SECRET
+            - name: VARNISH_PURGE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecretName }}
+                  key: VARNISH_PURGE_KEY
+            - name: BACKEND_HOST
+              value: {{ .Values.backend.host | quote }}
+            - name: BACKEND_PORT
+              value: {{ .Values.backend.port | quote }}
+            {{- if .Values.vcl.healthProbe.enabled }}
+            - name: BACKEND_HEALTH_ENDPOINT
+              value: {{ .Values.vcl.healthProbe.endpoint | quote }}
+            {{- end }}
+          args:
+            - "-admin-addr=0.0.0.0"
+            - "-admin-port=6083"
+            - "-signaller-enable"
+            - "-signaller-port=8090"
+            - "-frontend-watch"
+            - "-frontend-namespace={{ .Values.project }}"
+            - "-frontend-service=varnish-headless"
+            - "-backend-watch=false"
+            - "-backend-namespace={{ .Values.project }}"
+            - "-backend-service={{ .Values.backend.host }}"
+            - "-varnish-secret-file=/etc/varnish/k8s-secret/VARNISH_SECRET"
+            - "-varnish-vcl-template=/etc/varnish/tmpl/default.vcl.tmpl"
+            - "-varnish-storage={{ .Values.varnishStorage }}"
+            - "-varnish-transient-storage={{ .Values.varnishTransientStorage }}"
+            - "-varnish-working-dir=/usr/apps/varnish"
+            # These parameters must not be removed — required for large headers/pages
+            - "-varnish-additional-parameters=http_max_hdr=700,http_resp_hdr_len=768k,http_resp_size=768k,http_req_size=768k,http_req_hdr_len=768k,workspace_backend=3072k,workspace_client=3072k,connect_timeout=60"
+          volumeMounts:
+            - name: template
+              mountPath: /etc/varnish/tmpl
+            - name: secret
+              mountPath: /etc/varnish/k8s-secret
+            - name: varnish-working-dir
+              mountPath: /usr/apps/varnish
+          readinessProbe:
+            httpGet:
+              path: /varnishstatus
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            timeoutSeconds: 10
+            periodSeconds: 2
+            successThreshold: 3
+            failureThreshold: 40
+          livenessProbe:
+            httpGet:
+              path: /varnishstatus
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+            periodSeconds: 5
+            successThreshold: 1
+            failureThreshold: 10
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+
+        # ── Access log sidecar ───────────────────────────────────
+        - name: logger
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          command:
+            - sh
+            - "-c"
+            - >-
+              sleep 5 && echo 'Printing logs...' && varnishncsa -n
+              /usr/apps/varnish -t 300 -F "%h %l %u %t %r %s %b %{Referer}i
+              %{User-agent}i %D %{Varnish:handling}x %{Varnish:vxid}x"
+              -q 'ReqURL ne "/varnishstatus"'
+          resources:
+            requests:
+              cpu: {{ .Values.resources.logger.requests.cpu | quote }}
+              memory: {{ .Values.resources.logger.requests.memory | quote }}
+            limits:
+              memory: {{ .Values.resources.logger.limits.memory | quote }}
+          volumeMounts:
+            - name: varnish-working-dir
+              mountPath: /usr/apps/varnish

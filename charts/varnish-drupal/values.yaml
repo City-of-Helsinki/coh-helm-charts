@@ -1,0 +1,120 @@
+# ──────────────────────────────────────────────
+# Project / namespace
+# ──────────────────────────────────────────────
+project: ""                        # OpenShift namespace (required)
+
+# ──────────────────────────────────────────────
+# Routing
+# ──────────────────────────────────────────────
+route:
+  host: ""                         # e.g. varnish-myapp.apps.platta.hel.fi
+  path: ""                         # optional sub-path, leave empty for "/"
+  timeout: "300s"                  # haproxy.router.openshift.io/timeout
+
+# ──────────────────────────────────────────────
+# Varnish image
+# ──────────────────────────────────────────────
+image:
+  repository: container-registry.platta-net.hel.fi/devops-toolchain/kube-httpcache-fork
+  tag: stable-3.0
+  pullPolicy: Always
+
+# ──────────────────────────────────────────────
+# Scaling & scheduling
+# ──────────────────────────────────────────────
+replicaCount: 2
+nodeSelector: ""                   # value for the "env" node label (e.g. prod, staging, test)
+revisionHistoryLimit: 3
+
+# ──────────────────────────────────────────────
+# Resources
+# ──────────────────────────────────────────────
+resources:
+  varnish:
+    requests:
+      cpu: "200m"
+      memory: "1Gi"
+    limits:
+      memory: "1Gi"
+  logger:
+    requests:
+      cpu: "50m"
+      memory: "50Mi"
+    limits:
+      memory: "50Mi"
+
+# ──────────────────────────────────────────────
+# Backend (Drupal service)
+# ──────────────────────────────────────────────
+backend:
+  host: "drupal"
+  port: "8080"
+
+# ──────────────────────────────────────────────
+# Secrets
+# ──────────────────────────────────────────────
+externalSecretName: ""             # name of the Secret containing VARNISH_SECRET and VARNISH_PURGE_KEY
+
+# ──────────────────────────────────────────────
+# Varnish storage
+# ──────────────────────────────────────────────
+varnishStorage: "malloc,128M"
+varnishTransientStorage: "malloc,128M"
+
+# ──────────────────────────────────────────────
+# VCL feature flags
+# ──────────────────────────────────────────────
+vcl:
+
+  # ── Director / load balancing topology ─────────────────────────
+  director:
+    # "single" (default): one be-drupal backend + directors.hash for
+    #   frontend peer discovery. Used by most apps.
+    # "multi": separate directors.shard (frontends) + directors.round_robin
+    #   (backends). Traffic routes via lb.backend(). Used by apps with
+    #   multiple Drupal backend replicas (e.g. palvelukeskus).
+    mode: "single"
+
+  # ── /varnishstatus health endpoint in vcl_recv ─────────────────
+  # Set to false for apps using director.mode "multi" where the
+  # health synth is handled elsewhere (e.g. palvelukeskus).
+  healthEndpoint:
+    enabled: true
+
+  # ── Backend health probe in default.vcl.tmpl ───────────────────
+  # Only applies when director.mode is "single".
+  healthProbe:
+    enabled: true
+    endpoint: "/healthz"
+    host: "www.hel.fi"
+    timeout: "5s"
+    interval: "5s"
+    window: 5
+    threshold: 3
+
+  # ── Root redirect: return 302 for "/" ──────────────────────────
+  # Also enables defaults-vcl_synth.vcl (required for 302 delivery).
+  rootRedirect:
+    enabled: false
+    target: ""                     # e.g. "https://myapp.hel.fi/fi"
+
+  # ── Raw VCL overrides ──────────────────────────────────────────
+  # Replaces the named VCL file entirely when non-empty.
+  # Paste the full sub vcl_<hook> { ... } block as a multiline string.
+  #
+  # Example — multilingual error page:
+  #   overrides:
+  #     backendError: |
+  #       sub vcl_backend_error {
+  #         set beresp.http.Content-Type = "text/html; charset=utf-8";
+  #         if (bereq.url ~ "^/fi/") {
+  #           synthetic ({"<html>..Finnish..</html>"});
+  #         } else if (bereq.url ~ "^/en/") {
+  #           synthetic ({"<html>..English..</html>"});
+  #         } else {
+  #           synthetic ({"<html>..fallback..</html>"});
+  #         }
+  #         return (deliver);
+  #       }
+  overrides:
+    backendError: ""

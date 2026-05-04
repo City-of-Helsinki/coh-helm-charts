@@ -1,0 +1,44 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: varnish
+  namespace: {{ .Values.project }}
+  labels:
+    {{- include "varnish-drupal.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  selector:
+    {{- include "varnish-drupal.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: signaller
+      protocol: TCP
+      port: 8090
+      targetPort: 8090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: varnish-headless
+  namespace: {{ .Values.project }}
+  labels:
+    {{- include "varnish-drupal.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "varnish-drupal.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: signaller
+      protocol: TCP
+      port: 8090
+      targetPort: 8090
