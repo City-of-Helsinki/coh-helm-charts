@@ -139,6 +139,13 @@ jobs:
             echo "$LOG" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           fi
+          
+      - name: Get chart name
+        id: chart
+        run: |
+          CHART_NAME=$(yq eval '.name' charts/varnish-drupal/Chart.yaml)
+          echo "chart_name=$CHART_NAME" >> $GITHUB_OUTPUT
+          echo "Chart: $CHART_NAME"
 
       - name: Update Chart Version
         run: |
@@ -147,14 +154,21 @@ jobs:
       - name: Package Chart
         run: helm package charts/varnish-drupal
 
-      - name: Release to GitHub Pages
+      - name: Publish to Helm Repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git fetch origin gh-pages || true
+          git clone https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git artifacts-repo
+          cd artifacts-repo
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git fetch origin
           git checkout gh-pages || git checkout -b gh-pages
-          mv varnish-drupal-*.tgz .
-          helm repo index . --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+          mkdir -p ${{ steps.chart.outputs.chart_name }}
+          cp ../*.tgz ${{ steps.chart.outputs.chart_name }}/
+          helm repo index . --url https://${{ github.repository_owner }}.github.io/coh-helm-repo --merge index.yaml
           git add .
-          git commit -m "feat: Release varnish-drupal ${{ inputs.chart_version }}" || echo "No changes to commit"
+          git commit -m "feat: Release ${{ steps.chart.outputs.chart_name }} ${{ steps.version.outputs.chart_version }}" || echo "No changes to commit"
           git push origin gh-pages
 
       - name: Create GitHub Release
@@ -167,3 +181,5 @@ jobs:
             ## Changelog
             ${{ steps.changelog.outputs.CHANGELOG }}
           draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
