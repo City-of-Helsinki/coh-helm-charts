@@ -57,13 +57,27 @@ jobs:
         with:
           version: '3.20.2'
 
-      - name: Login to OpenShift
-        uses: redhat-actions/oc-login@v1
-        with:
-          openshift_server_url: ${{ secrets.OPENSHIFT_SERVER }}
-          openshift_token: ${{ secrets.OPENSHIFT_TOKEN }}
-          insecure_skip_tls_verify: true
-          namespace: hki-kanslia-asuminen-test
+      - name: Install OpenShift CLI
+        run: |
+          wget https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz
+          tar xvf openshift-client-linux.tar.gz
+          sudo mv oc kubectl /usr/local/bin/
+          oc version --client
+
+      - name: Login to OpenShift Dev Cluster
+        run: |
+          oc login ${{ secrets.OPENSHIFT_API_URL }} --token="${{ secrets.OPENSHIFT_TOKEN }}" --insecure-skip-tls-verify
+
+      - name: Set namespace context
+        run: |
+          oc project hki-kanslia-asuminen-test
+          echo "Using namespace: hki-kanslia-asuminen-test"
+
+      - name: Clean up previous test deployments
+        run: |
+          echo "Cleaning up any existing test deployments..."
+          helm list -n hki-kanslia-asuminen-test | grep '^integration-test' | awk '{print $1}' | xargs -r helm uninstall -n hki-kanslia-asuminen-test || true
+          sleep 10
 
       - name: Deploy to Test Namespace
         run: |
