@@ -30,7 +30,7 @@ imagePullSecrets: []
 # Scaling & scheduling
 # ──────────────────────────────────────────────
 replicaCount: 2
-nodeSelector: ""                   # value for the "env" node label (e.g. prod, staging, test)
+nodeSelector: ""
 revisionHistoryLimit: 3
 
 # ──────────────────────────────────────────────

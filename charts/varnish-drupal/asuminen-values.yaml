@@ -1,0 +1,4 @@
+# first-app-values.yaml — app-specific overrides only
+route:
+  host: "varnish-asuminen-test1.apps.arodevtest.hel.fi"
+externalSecretName: "asuminen-secret"
