@@ -82,9 +82,9 @@ jobs:
       - name: Deploy to Test Namespace
         run: |
           helm upgrade --install integration-test charts/varnish-drupal \
-            --namespace hki-kanslia-asuminen-test \
+            --namespace devops-toolchain \
             --set route.host="varnish-sample-test1.test.hel.ninja" \
-            --set externalSecretName="asuminen-secret" \
+            --set externalSecretName="varnish-secret" \
             --wait
 
       - name: Verify /varnishstatus
