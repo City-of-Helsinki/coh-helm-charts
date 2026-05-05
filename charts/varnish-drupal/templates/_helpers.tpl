@@ -25,6 +25,17 @@ used as a full name.
 {{- end }}
 
 {{/*
+Main service name — override via values.service.name, falls back to fullname.
+*/}}
+{{- define "varnish-drupal.serviceName" -}}
+{{- if .Values.service.name }}
+{{- .Values.service.name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- include "varnish-drupal.fullname" . }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create chart label.
 */}}
 {{- define "varnish-drupal.chart" -}}
@@ -55,7 +66,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Headless service name — used in both service.yaml and statefulset.yaml args.
 */}}
 {{- define "varnish-drupal.headlessServiceName" -}}
-{{- printf "%s-headless" (include "varnish-drupal.fullname" .) }}
+{{- if .Values.service.headlessName }}
+{{- .Values.service.headlessName | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-headless" (include "varnish-drupal.serviceName" .) }}
+{{- end }}
 {{- end }}
 
 {{/*

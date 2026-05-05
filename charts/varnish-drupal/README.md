@@ -79,6 +79,23 @@ helm uninstall my-varnish --namespace my-app
 | `route.path` | `""` | Optional sub-path (e.g. `/fi`) |
 | `route.timeout` | `"300s"` | HAProxy router timeout |
 
+### Service Names
+
+By default both service names are derived from the Helm release name. Override them independently without affecting any other chart resources (ConfigMap, StatefulSet, etc.).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `service.name` | `""` | Overrides the main ClusterIP service name. Falls back to `fullname` if not set. |
+| `service.headlessName` | `""` | Overrides the headless service name. Falls back to `<serviceName>-headless` if not set. |
+
+**Example:**
+
+```yaml
+service:
+  name: my-varnish
+  headlessName: my-varnish-headless
+```
+
 ### Image
 
 | Key | Default | Description |
