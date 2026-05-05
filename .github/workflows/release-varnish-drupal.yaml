@@ -70,19 +70,19 @@ jobs:
 
       - name: Set namespace context
         run: |
-          oc project devops-toolchain
-          echo "Using namespace: devops-toolchain"
+          oc project hki-kanslia-asuminen-test
+          echo "Using namespace: hki-kanslia-asuminen-test"
 
       - name: Clean up previous test deployments
         run: |
           echo "Cleaning up any existing test deployments..."
-          helm list -n devops-toolchain | grep '^integration-test' | awk '{print $1}' | xargs -r helm uninstall -n devops-toolchain || true
+          helm list -n hki-kanslia-asuminen-test | grep '^integration-test' | awk '{print $1}' | xargs -r helm uninstall -n hki-kanslia-asuminen-test || true
           sleep 10
 
       - name: Deploy to Test Namespace
         run: |
           helm upgrade --install integration-test charts/varnish-drupal \
-            --namespace devops-toolchain \
+            --namespace hki-kanslia-asuminen-test \
             --set route.host="varnish-sample-test1.test.hel.ninja" \
             --set externalSecretName="varnish-secret" \
             --wait
@@ -90,7 +90,7 @@ jobs:
       - name: Verify /varnishstatus
         run: |
           # Use oc to check if the statefulset is ready
-          oc rollout status statefulset/integration-test-varnish-drupal -n devops-toolchain
+          oc rollout status statefulset/integration-test-varnish-drupal -n hki-kanslia-asuminen-test
 
           # Verification check
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://varnish-sample-test1.test.hel.ninja/varnishstatus)
@@ -99,14 +99,14 @@ jobs:
           if [ "$STATUS" -ne 200 ]; then
             echo "Verification failed! Expected 200 but got $STATUS"
             # Get logs to debug
-            oc logs statefulset/integration-test-varnish-drupal -c varnish -n devops-toolchain --tail=20
+            oc logs statefulset/integration-test-varnish-drupal -c varnish -n hki-kanslia-asuminen-test --tail=20
             exit 1
           fi
 
       - name: Cleanup
         if: always() # Runs even if verify fails
         run: |
-          helm uninstall integration-test -n devops-toolchain
+          helm uninstall integration-test -n hki-kanslia-asuminen-test
   release:
     needs: [test, integration-test]
     if: github.event_name == 'workflow_dispatch'
