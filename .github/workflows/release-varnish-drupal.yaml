@@ -103,10 +103,10 @@ jobs:
             exit 1
           fi
 
-      - name: Cleanup
-        if: always() # Runs even if verify fails
-        run: |
-          helm uninstall integration-test -n hki-kanslia-asuminen-test
+      # - name: Cleanup
+      #   if: always() # Runs even if verify fails
+      #   run: |
+      #     helm uninstall integration-test -n hki-kanslia-asuminen-test
   release:
     needs: [test, integration-test]
     if: github.event_name == 'workflow_dispatch'
