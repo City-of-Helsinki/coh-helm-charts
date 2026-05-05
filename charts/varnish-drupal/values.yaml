@@ -15,10 +15,10 @@ route:
 # Service
 # ──────────────────────────────────────────────
 service:
-  name: "varnish1"           # overrides the main service name only
-  headlessName: "varnish1-headless"   # overrides the headless service name only
+  name: "varnish"           # overrides the main service name only
+  headlessName: "varnish-headless"   # overrides the headless service name only
 
-serviceAccountName: kube-httpcache1
+serviceAccountName: kube-httpcache
 # ──────────────────────────────────────────────
 # Varnish image
 # ──────────────────────────────────────────────
