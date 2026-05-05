@@ -81,7 +81,7 @@ ConfigMap name
 {{- end }}
 
 {{- define "varnish-drupal.serviceAccountName" -}}
-{{- .Values.serviceAccountName | default "kube-httpcache" }}
+{{- .Values.serviceAccountName | default "kube-httpcache-sa" }}
 {{- end }}
 
 {{/*
