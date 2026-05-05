@@ -15,7 +15,7 @@ spec:
   {{- end }}
   to:
     kind: Service
-    name: {{ include "varnish-drupal.fullname" . }}
+    name: {{ include "varnish-drupal.serviceName" . }}
     weight: 100
   port:
     targetPort: "8080"
