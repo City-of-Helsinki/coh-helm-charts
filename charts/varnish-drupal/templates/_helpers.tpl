@@ -80,6 +80,10 @@ ConfigMap name
 {{- printf "%s-config" (include "varnish-drupal.fullname" .) }}
 {{- end }}
 
+{{- define "varnish-drupal.serviceAccountName" -}}
+{{- .Values.serviceAccountName | default "kube-httpcache" }}
+{{- end }}
+
 {{/*
 Validate incompatible vcl flag combination.
 */}}

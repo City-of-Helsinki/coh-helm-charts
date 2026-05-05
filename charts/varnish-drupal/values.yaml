@@ -18,6 +18,7 @@ service:
   name: "varnish"           # overrides the main service name only
   headlessName: "varnish-headless"   # overrides the headless service name only
 
+serviceAccountName: kube-httpcache
 # ──────────────────────────────────────────────
 # Varnish image
 # ──────────────────────────────────────────────

@@ -29,8 +29,8 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       restartPolicy: Always
-      serviceAccountName: kube-httpcache
-      serviceAccount: kube-httpcache
+      serviceAccountName: {{ include "varnish-drupal.serviceAccountName" . }}
+      serviceAccount: {{ include "varnish-drupal.serviceAccountName" . }}
       terminationGracePeriodSeconds: 30
       securityContext: {}
       dnsPolicy: ClusterFirst
