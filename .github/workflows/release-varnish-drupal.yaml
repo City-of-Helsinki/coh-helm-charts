@@ -45,9 +45,13 @@ jobs:
 
           # Validate rendered manifests
           helm template charts/varnish-drupal | kubeconform -summary -skip Route
+
   integration-test:
     needs: test
     runs-on: ubuntu-latest
+    env:
+      NS: hki-kanslia-asuminen-test
+      RELEASE: integration-test
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,27 +74,30 @@ jobs:
 
       - name: Set namespace context
         run: |
-          oc project hki-kanslia-asuminen-test
-          echo "Using namespace: hki-kanslia-asuminen-test"
+          oc project $NS
+          echo "Using namespace: $NS"
 
       - name: Clean up previous test deployments
         run: |
           echo "Cleaning up any existing test deployments..."
-          helm list -n hki-kanslia-asuminen-test | grep '^integration-test' | awk '{print $1}' | xargs -r helm uninstall -n hki-kanslia-asuminen-test || true
+          helm list -n $NS | grep '^integration-test' | awk '{print $1}' | xargs -r helm uninstall -n $NS || true
           sleep 10
 
       - name: Deploy to Test Namespace
         run: |
-          helm upgrade --install integration-test charts/varnish-drupal \
-            --namespace hki-kanslia-asuminen-test \
+          helm upgrade --install $RELEASE charts/varnish-drupal \
+            --namespace $NS \
             --set route.host="varnish-sample-test1.test.hel.ninja" \
-            --set externalSecretName="asuminen-secret" \
+            --set externalSecretName="varnish-secret" \
+            --set service.name="varnish1" \
+            --set service.headlessName="varnish-headless1" \
+            --set serviceAccountName="kube-httpcache1" \
             --wait
 
       - name: Verify /varnishstatus
         run: |
           # Use oc to check if the statefulset is ready
-          oc rollout status statefulset/integration-test-varnish-drupal -n hki-kanslia-asuminen-test
+          oc rollout status statefulset/$RELEASE-varnish-drupal -n $NS
 
           # Verification check
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://varnish-sample-test1.test.hel.ninja/varnishstatus)
@@ -99,14 +106,15 @@ jobs:
           if [ "$STATUS" -ne 200 ]; then
             echo "Verification failed! Expected 200 but got $STATUS"
             # Get logs to debug
-            oc logs statefulset/integration-test-varnish-drupal -c varnish -n hki-kanslia-asuminen-test --tail=20
+            oc logs statefulset/$RELEASE-varnish-drupal -c varnish -n $NS --tail=20
             exit 1
           fi
 
       - name: Cleanup
-        if: always() # Runs even if verify fails
+        if: always()
         run: |
-          helm uninstall integration-test -n hki-kanslia-asuminen-test
+          helm uninstall $RELEASE -n $NS --no-hooks || true
+
   release:
     needs: [test, integration-test]
     if: github.event_name == 'workflow_dispatch'

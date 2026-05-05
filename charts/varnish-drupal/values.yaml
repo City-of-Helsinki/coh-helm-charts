@@ -11,7 +11,14 @@ route:
   host: ""                         # e.g. varnish-myapp.apps.platta.hel.fi
   path: ""                         # optional sub-path, leave empty for "/"
   timeout: "300s"                  # haproxy.router.openshift.io/timeout
+# ──────────────────────────────────────────────
+# Service
+# ──────────────────────────────────────────────
+service:
+  name: "varnish"           # overrides the main service name only
+  headlessName: "varnish-headless"   # overrides the headless service name only
 
+serviceAccountName: kube-httpcache
 # ──────────────────────────────────────────────
 # Varnish image
 # ──────────────────────────────────────────────
