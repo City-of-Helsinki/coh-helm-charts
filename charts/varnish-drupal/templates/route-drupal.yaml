@@ -1,7 +1,7 @@
 kind: Route
 apiVersion: route.openshift.io/v1
 metadata:
-  name: {{ include "varnish-drupal.fullname" . }}
+  name: {{ include "varnish-drupal.routeName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "varnish-drupal.labels" . | nindent 4 }}

@@ -8,6 +8,7 @@ fullnameOverride: ""
 # Routing
 # ──────────────────────────────────────────────
 route:
+  name: "varnish-drupal"
   host: ""                         # e.g. varnish-myapp.apps.platta.hel.fi
   path: ""                         # optional sub-path, leave empty for "/"
   timeout: "300s"                  # haproxy.router.openshift.io/timeout

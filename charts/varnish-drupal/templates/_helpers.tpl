@@ -36,6 +36,17 @@ Main service name — override via values.service.name, falls back to fullname.
 {{- end }}
 
 {{/*
+Main route name — override via values.route.name, falls back to fullname.
+*/}}
+{{- define "varnish-drupal.routeName" -}}
+{{- if .Values.route.name }}
+{{- .Values.route.name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- include "varnish-drupal.fullname" . }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create chart label.
 */}}
 {{- define "varnish-drupal.chart" -}}
