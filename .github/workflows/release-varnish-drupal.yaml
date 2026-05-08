@@ -91,6 +91,7 @@ jobs:
             --set externalSecretName="varnish-secret" \
             --set service.name="varnish1" \
             --set service.headlessName="varnish-headless1" \
+            --set route.name="varnish-route1" \
             --set serviceAccountName="kube-httpcache1" \
             --wait
 
