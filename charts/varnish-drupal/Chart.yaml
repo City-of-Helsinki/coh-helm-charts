@@ -3,4 +3,4 @@ name: varnish-drupal
 description: Varnish HTTP cache for Drupal on OpenShift (kube-httpcache)
 type: application
 version: 1.0.0
-appVersion: "stable-3.0"
+appVersion: "stable-4.0"
