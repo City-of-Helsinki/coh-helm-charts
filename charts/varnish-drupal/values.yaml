@@ -24,7 +24,7 @@ serviceAccountName: kube-httpcache-sa
 # ──────────────────────────────────────────────
 image:
   repository: container-registry.platta-net.hel.fi/devops-toolchain/kube-httpcache-fork
-  tag: stable-3.0
+  tag: stable-4.0
   pullPolicy: Always
 
 # ──────────────────────────────────────────────
@@ -74,7 +74,7 @@ externalSecretName: ""             # name of the Secret containing VARNISH_SECRE
 # ──────────────────────────────────────────────
 # Varnish storage
 # ──────────────────────────────────────────────
-varnishStorage: "malloc,128M"
+varnishStorage: "malloc,512M"
 varnishTransientStorage: "malloc,128M"
 
 # ──────────────────────────────────────────────
@@ -100,7 +100,7 @@ vcl:
   # Only applies when director.mode is "single".
   healthProbe:
     enabled: true
-    endpoint: "/healthz"
+    endpoint: "/health"
     host: "www.hel.fi"
     timeout: "5s"
     interval: "5s"
