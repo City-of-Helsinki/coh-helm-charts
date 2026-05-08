@@ -74,7 +74,7 @@ externalSecretName: ""             # name of the Secret containing VARNISH_SECRE
 # ──────────────────────────────────────────────
 # Varnish storage
 # ──────────────────────────────────────────────
-varnishStorage: "malloc,128M"
+varnishStorage: "malloc,512M"
 varnishTransientStorage: "malloc,128M"
 
 # ──────────────────────────────────────────────
@@ -100,7 +100,7 @@ vcl:
   # Only applies when director.mode is "single".
   healthProbe:
     enabled: true
-    endpoint: "/healthz"
+    endpoint: "/health"
     host: "www.hel.fi"
     timeout: "5s"
     interval: "5s"
