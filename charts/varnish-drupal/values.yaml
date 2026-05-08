@@ -24,7 +24,7 @@ serviceAccountName: kube-httpcache-sa
 # ──────────────────────────────────────────────
 image:
   repository: container-registry.platta-net.hel.fi/devops-toolchain/kube-httpcache-fork
-  tag: stable-3.0
+  tag: stable-4.0
   pullPolicy: Always
 
 # ──────────────────────────────────────────────
