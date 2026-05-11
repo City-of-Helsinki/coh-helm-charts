@@ -96,6 +96,13 @@ ConfigMap name
 {{- end }}
 
 {{/*
+Backend watch — automatically true when director.mode is "multi".
+*/}}
+{{- define "varnish-drupal.backendWatch" -}}
+{{- if eq .Values.vcl.director.mode "multi" }}true{{- else }}false{{- end }}
+{{- end }}
+
+{{/*
 Validate incompatible vcl flag combination.
 */}}
 {{- define "varnish-drupal.validateVcl" -}}

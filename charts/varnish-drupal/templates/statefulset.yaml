@@ -89,7 +89,7 @@ spec:
             - "-frontend-watch"
             - "-frontend-namespace={{ .Release.Namespace }}"
             - "-frontend-service={{ include "varnish-drupal.headlessServiceName" . }}"
-            - "-backend-watch=false"
+            - "-backend-watch={{ include "varnish-drupal.backendWatch" . }}"
             - "-backend-namespace={{ .Release.Namespace }}"
             - "-backend-service={{ .Values.backend.host }}"
             - "-varnish-secret-file=/etc/varnish/k8s-secret/VARNISH_SECRET"
