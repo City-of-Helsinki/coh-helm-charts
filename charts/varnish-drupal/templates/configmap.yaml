@@ -39,7 +39,7 @@ data:
     {{ "{{ range .Backends }}" }}
     backend be-{{ "{{ .Name }}" }} {
         .host = "{{ "{{ .Host }}" }}";
-        .port = "8080";
+        .port = "{{ .Values.backend.port }}";
     }
     {{- "{{ end }}" }}
 
