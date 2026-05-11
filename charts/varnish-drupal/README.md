@@ -138,7 +138,7 @@ service:
 |-----|---------|-------------|
 | `vcl.director.mode` | `single` | `single` — one `be-drupal` backend with `directors.hash` for peer discovery. `multi` — separate `directors.shard` (frontends) + `directors.round_robin` (backends). |
 | `vcl.healthEndpoint.enabled` | `true` | Serve `200 OK` on `/varnishstatus`. Must be `false` when `director.mode=multi`. |
-| `vcl.healthProbe.enabled` | `true` | Attach a backend health probe. Only applies when `director.mode=single`. |
+| `vcl.healthProbe.enabled` | `true` | Attach a backend health probe. |
 | `vcl.healthProbe.endpoint` | `/healthz` | Health probe request path |
 | `vcl.healthProbe.host` | `www.hel.fi` | `Host` header sent with health probe requests |
 | `vcl.healthProbe.timeout` | `5s` | |

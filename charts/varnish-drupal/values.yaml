@@ -93,7 +93,6 @@ vcl:
     mode: "single"
 
   # ── /varnishstatus health endpoint in vcl_recv ─────────────────
-  # Must be false when director.mode is "multi" (enforced at render time).
   healthEndpoint:
     enabled: true
 

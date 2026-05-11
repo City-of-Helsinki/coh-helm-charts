@@ -106,9 +106,6 @@ Backend watch — automatically true when director.mode is "multi".
 Validate incompatible vcl flag combination.
 */}}
 {{- define "varnish-drupal.validateVcl" -}}
-{{- if and (eq .Values.vcl.director.mode "multi") .Values.vcl.healthEndpoint.enabled }}
-{{- fail "vcl.healthEndpoint.enabled must be false when vcl.director.mode is \"multi\" (health synth is handled by the multi-director VCL path)" }}
-{{- end }}
 {{- if and .Values.vcl.rootRedirect.enabled (not .Values.vcl.rootRedirect.target) }}
 {{- fail "vcl.rootRedirect.target must be set when vcl.rootRedirect.enabled is true" }}
 {{- end }}
