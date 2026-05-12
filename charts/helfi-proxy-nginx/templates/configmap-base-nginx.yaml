@@ -7,8 +7,8 @@ metadata:
 data:
   nginx.conf: |
     worker_processes auto;
-    error_log /var/opt/rh/rh-nginx126/log/nginx/error.log;
-    pid /var/opt/rh/rh-nginx126/run/nginx/nginx.pid;
+    error_log /dev/stderr;
+    pid /tmp/nginx.pid;
 
     include /usr/share/nginx/modules/*.conf;
 
@@ -17,11 +17,25 @@ data:
     }
 
     http {
-        log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
-                          '$status $body_bytes_sent "$http_referer" '
-                          '"$http_user_agent" "$http_x_forwarded_for"';
+        # Define JSON Log Format
+        log_format json_analytics escape=json '{'
+            '"time_local":"$time_local",'
+            '"remote_addr":"$remote_addr",'
+            '"remote_user":"$remote_user",'
+            '"request":"$request",'
+            '"status": "$status",'
+            '"body_bytes_sent":"$body_bytes_sent",'
+            '"request_time":"$request_time",'
+            '"http_referrer":"$http_referer",'
+            '"http_user_agent":"$http_user_agent",'
+            '"http_x_forwarded_for":"$http_x_forwarded_for",'
+            '"http_x_forwarded_host":"$http_x_forwarded_host",'
+            '"upstream_response_time":"$upstream_response_time",'
+            '"upstream_addr":"$upstream_addr",'
+            '"upstream_status":"$upstream_status"'
+        '}';
 
-        access_log  /var/opt/rh/rh-nginx126/log/nginx/access.log  main;
+        access_log /dev/stdout json_analytics;
 
         sendfile            on;
         tcp_nopush          on;
@@ -47,7 +61,7 @@ data:
             server_name  _;
             root         /var/www/html/public;
 
-            # Health probes for OpenShift liveness/readiness
+            # Health probes
             location /healthz {
                 access_log off;
                 return 200 '{"status":"UP"}';
