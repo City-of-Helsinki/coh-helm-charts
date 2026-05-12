@@ -96,6 +96,7 @@ This separation means:
 | `receiver.backends.liikenne` | Varnish hostname for liikenne Drupal |
 | `receiver.backends.asuminen` | Varnish hostname for asuminen Drupal |
 | `receiver.backends.rekry` | Varnish hostname for rekry Drupal |
+| `receiver.backends.tyo-yrittaminen` | Varnish hostname for tyo-yrittaminen Drupal |
 | `receiver.backends.kuva` | Varnish hostname for kuva Drupal |
 | `receiver.backends.kasvatus` | Varnish hostname for kasvatus-koulutus Drupal |
 | `receiver.backends.strategia` | Varnish hostname for strategia-talous Drupal |

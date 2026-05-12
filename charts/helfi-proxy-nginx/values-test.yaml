@@ -22,6 +22,7 @@ receiver:
     liikenne:  varnish-liikenne-test.apps.arodevtest.hel.fi
     asuminen:  varnish-asuminen-test.apps.arodevtest.hel.fi
     rekry:     varnish-rekry-test.apps.arodevtest.hel.fi
+    tyo-yrittaminen:  varnish-tyo-yrittaminen-test.apps.arodevtest.hel.fi
     kuva:      varnish-kuva-test.apps.arodevtest.hel.fi
     kasvatus:  varnish-kasvatus-koulutus-test.apps.arodevtest.hel.fi
     strategia: varnish-strategia-talous-test.apps.arodevtest.hel.fi
