@@ -94,6 +94,7 @@ receiver:
     strategia: ""
     uutisapi: ""
     sitemap: ""
+  proxiedRoutes: []
 
 # -------------------------------------------------------
 # Env-jump redirects (test-/staging- prefix redirects)
