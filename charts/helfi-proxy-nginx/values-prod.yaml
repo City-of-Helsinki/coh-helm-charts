@@ -28,6 +28,7 @@ receiver:
     liikenne:  liikenne.hel.fi
     asuminen:  drupal-asuminen.hel.fi
     rekry:     drupal-rekry.hel.fi
+    tyo-yrittaminen: drupal-tyo-yrittaminen.hel.fi
     kuva:      drupal-kuva.hel.fi
     kasvatus:  kasvatus-koulutus.hel.fi
     strategia: keskushallinto.hel.fi

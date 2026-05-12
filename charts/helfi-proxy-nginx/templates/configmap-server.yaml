@@ -150,7 +150,7 @@ data:
         # Tyo-yrittaminen
         # -------------------------------------------------------
         location ~ ^/(fi/yritykset-ja-tyo|en/business-and-work|sv/foretag-och-arbete|business-and-work|elo-assets/) {
-            proxy_set_header Host {{ .Values.receiver.backends.rekry }};
+            proxy_set_header Host {{ .Values.receiver.backends.tyo-yrittaminen }};
             proxy_pass https://$devtest_openshift_ip:443;
         }
 

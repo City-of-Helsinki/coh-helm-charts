@@ -22,6 +22,7 @@ receiver:
     liikenne:  varnish-liikenne-staging.agw.platta.hel.fi
     asuminen:  drupal-asuminen.stage.hel.ninja
     rekry:     drupal-rekry.stage.hel.ninja
+    tyo-yrittaminen:  drupal-tyo-yrittaminen.stage.hel.ninja
     kuva:      drupal-kuva.stage.hel.ninja
     kasvatus:  kasvatus-koulutus.stage.hel.ninja
     strategia: hallinto.stage.hel.ninja
