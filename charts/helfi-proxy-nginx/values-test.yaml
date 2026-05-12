@@ -43,9 +43,17 @@ receiver:
     - name: "Liikenne"
       paths: "fi/kaupunkiymparisto-ja-liikenne|sv/stadsmiljo-och-trafik|en/urban-environment-and-traffic|urban-environment-and-traffic|liikenne-assets/"
       backendKey: "liikenne"
+    - name: "News API"
+      matchType: " " # Leading space makes this a standard prefix match
+      paths: "/uutisapi/"
+      proxyPath: "/" # Strips /uutisapi/ prefix
+      backendKey: "uutisapi"
     - name: "Rekry"
       paths: "fi/avoimet-tyopaikat|sv/lediga-jobb|en/open-jobs|open-jobs|rekry-assets/"
       backendKey: "rekry"
+    - name: "Sitemap"
+      paths: "(sitemap.xml|robots.txt)$" # Regex matches the end of string
+      backendKey: "sitemap"
     - name: "Strategia-talous"
       paths: "fi/paatoksenteko-ja-hallinto|sv/beslutsfattande-och-forvaltning|en/decision-making|decision-making|hallinto-assets/"
       backendKey: "strategia"

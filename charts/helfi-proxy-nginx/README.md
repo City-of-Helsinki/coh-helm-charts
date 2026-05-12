@@ -86,22 +86,57 @@ This separation means:
 
 ### Receiver-specific values
 
+#### 1. General & Backends
+Backends are defined as a map of keys to hostnames. These keys are referenced by the proxy routes.
+
 | Key | Description |
 |---|---|
 | `receiver.serverName` | nginx `server_name` directive |
 | `receiver.openshiftIP` | Internal OpenShift AGW IP used in `proxy_pass` |
-| `receiver.xForwardedHost` | Value for `X-Forwarded-Host` header — use `$host` for test/staging, `$xfh` for prod |
-| `receiver.backends.etusivu` | Varnish hostname for etusivu Drupal |
-| `receiver.backends.terveys` | Varnish hostname for terveys Drupal |
-| `receiver.backends.liikenne` | Varnish hostname for liikenne Drupal |
-| `receiver.backends.asuminen` | Varnish hostname for asuminen Drupal |
-| `receiver.backends.rekry` | Varnish hostname for rekry Drupal |
-| `receiver.backends.tyo-yrittaminen` | Varnish hostname for tyo-yrittaminen Drupal |
-| `receiver.backends.kuva` | Varnish hostname for kuva Drupal |
-| `receiver.backends.kasvatus` | Varnish hostname for kasvatus-koulutus Drupal |
-| `receiver.backends.strategia` | Varnish hostname for strategia-talous Drupal |
-| `receiver.backends.uutisapi` | Hostname for etusivu elastic proxy (news API) |
+| `receiver.xForwardedHost` | Value for `X-Forwarded-Host` header (`$host` or `$xfh`) |
+| `receiver.backends.asuminen` | Varnish hostname for asuminen |
+| `receiver.backends.etusivu` | Varnish hostname for etusivu |
+| `receiver.backends.kasvatus` | Varnish hostname for kasvatus-koulutus |
+| `receiver.backends.kuva` | Varnish hostname for kuva |
+| `receiver.backends.liikenne` | Varnish hostname for liikenne |
+| `receiver.backends.rekry` | Varnish hostname for rekry |
 | `receiver.backends.sitemap` | Varnish hostname for sitemap/robots.txt |
+| `receiver.backends.strategia` | Varnish hostname for strategia-talous |
+| `receiver.backends.terveys` | Varnish hostname for terveys |
+| `receiver.backends.tyo-yrittaminen` | Varnish hostname for tyo-yrittaminen |
+| `receiver.backends.uutisapi` | Hostname for etusivu elastic proxy (news API) |
+
+#### 2. Dynamic Proxy Routes (`receiver.proxiedRoutes`)
+This list defines the Nginx `location` blocks.
+
+| Key | Description |
+|---|---|
+| `name` | Descriptive name (used as a comment in config) |
+| `paths` | The URI patterns or regex strings to match |
+| `backendKey` | The key from `receiver.backends` to use for the Host header |
+| `matchType` | **Optional.** Nginx modifier. Defaults to `~ ^/` (regex). Use ` ` (space) for prefix. |
+| `proxyPath` | **Optional.** Path appended to backend. Use `/` to strip incoming prefixes. |
+
+---
+
+## Example Dynamic Route Configuration
+
+```yaml
+receiver:
+  backends:
+    asuminen: "varnish-asuminen-test.apps.arodevtest.hel.fi"
+    uutisapi: "etusivu-elastic-proxy-test.apps.arodevtest.hel.fi"
+
+  proxiedRoutes:
+    - name: "Asuminen"
+      paths: "fi/asuminen|en/housing"
+      backendKey: "asuminen"
+    - name: "News API"
+      matchType: " "
+      paths: "/uutisapi/"
+      proxyPath: "/"
+      backendKey: "uutisapi"
+```
 
 ### Redirections values
 
