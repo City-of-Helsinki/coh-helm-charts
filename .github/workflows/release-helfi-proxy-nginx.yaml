@@ -1,0 +1,172 @@
+name: Release workflow for helfi-proxy-nginx Helm Chart
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'charts/helfi-proxy-nginx/**'
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: 'New chart version (e.g., 0.1.1)'
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+
+      - name: Install test dependencies
+        run: |
+          wget https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version v0.4.1
+
+      - name: Lint and Validate
+        run: |
+          helm lint charts/helfi-proxy-nginx
+          if [ -d "charts/helfi-proxy-nginx/tests" ]; then helm unittest charts/helfi-proxy-nginx; fi
+          helm template charts/helfi-proxy-nginx -f charts/helfi-proxy-nginx/values-test.yaml | kubeconform -summary -skip Route
+
+  integration-test:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      NS: devops-toolchain
+      RELEASE: proxy-int-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+
+      - name: Install OpenShift CLI
+        run: |
+          wget https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz
+          tar xvf openshift-client-linux.tar.gz
+          sudo mv oc kubectl /usr/local/bin/
+
+      - name: Login to OpenShift
+        run: |
+          oc login ${{ secrets.OPENSHIFT_API_URL }} --token="${{ secrets.OPENSHIFT_TOKEN }}" --insecure-skip-tls-verify
+
+      - name: Deploy to Integration Namespace
+        run: |
+          helm upgrade --install $RELEASE charts/helfi-proxy-nginx \
+            --namespace $NS \
+            -f charts/helfi-proxy-nginx/values-test.yaml \
+            --set route.host="helfi-proxy-int-test.test.hel.ninja" \
+            --wait
+
+      - name: Verify Nginx Health
+        run: |
+          oc rollout status deployment/$RELEASE-helfi-proxy-nginx -n $NS
+          # Verification check using the healthz endpoint defined in configmap-base-nginx.yaml
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://helfi-proxy-int-test.test.hel.ninja/healthz)
+          if [ "$STATUS" -ne 200 ]; then
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          helm uninstall $RELEASE -n $NS --no-hooks || true
+
+  release:
+    needs: [test, integration-test]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            echo "CHANGELOG=Initial release of helfi-proxy-nginx." >> $GITHUB_OUTPUT
+          else
+            LOG=$(git log $PREV_TAG..HEAD --pretty=format:"- %s")
+            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+            echo "$LOG" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get chart name
+        id: chart
+        run: |
+          CHART_NAME=$(yq eval '.name' charts/helfi-proxy-nginx/Chart.yaml)
+          echo "chart_name=$CHART_NAME" >> $GITHUB_OUTPUT
+
+      - name: Determine Chart Version and Git Tag
+        id: version
+        run: |
+          # Logic to handle both tag-based triggers and manual workflow dispatch
+          if [[ "${{ github.ref }}" == refs/tags/helfi-proxy-nginx-v* ]]; then
+            CHART_VERSION=${GITHUB_REF#refs/tags/helfi-proxy-nginx-}
+            GIT_TAG=${GITHUB_REF#refs/tags/}
+          elif [ -n "${{ github.event.inputs.chart_version }}" ]; then
+            INPUT_VERSION="${{ github.event.inputs.chart_version }}"
+            CLEAN_VERSION="${INPUT_VERSION#v}"
+            CHART_VERSION="v${CLEAN_VERSION}"
+            GIT_TAG="helfi-proxy-nginx-${CHART_VERSION}"
+          else
+            echo "Error: Chart version could not be determined"
+            exit 1
+          fi
+          echo "chart_version=$CHART_VERSION" >> $GITHUB_OUTPUT
+          echo "git_tag=$GIT_TAG" >> $GITHUB_OUTPUT
+
+      - name: Update Chart Version
+        run: |
+          sed -i "s/^version: .*/version: ${{ steps.version.outputs.chart_version }}/" charts/helfi-proxy-nginx/Chart.yaml
+
+      - name: Package Chart
+        run: helm package charts/helfi-proxy-nginx
+
+      - name: Publish to Helm Repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git repo
+          cd repo
+          git checkout gh-pages
+          mkdir -p ${{ steps.chart.outputs.chart_name }}
+          cp ../*.tgz ${{ steps.chart.outputs.chart_name }}/
+          helm repo index . --url https://${{ github.repository_owner }}.github.io/coh-helm-repo --merge index.yaml
+          git add .
+          git commit -m "feat: Release ${{ steps.chart.outputs.chart_name }} ${{ steps.version.outputs.chart_version }}" || echo "No changes"
+          git push origin gh-pages
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "helfi-proxy-nginx-*.tgz"
+          tag: "${{ steps.version.outputs.git_tag }}"
+          name: "helfi-proxy-nginx ${{ steps.version.outputs.chart_version }}"
+          body: |
+            ## Changelog
+            ${{ steps.changelog.outputs.CHANGELOG }}
+          token: ${{ secrets.GITHUB_TOKEN }}

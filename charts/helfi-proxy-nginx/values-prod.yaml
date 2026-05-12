@@ -1,0 +1,35 @@
+# -------------------------------------------------------
+# Production environment overrides
+# www.hel.fi → helfi-etusivu-prod namespace
+# NOTE: prod uses $xfh (geo block) not $host
+# for X-Forwarded-Host since AppGW sets the original host
+# -------------------------------------------------------
+
+type: receiver
+
+replicaCount: 2
+nodeSelector: prod
+
+route:
+  host: www.hel.fi
+
+redirections:
+  enabled: true
+  testHost: www.test.hel.ninja
+  stagingHost: www.stage.hel.ninja
+
+receiver:
+  serverName: www.hel.fi
+  openshiftIP: 10.235.230.132
+  xForwardedHost: $xfh    # geo block variable — always www.hel.fi
+  backends:
+    etusivu:   drupal-etusivu.hel.fi
+    terveys:   terveys.hel.fi
+    liikenne:  liikenne.hel.fi
+    asuminen:  drupal-asuminen.hel.fi
+    rekry:     drupal-rekry.hel.fi
+    kuva:      drupal-kuva.hel.fi
+    kasvatus:  kasvatus-koulutus.hel.fi
+    strategia: keskushallinto.hel.fi
+    uutisapi:  etusivu-elastic-proxy-prod.hel.ninja
+    sitemap:   drupal-etusivu.hel.fi

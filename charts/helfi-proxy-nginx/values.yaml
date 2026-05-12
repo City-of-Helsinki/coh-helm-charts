@@ -1,0 +1,117 @@
+# -------------------------------------------------------
+# helfi-proxy-nginx Helm chart default values
+# Override per environment via values-test.yaml etc.
+# -------------------------------------------------------
+
+# Role of this deployment
+# receiver   = helfi-nginx, serves Drupal compositing
+# dispatcher = thin router owning the public www.hel.fi route
+type: receiver
+
+# -------------------------------------------------------
+# Deployment
+# -------------------------------------------------------
+replicaCount: 2
+
+image:
+  registry: container-registry.platta-net.hel.fi
+  repository: hki-kanslia-helfi-etusivu/helfi-proxy-nginx
+  tag: stable-1.0
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: quay-secret-hki-kanslia-helfi-etusivu
+
+nameOverride: ""
+fullnameOverride: ""
+
+# -------------------------------------------------------
+# Resources
+# -------------------------------------------------------
+resources:
+  limits:
+    cpu: "1"
+    memory: 1.5Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# -------------------------------------------------------
+# OpenShift node selector
+# devtest / stg / prod
+# -------------------------------------------------------
+nodeSelector: devtest
+
+# -------------------------------------------------------
+# Route
+# -------------------------------------------------------
+route:
+  enabled: true
+  host: ""           # set per environment
+  tls:
+    enabled: true
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  annotations:
+    haproxy.router.openshift.io/timeout: 300s
+    haproxy.router.openshift.io/disable_cookies: "true"
+
+# -------------------------------------------------------
+# Health probes
+# -------------------------------------------------------
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 240
+    periodSeconds: 10
+    timeoutSeconds: 1
+    failureThreshold: 3
+  readiness:
+    path: /healthz
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    failureThreshold: 3
+
+# -------------------------------------------------------
+# Receiver config (type: receiver)
+# -------------------------------------------------------
+receiver:
+  serverName: ""           # set per environment e.g. www.test.hel.ninja
+  openshiftIP: ""          # set per environment
+  xForwardedHost: $host    # $host for test/staging, $xfh for prod (geo block)
+
+  # Varnish backend hostnames — set per environment
+  backends:
+    etusivu: ""
+    terveys: ""
+    liikenne: ""
+    asuminen: ""
+    rekry: ""
+    kuva: ""
+    kasvatus: ""
+    strategia: ""
+    uutisapi: ""
+    sitemap: ""
+
+# -------------------------------------------------------
+# Env-jump redirects (test-/staging- prefix redirects)
+# Only enable in prod receiver — www.hel.fi/fi/test-asuminen
+# → https://www.test.hel.ninja/fi/asuminen etc.
+# -------------------------------------------------------
+redirections:
+  enabled: false
+  testHost: www.test.hel.ninja
+  stagingHost: www.stage.hel.ninja
+
+# -------------------------------------------------------
+# Dispatcher config (type: dispatcher)
+# Only used when type: dispatcher
+# -------------------------------------------------------
+dispatcher:
+  openshiftIP: ""
+  # List of path-based routing rules to internal ClusterIP services
+  routes: []
+  # - path: "^/(fi|sv|en)"
+  #   backend: helfi-nginx
+  #   port: 8080

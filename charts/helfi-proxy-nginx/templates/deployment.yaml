@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "helfi-proxy-nginx.fullname" . }}
+  labels:
+    {{- include "helfi-proxy-nginx.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "helfi-proxy-nginx.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+  template:
+    metadata:
+      labels:
+        {{- include "helfi-proxy-nginx.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Force pod restart when ConfigMaps change
+        checksum/base-nginx: {{ include (print $.Template.BasePath "/configmap-base-nginx.yaml") . | sha256sum }}
+        checksum/server: {{ include (print $.Template.BasePath "/configmap-server.yaml") . | sha256sum }}
+        {{- if .Values.redirections.enabled }}
+        checksum/redirections: {{ include (print $.Template.BasePath "/configmap-redirections.yaml") . | sha256sum }}
+        {{- end }}
+    spec:
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      nodeSelector:
+        env: {{ .Values.nodeSelector }}
+      containers:
+        - name: {{ include "helfi-proxy-nginx.fullname" . }}
+          image: {{ include "helfi-proxy-nginx.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          volumeMounts:
+            # Mount base nginx.conf
+            - name: base-nginx
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            # Mount server block into default.d/
+            - name: server
+              mountPath: /etc/nginx/default.d/server.conf
+              subPath: server.conf
+              readOnly: true
+            {{- if .Values.redirections.enabled }}
+            # Mount env-jump redirections into default.d/
+            - name: redirections
+              mountPath: /etc/nginx/default.d/redirections.conf
+              subPath: redirections.conf
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: base-nginx
+          configMap:
+            name: {{ include "helfi-proxy-nginx.fullname" . }}-base-nginx
+        - name: server
+          configMap:
+            name: {{ include "helfi-proxy-nginx.fullname" . }}-server
+        {{- if .Values.redirections.enabled }}
+        - name: redirections
+          configMap:
+            name: {{ include "helfi-proxy-nginx.fullname" . }}-redirections
+        {{- end }}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst

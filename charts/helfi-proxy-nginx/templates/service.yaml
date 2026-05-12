@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "helfi-proxy-nginx.fullname" . }}
+  labels:
+    {{- include "helfi-proxy-nginx.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: 8080-tcp
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+  selector:
+    {{- include "helfi-proxy-nginx.selectorLabels" . | nindent 4 }}
+  sessionAffinity: None
