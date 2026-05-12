@@ -24,7 +24,7 @@ data:
         gzip_proxied any;
         gzip_comp_level 6;
         gzip_buffers 16 8k;
-        gzip_types text/html application/x-javascript text/css text/javascript;
+        gzip_types application/x-javascript text/css text/javascript;
 
         # Buffer tuning
         proxy_busy_buffers_size   512k;
@@ -76,7 +76,7 @@ data:
         proxy_set_header X-Forwarded '';
 
         # -------------------------------------------------------
-        # Metatavu search
+        # Metatavu search (Fixed targets)
         # -------------------------------------------------------
         location ~ ^\/haku\/(?:.*)\.(css|json|js)$ {
             proxy_ssl_server_name on;
@@ -107,84 +107,15 @@ data:
         }
 
         # -------------------------------------------------------
-        # Sitemap and robots.txt
+        # Dynamic Proxied Routes (Managed via Values)
         # -------------------------------------------------------
-        location ~ ^/(sitemap.xml|robots.txt)$ {
-            proxy_set_header Host {{ .Values.receiver.backends.sitemap }};
-            proxy_pass https://$devtest_openshift_ip:443;
+        {{- range .Values.receiver.proxiedRoutes }}
+        # {{ .name }}
+        location {{ .matchType | default "~ ^/" }}{{ .paths }} {
+            proxy_set_header Host {{ index $.Values.receiver.backends .backendKey }};
+            proxy_pass https://$devtest_openshift_ip:443{{ .proxyPath | default "" }};
         }
-
-        # -------------------------------------------------------
-        # News API
-        # -------------------------------------------------------
-        location /uutisapi/ {
-            proxy_set_header Host {{ .Values.receiver.backends.uutisapi }};
-            proxy_pass https://$devtest_openshift_ip:443/;
-        }
-
-        # -------------------------------------------------------
-        # Strategia-talous (Keskushallinto)
-        # -------------------------------------------------------
-        location ~ ^/(fi/paatoksenteko-ja-hallinto|sv/beslutsfattande-och-forvaltning|en/decision-making|decision-making|hallinto-assets/) {
-            proxy_set_header Host {{ .Values.receiver.backends.strategia }};
-            proxy_pass https://$devtest_openshift_ip:443;
-        }
-
-        # -------------------------------------------------------
-        # Terveys
-        # -------------------------------------------------------
-        location ~ ^/(fi/sosiaali-ja-terveyspalvelut|sv/social-och-halsovardstjanster|en/health-and-social-services|health-and-social-services|terveys-assets/) {
-            proxy_set_header Host {{ .Values.receiver.backends.terveys }};
-            proxy_pass https://$devtest_openshift_ip:443;
-        }
-
-        # -------------------------------------------------------
-        # Liikenne
-        # -------------------------------------------------------
-        location ~ ^/(fi/kaupunkiymparisto-ja-liikenne|sv/stadsmiljo-och-trafik|en/urban-environment-and-traffic|urban-environment-and-traffic|liikenne-assets/) {
-            proxy_set_header Host {{ .Values.receiver.backends.liikenne }};
-            proxy_pass https://$devtest_openshift_ip:443;
-        }
-
-        # -------------------------------------------------------
-        # Tyo-yrittaminen
-        # -------------------------------------------------------
-        location ~ ^/(fi/yritykset-ja-tyo|en/business-and-work|sv/foretag-och-arbete|business-and-work|elo-assets/) {
-            proxy_set_header Host {{ index .Values.receiver.backends "tyo-yrittaminen" }};
-            proxy_pass https://$devtest_openshift_ip:443;
-        }
-
-        # -------------------------------------------------------
-        # Kasvatus-koulutus
-        # -------------------------------------------------------
-        location ~ ^/(fi/kasvatus-ja-koulutus|en/childhood-and-education|sv/fostran-och-utbildning|childhood-and-education|kasko-assets/) {
-            proxy_set_header Host {{ .Values.receiver.backends.kasvatus }};
-            proxy_pass https://$devtest_openshift_ip:443;
-        }
-
-        # -------------------------------------------------------
-        # Asuminen
-        # -------------------------------------------------------
-        location ~ ^/(fi/asuminen|en/housing|sv/boende|housing|asuminen-assets/) {
-            proxy_set_header Host {{ .Values.receiver.backends.asuminen }};
-            proxy_pass https://$devtest_openshift_ip:443;
-        }
-
-        # -------------------------------------------------------
-        # Rekry
-        # -------------------------------------------------------
-        location ~ ^/(fi/avoimet-tyopaikat|sv/lediga-jobb|en/open-jobs|open-jobs|rekry-assets/) {
-            proxy_set_header Host {{ .Values.receiver.backends.rekry }};
-            proxy_pass https://$devtest_openshift_ip:443;
-        }
-
-        # -------------------------------------------------------
-        # Kuva
-        # -------------------------------------------------------
-        location ~ ^/(fi/kulttuuri-ja-vapaa-aika|sv/kultur-och-fritid|en/culture-and-leisure|culture-and-leisure|kuva-assets/) {
-            proxy_set_header Host {{ .Values.receiver.backends.kuva }};
-            proxy_pass https://$devtest_openshift_ip:443;
-        }
+        {{- end }}
 
         # -------------------------------------------------------
         # Etusivu — keep last, catch-all for language prefixes

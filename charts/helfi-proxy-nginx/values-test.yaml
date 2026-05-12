@@ -17,14 +17,41 @@ receiver:
   xForwardedHost: $host
 
   backends:
-    etusivu:   varnish-etusivu-test.apps.arodevtest.hel.fi
-    terveys:   varnish-terveys-test.apps.arodevtest.hel.fi
-    liikenne:  varnish-liikenne-test.apps.arodevtest.hel.fi
-    asuminen:  varnish-asuminen-test.apps.arodevtest.hel.fi
-    rekry:     varnish-rekry-test.apps.arodevtest.hel.fi
-    tyo-yrittaminen:  varnish-tyo-yrittaminen-test.apps.arodevtest.hel.fi
-    kuva:      varnish-kuva-test.apps.arodevtest.hel.fi
-    kasvatus:  varnish-kasvatus-koulutus-test.apps.arodevtest.hel.fi
-    strategia: varnish-strategia-talous-test.apps.arodevtest.hel.fi
-    uutisapi:  etusivu-elastic-proxy-test.apps.arodevtest.hel.fi
-    sitemap:   varnish-etusivu-test.apps.arodevtest.hel.fi
+    asuminen:  "varnish-asuminen-test.apps.arodevtest.hel.fi"
+    etusivu:   "varnish-etusivu-test.apps.arodevtest.hel.fi"
+    kasvatus:  "varnish-kasvatus-koulutus-test.apps.arodevtest.hel.fi"
+    kuva:      "varnish-kuva-test.apps.arodevtest.hel.fi"
+    liikenne:  "varnish-liikenne-test.apps.arodevtest.hel.fi"
+    rekry:     "varnish-rekry-test.apps.arodevtest.hel.fi"
+    sitemap:   "varnish-etusivu-test.apps.arodevtest.hel.fi"
+    strategia: "varnish-strategia-talous-test.apps.arodevtest.hel.fi"
+    terveys:   "varnish-terveys-test.apps.arodevtest.hel.fi"
+    tyo-yrittaminen:  "varnish-tyo-yrittaminen-test.apps.arodevtest.hel.fi"
+    uutisapi:  "etusivu-elastic-proxy-test.apps.arodevtest.hel.fi"
+
+  # Dynamic Routing Definition
+  proxiedRoutes:
+    - name: "Asuminen"
+      paths: "fi/asuminen|en/housing|sv/boende|housing|asuminen-assets/"
+      backendKey: "asuminen"
+    - name: "Kasvatus-koulutus"
+      paths: "fi/kasvatus-ja-koulutus|en/childhood-and-education|sv/fostran-och-utbildning|childhood-and-education|kasko-assets/"
+      backendKey: "kasvatus"
+    - name: "Kuva"
+      paths: "fi/kulttuuri-ja-vapaa-aika|sv/kultur-och-fritid|en/culture-and-leisure|culture-and-leisure|kuva-assets/"
+      backendKey: "kuva"
+    - name: "Liikenne"
+      paths: "fi/kaupunkiymparisto-ja-liikenne|sv/stadsmiljo-och-trafik|en/urban-environment-and-traffic|urban-environment-and-traffic|liikenne-assets/"
+      backendKey: "liikenne"
+    - name: "Rekry"
+      paths: "fi/avoimet-tyopaikat|sv/lediga-jobb|en/open-jobs|open-jobs|rekry-assets/"
+      backendKey: "rekry"
+    - name: "Strategia-talous"
+      paths: "fi/paatoksenteko-ja-hallinto|sv/beslutsfattande-och-forvaltning|en/decision-making|decision-making|hallinto-assets/"
+      backendKey: "strategia"
+    - name: "Terveys"
+      paths: "fi/sosiaali-ja-terveyspalvelut|sv/social-och-halsovardstjanster|en/health-and-social-services|health-and-social-services|terveys-assets/"
+      backendKey: "terveys"
+    - name: "Tyo-yrittaminen"
+      paths: "fi/yritykset-ja-tyo|en/business-and-work|sv/foretag-och-arbete|business-and-work|elo-assets/"
+      backendKey: "tyo-yrittaminen"
