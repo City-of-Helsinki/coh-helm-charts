@@ -67,14 +67,14 @@ jobs:
           helm upgrade --install $RELEASE charts/helfi-proxy-nginx \
             --namespace $NS \
             -f charts/helfi-proxy-nginx/values-test.yaml \
-            --set route.host="proxy-test.devops.hel.ninja" \
+            --set route.host="helfi-proxy-int-test.test.hel.ninja" \
             --wait
 
       - name: Verify Nginx Health
         run: |
           oc rollout status deployment/$RELEASE-helfi-proxy-nginx -n $NS
           # Verification check using the healthz endpoint defined in configmap-base-nginx.yaml
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://proxy-test.devops.hel.ninja/healthz)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://helfi-proxy-int-test.test.hel.ninja/healthz)
           if [ "$STATUS" -ne 200 ]; then
             exit 1
           fi
