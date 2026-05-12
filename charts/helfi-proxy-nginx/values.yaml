@@ -20,7 +20,7 @@ image:
   pullPolicy: Always
 
 imagePullSecrets:
-  - name: quay-secret-new
+  - name: quay-secret-hki-kanslia-helfi-etusivu
 
 nameOverride: ""
 fullnameOverride: ""
