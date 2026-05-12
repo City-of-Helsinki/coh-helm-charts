@@ -1,0 +1,10 @@
+apiVersion: v2
+name: helfi-proxy-nginx
+description: >
+  Nginx proxy chart for hel.fi services.
+  Supports two roles via .Values.type:
+    receiver   - helfi-nginx, serves Drupal compositing for a specific domain
+    dispatcher - thin router, owns the public route and fans out to receivers
+type: application
+version: 0.1.0
+appVersion: "1.26"

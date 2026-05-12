@@ -1,0 +1,232 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "helfi-proxy-nginx.fullname" . }}-server
+  labels:
+    {{- include "helfi-proxy-nginx.labels" . | nindent 4 }}
+data:
+{{- if eq .Values.type "receiver" }}
+  server.conf: |
+    server {
+        listen       8080;
+        listen       [::]:8080;
+        server_name  {{ .Values.receiver.serverName }};
+        root         /var/www/html/public;
+
+        # Keep alive
+        proxy_http_version 1.1;
+        proxy_set_header   "Connection" "";
+
+        # Gzip compression
+        gzip on;
+        gunzip on;
+        gzip_vary on;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_buffers 16 8k;
+        gzip_types text/html application/x-javascript text/css text/javascript;
+
+        # Buffer tuning
+        proxy_busy_buffers_size   512k;
+        proxy_buffers             4 512k;
+        proxy_buffer_size         256k;
+        proxy_headers_hash_max_size 1024;
+        proxy_headers_hash_bucket_size 128;
+
+        # Timeouts
+        proxy_read_timeout 300;
+
+        # Large file uploads
+        client_max_body_size 32M;
+
+        # Prevent port/server name change on redirect
+        port_in_redirect off;
+        server_name_in_redirect off;
+        absolute_redirect off;
+
+        # Security headers
+        add_header Strict-Transport-Security "max-age=15768000" always;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header X-Frame-Options "Sameorigin" always;
+        add_header X-Content-Type-Options "nosniff";
+        add_header Keep-Alive "timeout=10, max=100";
+        add_header Connection "Keep-Alive";
+
+        proxy_hide_header X-Powered-By;
+        proxy_hide_header X-AspNetMvc-Version;
+        proxy_hide_header X-AspNet-Version;
+
+        # Error pages
+        location = /errorpages/virhe_sivu.html {}
+        error_page 400 401 402 403 410 500 502 503 504 /errorpages/virhe_sivu.html;
+
+        location ~ ^/(assets|static|hel2)(/|$) {
+            error_page 404 /errorpages/virhe_sivu.html;
+        }
+
+        error_page 404 = @redirect_to_live_404;
+        location @redirect_to_live_404 {
+            return 301 https://{{ .Values.receiver.serverName }}/fi/404?from=$request_uri;
+        }
+
+        set $devtest_openshift_ip {{ .Values.receiver.openshiftIP }};
+
+        proxy_set_header X-Forwarded-Host {{ .Values.receiver.xForwardedHost }};
+        proxy_set_header X-Forwarded-By '';
+        proxy_set_header X-Forwarded '';
+
+        # -------------------------------------------------------
+        # Metatavu search
+        # -------------------------------------------------------
+        location ~ ^\/haku\/(?:.*)\.(css|json|js)$ {
+            proxy_ssl_server_name on;
+            set $args '';
+            proxy_pass https://helsinki-search-results.metatavu.io;
+            proxy_set_header Host helsinki-search-results.metatavu.io;
+        }
+        location ~ ^/haku/? {
+            proxy_ssl_server_name on;
+            set $args 'locale=fi';
+            rewrite (?i)^/haku/(.*)$ /$1 break;
+            proxy_pass https://helsinki-search-results.metatavu.io;
+            proxy_set_header Host helsinki-search-results.metatavu.io;
+        }
+        location ~ ^/sok/? {
+            proxy_ssl_server_name on;
+            set $args 'locale=sv';
+            rewrite (?i)^/sok/(.*)$ /$1 break;
+            proxy_pass https://helsinki-search-results.metatavu.io;
+            proxy_set_header Host helsinki-search-results.metatavu.io;
+        }
+        location ~ ^/search/? {
+            proxy_ssl_server_name on;
+            set $args 'locale=en';
+            rewrite (?i)^/search/(.*)$ /$1 break;
+            proxy_pass https://helsinki-search-results.metatavu.io;
+            proxy_set_header Host helsinki-search-results.metatavu.io;
+        }
+
+        # -------------------------------------------------------
+        # Sitemap and robots.txt
+        # -------------------------------------------------------
+        location ~ ^/(sitemap.xml|robots.txt)$ {
+            proxy_set_header Host {{ .Values.receiver.backends.sitemap }};
+            proxy_pass https://$devtest_openshift_ip:443;
+        }
+
+        # -------------------------------------------------------
+        # News API
+        # -------------------------------------------------------
+        location /uutisapi/ {
+            proxy_set_header Host {{ .Values.receiver.backends.uutisapi }};
+            proxy_pass https://$devtest_openshift_ip:443/;
+        }
+
+        # -------------------------------------------------------
+        # Strategia-talous (Keskushallinto)
+        # -------------------------------------------------------
+        location ~ ^/(fi/paatoksenteko-ja-hallinto|sv/beslutsfattande-och-forvaltning|en/decision-making|decision-making|hallinto-assets/) {
+            proxy_set_header Host {{ .Values.receiver.backends.strategia }};
+            proxy_pass https://$devtest_openshift_ip:443;
+        }
+
+        # -------------------------------------------------------
+        # Terveys
+        # -------------------------------------------------------
+        location ~ ^/(fi/sosiaali-ja-terveyspalvelut|sv/social-och-halsovardstjanster|en/health-and-social-services|health-and-social-services|terveys-assets/) {
+            proxy_set_header Host {{ .Values.receiver.backends.terveys }};
+            proxy_pass https://$devtest_openshift_ip:443;
+        }
+
+        # -------------------------------------------------------
+        # Liikenne
+        # -------------------------------------------------------
+        location ~ ^/(fi/kaupunkiymparisto-ja-liikenne|sv/stadsmiljo-och-trafik|en/urban-environment-and-traffic|urban-environment-and-traffic|liikenne-assets/) {
+            proxy_set_header Host {{ .Values.receiver.backends.liikenne }};
+            proxy_pass https://$devtest_openshift_ip:443;
+        }
+
+        # -------------------------------------------------------
+        # Tyo-yrittaminen
+        # -------------------------------------------------------
+        location ~ ^/(fi/yritykset-ja-tyo|en/business-and-work|sv/foretag-och-arbete|business-and-work|elo-assets/) {
+            proxy_set_header Host {{ .Values.receiver.backends.rekry }};
+            proxy_pass https://$devtest_openshift_ip:443;
+        }
+
+        # -------------------------------------------------------
+        # Kasvatus-koulutus
+        # -------------------------------------------------------
+        location ~ ^/(fi/kasvatus-ja-koulutus|en/childhood-and-education|sv/fostran-och-utbildning|childhood-and-education|kasko-assets/) {
+            proxy_set_header Host {{ .Values.receiver.backends.kasvatus }};
+            proxy_pass https://$devtest_openshift_ip:443;
+        }
+
+        # -------------------------------------------------------
+        # Asuminen
+        # -------------------------------------------------------
+        location ~ ^/(fi/asuminen|en/housing|sv/boende|housing|asuminen-assets/) {
+            proxy_set_header Host {{ .Values.receiver.backends.asuminen }};
+            proxy_pass https://$devtest_openshift_ip:443;
+        }
+
+        # -------------------------------------------------------
+        # Rekry
+        # -------------------------------------------------------
+        location ~ ^/(fi/avoimet-tyopaikat|sv/lediga-jobb|en/open-jobs|open-jobs|rekry-assets/) {
+            proxy_set_header Host {{ .Values.receiver.backends.rekry }};
+            proxy_pass https://$devtest_openshift_ip:443;
+        }
+
+        # -------------------------------------------------------
+        # Kuva
+        # -------------------------------------------------------
+        location ~ ^/(fi/kulttuuri-ja-vapaa-aika|sv/kultur-och-fritid|en/culture-and-leisure|culture-and-leisure|kuva-assets/) {
+            proxy_set_header Host {{ .Values.receiver.backends.kuva }};
+            proxy_pass https://$devtest_openshift_ip:443;
+        }
+
+        # -------------------------------------------------------
+        # Etusivu — keep last, catch-all for language prefixes
+        # -------------------------------------------------------
+        location ~ ^/(fi|sv|en|ar|de|es|et|fa|uk|zh|zh-hans|se|so|fr|ru|etusivu|etusivu-assets/) {
+            proxy_set_header Host {{ .Values.receiver.backends.etusivu }};
+            proxy_pass https://$devtest_openshift_ip:443;
+        }
+    }
+{{- else if eq .Values.type "dispatcher" }}
+  server.conf: |
+    server {
+        listen       8080;
+        listen       [::]:8080;
+        server_name  {{ .Values.route.host }};
+        root         /var/www/html/public;
+
+        proxy_http_version 1.1;
+        proxy_set_header "Connection" "";
+
+        # Security headers
+        add_header Strict-Transport-Security "max-age=15768000" always;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header X-Frame-Options "Sameorigin" always;
+        add_header X-Content-Type-Options "nosniff";
+
+        # Error pages
+        location = /errorpages/virhe_sivu.html {}
+        error_page 400 401 402 403 410 500 502 503 504 /errorpages/virhe_sivu.html;
+
+        proxy_set_header X-Forwarded-Host $xfh;
+        proxy_set_header X-Forwarded-By '';
+        proxy_set_header X-Forwarded '';
+
+        # -------------------------------------------------------
+        # Path-based routing to internal ClusterIP services
+        # -------------------------------------------------------
+        {{- range .Values.dispatcher.routes }}
+        location ~ {{ .path }} {
+            proxy_pass http://{{ .backend }}:{{ .port }};
+            proxy_set_header Host {{ .backend }};
+        }
+        {{- end }}
+    }
+{{- end }}

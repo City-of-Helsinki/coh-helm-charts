@@ -1,0 +1,29 @@
+# -------------------------------------------------------
+# Test environment overrides
+# www.test.hel.ninja → helfi-etusivu-test namespace
+# -------------------------------------------------------
+
+type: receiver
+
+replicaCount: 2
+nodeSelector: devtest
+
+route:
+  host: www.test.hel.ninja
+
+receiver:
+  serverName: www.test.hel.ninja
+  openshiftIP: 10.235.227.132
+  xForwardedHost: $host
+
+  backends:
+    etusivu:   varnish-etusivu-test.apps.arodevtest.hel.fi
+    terveys:   varnish-terveys-test.apps.arodevtest.hel.fi
+    liikenne:  varnish-liikenne-test.apps.arodevtest.hel.fi
+    asuminen:  varnish-asuminen-test.apps.arodevtest.hel.fi
+    rekry:     varnish-rekry-test.apps.arodevtest.hel.fi
+    kuva:      varnish-kuva-test.apps.arodevtest.hel.fi
+    kasvatus:  varnish-kasvatus-koulutus-test.apps.arodevtest.hel.fi
+    strategia: varnish-strategia-talous-test.apps.arodevtest.hel.fi
+    uutisapi:  etusivu-elastic-proxy-test.apps.arodevtest.hel.fi
+    sitemap:   varnish-etusivu-test.apps.arodevtest.hel.fi

@@ -1,0 +1,29 @@
+# -------------------------------------------------------
+# Staging environment overrides
+# www.stage.hel.ninja → helfi-etusivu-staging namespace
+# -------------------------------------------------------
+
+type: receiver
+
+replicaCount: 2
+nodeSelector: stg
+
+route:
+  host: www.stage.hel.ninja
+
+receiver:
+  serverName: www.stage.hel.ninja
+  openshiftIP: 10.235.230.132
+  xForwardedHost: $host
+
+  backends:
+    etusivu:   varnish-etusivu-staging.apps.platta.hel.fi
+    terveys:   varnish-terveys-staging.agw.platta.hel.fi
+    liikenne:  varnish-liikenne-staging.agw.platta.hel.fi
+    asuminen:  drupal-asuminen.stage.hel.ninja
+    rekry:     drupal-rekry.stage.hel.ninja
+    kuva:      drupal-kuva.stage.hel.ninja
+    kasvatus:  kasvatus-koulutus.stage.hel.ninja
+    strategia: hallinto.stage.hel.ninja
+    uutisapi:  etusivu-elastic-proxy-staging.apps.platta.hel.fi
+    sitemap:   varnish-etusivu-staging.apps.platta.hel.fi
