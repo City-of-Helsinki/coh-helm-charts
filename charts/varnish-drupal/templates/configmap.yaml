@@ -236,8 +236,13 @@ data:
 
   # ────────────────────────────────────────────────────────────────
   # drupal.vcl  — Drupal-specific cookie & path handling
+  # Set vcl.overrides.drupal in values to replace this entirely
+  # with a custom sub vcl_recv { ... } block.
   # ────────────────────────────────────────────────────────────────
   drupal.vcl: |
+    {{- if .Values.vcl.overrides.drupal }}
+    {{ .Values.vcl.overrides.drupal | nindent 4 }}
+    {{- else }}
     sub vcl_recv {
         # Do not cache these paths.
         if (req.url ~ "^/status\.php$"  ||
@@ -278,6 +283,7 @@ data:
         }
     }
 
+    {{- end }}
   # ────────────────────────────────────────────────────────────────
   # includes-static.vcl
   # ────────────────────────────────────────────────────────────────
