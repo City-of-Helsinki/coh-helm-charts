@@ -117,3 +117,14 @@ dispatcher:
   # - path: "^/(fi|sv|en)"
   #   backend: helfi-nginx
   #   port: 8080
+# Additional OpenShift routes pointing to the same service
+# Used by dispatcher to own multiple hostnames (e.g. hel.fi + www.hel.fi)
+additionalRoutes: []
+# - host: hel.fi
+#   redirect: true
+#   tls:
+#     enabled: true
+#     termination: edge
+#     insecureEdgeTerminationPolicy: Redirect
+#   annotations:
+#     haproxy.router.openshift.io/timeout: 300s
