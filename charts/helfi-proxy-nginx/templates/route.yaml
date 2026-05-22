@@ -22,3 +22,31 @@ spec:
   {{- end }}
   wildcardPolicy: None
 {{- end }}
+
+{{- if .Values.additionalRoutes }}
+{{- range .Values.additionalRoutes }}
+---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: {{ include "helfi-proxy-nginx.fullname" $ }}-{{ .host | replace "." "-" }}
+  labels:
+    {{- include "helfi-proxy-nginx.labels" $ | nindent 4 }}
+  annotations:
+    {{- toYaml .annotations | nindent 4 }}
+spec:
+  host: {{ .host }}
+  to:
+    kind: Service
+    name: {{ include "helfi-proxy-nginx.fullname" $ }}
+    weight: 100
+  port:
+    targetPort: 8080-tcp
+  {{- if .tls.enabled }}
+  tls:
+    termination: {{ .tls.termination }}
+    insecureEdgeTerminationPolicy: {{ .tls.insecureEdgeTerminationPolicy }}
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}
+{{- end }}

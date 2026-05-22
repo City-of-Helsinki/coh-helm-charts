@@ -69,7 +69,7 @@ data:
             return 301 https://{{ .Values.receiver.serverName }}/fi/404?from=$request_uri;
         }
 
-        set $devtest_openshift_ip {{ .Values.receiver.openshiftIP }};
+        set $openshift_ip {{ .Values.receiver.openshiftIP }};
 
         proxy_set_header X-Forwarded-Host {{ .Values.receiver.xForwardedHost }};
         proxy_set_header X-Forwarded-By '';
@@ -113,7 +113,7 @@ data:
         # {{ .name }}
         location {{ .matchType | default "~ ^/" }}{{ .paths }} {
             proxy_set_header Host {{ index $.Values.receiver.backends .backendKey }};
-            proxy_pass https://$devtest_openshift_ip:443{{ .proxyPath | default "" }};
+            proxy_pass https://$openshift_ip:443{{ .proxyPath | default "" }};
         }
         {{- end }}
 
@@ -122,9 +122,10 @@ data:
         # -------------------------------------------------------
         location ~ ^/(fi|sv|en|ar|de|es|et|fa|uk|zh|zh-hans|se|so|fr|ru|etusivu|etusivu-assets/) {
             proxy_set_header Host {{ .Values.receiver.backends.etusivu }};
-            proxy_pass https://$devtest_openshift_ip:443;
+            proxy_pass https://$openshift_ip:443;
         }
     }
+
 {{- else if eq .Values.type "dispatcher" }}
   server.conf: |
     server {
@@ -154,10 +155,40 @@ data:
         # Path-based routing to internal ClusterIP services
         # -------------------------------------------------------
         {{- range .Values.dispatcher.routes }}
-        location ~ {{ .path }} {
+        location {{ .path }} {
             proxy_pass http://{{ .backend }}:{{ .port }};
-            proxy_set_header Host {{ .backend }};
+            proxy_set_header Host $host;
         }
         {{- end }}
     }
+
+    {{- if .Values.additionalRoutes }}
+    # -------------------------------------------------------
+    # Additional server blocks (e.g. hel.fi → www.hel.fi)
+    # -------------------------------------------------------
+    {{- range .Values.additionalRoutes }}
+    server {
+        listen       8080;
+        listen       [::]:8080;
+        server_name  {{ .host }};
+        root         /var/www/html/public;
+
+        # Security headers
+        add_header Strict-Transport-Security "max-age=15768000" always;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header X-Frame-Options "Sameorigin" always;
+        add_header X-Content-Type-Options "nosniff";
+
+        # Error pages
+        location = /errorpages/virhe_sivu.html {}
+        error_page 400 401 402 403 410 500 502 503 504 /errorpages/virhe_sivu.html;
+
+        {{- if .redirect }}
+        # Redirect this hostname to primary host
+        return 301 https://{{ $.Values.route.host }}$request_uri;
+        {{- end }}
+    }
+    {{- end }}
+    {{- end }}
+
 {{- end }}
