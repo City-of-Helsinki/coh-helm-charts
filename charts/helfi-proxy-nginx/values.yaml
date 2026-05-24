@@ -141,6 +141,7 @@ customRedirects:
 # -------------------------------------------------------
 dispatcher:
   openshiftIP: ""
+  serverName: ""
   # List of path-based routing rules to internal ClusterIP services
   routes: []
   # - path: "^/(fi|sv|en)"
