@@ -140,7 +140,6 @@ data:
     server {
         listen       8080;
         listen       [::]:8080;
-        server_name  {{ .Values.route.host }};
         server_name  {{ .Values.dispatcher.serverName }};
         root         /var/www/html/public;
 
