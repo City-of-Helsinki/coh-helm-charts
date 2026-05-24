@@ -152,6 +152,7 @@ dispatcher:
 # Used by dispatcher to own multiple hostnames
 # e.g. hel.fi + www.hel.fi
 # -------------------------------------------------------
+
 additionalRoutes: []
 # - host: hel.fi
 #   redirect: true
