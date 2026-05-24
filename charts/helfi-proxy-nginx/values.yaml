@@ -1,6 +1,5 @@
 # -------------------------------------------------------
 # helfi-proxy-nginx Helm chart default values
-# Override per environment via values-test.yaml etc.
 # -------------------------------------------------------
 
 # Role of this deployment
@@ -97,14 +96,44 @@ receiver:
   proxiedRoutes: []
 
 # -------------------------------------------------------
+# Redirections ConfigMap master switch
+# Must be true for any redirections to be mounted.
+# -------------------------------------------------------
+redirections:
+  enabled: false
+
+# -------------------------------------------------------
 # Env-jump redirects (test-/staging- prefix redirects)
 # Only enable in prod receiver — www.hel.fi/fi/test-asuminen
 # → https://www.test.hel.ninja/fi/asuminen etc.
 # -------------------------------------------------------
-redirections:
+envJumpRedirects:
   enabled: false
   testHost: www.test.hel.ninja
   stagingHost: www.stage.hel.ninja
+  sections: []
+  # - name: "Asuminen"
+  #   test:
+  #     fi: { from: "fi/test-asuminen", to: "fi/asuminen" }
+  #     sv: { from: "sv/test-boende",   to: "sv/boende" }
+  #     en: { from: "en/test-housing",  to: "en/housing" }
+  #   staging:
+  #     fi: { from: "fi/staging-asuminen", to: "fi/asuminen" }
+  #     sv: { from: "sv/staging-boende",   to: "sv/boende" }
+  #     en: { from: "en/staging-housing",  to: "en/housing" }
+
+# -------------------------------------------------------
+# Custom redirects — managed by helfi-team
+# Any redirect that doesn't fit the env-jump pattern.
+# -------------------------------------------------------
+customRedirects:
+  enabled: false
+  rules: []
+  # - from: "^/some-old-path$"
+  #   to: "https://www.hel.fi/fi/new-path"
+  #   type: 301        # default: 301
+  #   matchType: "~*"  # default: ~* (case-insensitive regex)
+  #                    # options: ~ (case-sensitive), "" (prefix match)
 
 # -------------------------------------------------------
 # Dispatcher config (type: dispatcher)
@@ -117,8 +146,13 @@ dispatcher:
   # - path: "^/(fi|sv|en)"
   #   backend: helfi-nginx
   #   port: 8080
-# Additional OpenShift routes pointing to the same service
-# Used by dispatcher to own multiple hostnames (e.g. hel.fi + www.hel.fi)
+
+# -------------------------------------------------------
+# Additional OpenShift routes pointing to same service
+# Used by dispatcher to own multiple hostnames
+# e.g. hel.fi + www.hel.fi
+# -------------------------------------------------------
+
 additionalRoutes: []
 # - host: hel.fi
 #   redirect: true

@@ -7,190 +7,49 @@ metadata:
     {{- include "helfi-proxy-nginx.labels" . | nindent 4 }}
 data:
   redirections.conf: |
+    {{- if .Values.envJumpRedirects.enabled }}
     # -------------------------------------------------------
-    # PSD-1653 — env-jump convenience redirects
-    # These live on www.hel.fi and redirect developers to the
-    # correct test or staging environment for each Drupal section.
-    # Only enabled in prod receiver (values-prod.yaml).
+    # Env-jump convenience redirects
+    # www.hel.fi/fi/test-X → www.test.hel.ninja/fi/X
+    # www.hel.fi/fi/staging-X → www.stage.hel.ninja/fi/X
+    # Managed via values.yaml envJumpRedirects.sections
     # -------------------------------------------------------
+    {{- range .Values.envJumpRedirects.sections }}
+    # {{ .name }}
+    {{- with .test }}
+    location ~* ^/{{ .fi.from }}/?$ {
+      return 302 https://{{ $.Values.envJumpRedirects.testHost }}/{{ .fi.to }};
+    }
+    location ~* ^/{{ .sv.from }}/?$ {
+      return 302 https://{{ $.Values.envJumpRedirects.testHost }}/{{ .sv.to }};
+    }
+    location ~* ^/{{ .en.from }}/?$ {
+      return 302 https://{{ $.Values.envJumpRedirects.testHost }}/{{ .en.to }};
+    }
+    {{- end }}
+    {{- with .staging }}
+    location ~* ^/{{ .fi.from }}/?$ {
+      return 302 https://{{ $.Values.envJumpRedirects.stagingHost }}/{{ .fi.to }};
+    }
+    location ~* ^/{{ .sv.from }}/?$ {
+      return 302 https://{{ $.Values.envJumpRedirects.stagingHost }}/{{ .sv.to }};
+    }
+    location ~* ^/{{ .en.from }}/?$ {
+      return 302 https://{{ $.Values.envJumpRedirects.stagingHost }}/{{ .en.to }};
+    }
+    {{- end }}
+    {{- end }}
+    {{- end }}
 
-    # Asuminen
-    location ~* ^/fi/test-asuminen/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/fi/asuminen;
+    {{- if .Values.customRedirects.enabled }}
+    # -------------------------------------------------------
+    # Custom redirects
+    # Managed via values.yaml customRedirects.rules
+    # -------------------------------------------------------
+    {{- range .Values.customRedirects.rules }}
+    location {{ .matchType | default "~*" }} {{ .from }} {
+      return {{ .type | default 301 }} {{ .to }};
     }
-    location ~* ^/sv/test-boende/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/sv/boende;
-    }
-    location ~* ^/en/test-housing/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/en/housing;
-    }
-    location ~* ^/fi/staging-asuminen/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/fi/asuminen;
-    }
-    location ~* ^/sv/staging-boende/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/sv/boende;
-    }
-    location ~* ^/en/staging-housing/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/en/housing;
-    }
-
-    # Etusivu
-    location ~* ^/fi/test-etusivu/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/fi;
-    }
-    location ~* ^/sv/test-huvudsida/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/sv;
-    }
-    location ~* ^/en/test-frontpage/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/en;
-    }
-    location ~* ^/fi/staging-etusivu/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/fi;
-    }
-    location ~* ^/sv/staging-huvudsida/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/sv;
-    }
-    location ~* ^/en/staging-frontpage/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/en;
-    }
-
-    # Kasvatus-koulutus
-    location ~* ^/fi/test-kasvatus-ja-koulutus/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/fi/kasvatus-ja-koulutus;
-    }
-    location ~* ^/sv/test-fostran-och-utbildning/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/sv/fostran-och-utbildning;
-    }
-    location ~* ^/en/test-childhood-and-education/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/en/childhood-and-education;
-    }
-    location ~* ^/fi/staging-kasvatus-ja-koulutus/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/fi/kasvatus-ja-koulutus;
-    }
-    location ~* ^/sv/staging-fostran-och-utbildning/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/sv/fostran-och-utbildning;
-    }
-    location ~* ^/en/staging-childhood-and-education/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/en/childhood-and-education;
-    }
-
-    # Kuva (kulttuuri-ja-vapaa-aika)
-    location ~* ^/fi/test-kulttuuri-ja-vapaa-aika/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/fi/kulttuuri-ja-vapaa-aika;
-    }
-    location ~* ^/sv/test-kultur-och-fritid/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/sv/kultur-och-fritid;
-    }
-    location ~* ^/en/test-culture-and-leisure/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/en/culture-and-leisure;
-    }
-    location ~* ^/fi/staging-kulttuuri-ja-vapaa-aika/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/fi/kulttuuri-ja-vapaa-aika;
-    }
-    location ~* ^/sv/staging-kultur-och-fritid/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/sv/kultur-och-fritid;
-    }
-    location ~* ^/en/staging-culture-and-leisure/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/en/culture-and-leisure;
-    }
-
-    # Liikenne (kaupunkiymparisto-ja-liikenne)
-    location ~* ^/fi/test-kaupunkiymparisto-ja-liikenne/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/fi/kaupunkiymparisto-ja-liikenne;
-    }
-    location ~* ^/sv/test-stadsmiljo-och-trafik/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/sv/stadsmiljo-och-trafik;
-    }
-    location ~* ^/en/test-urban-environment-and-traffic/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/en/urban-environment-and-traffic;
-    }
-    location ~* ^/fi/staging-kaupunkiymparisto-ja-liikenne/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/fi/kaupunkiymparisto-ja-liikenne;
-    }
-    location ~* ^/sv/staging-stadsmiljo-och-trafik/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/sv/stadsmiljo-och-trafik;
-    }
-    location ~* ^/en/staging-urban-environment-and-traffic/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/en/urban-environment-and-traffic;
-    }
-
-    # Rekry (avoimet-tyopaikat)
-    location ~* ^/fi/test-avoimet-tyopaikat/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/fi/avoimet-tyopaikat;
-    }
-    location ~* ^/sv/test-lediga-jobb/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/sv/lediga-jobb;
-    }
-    location ~* ^/en/test-open-jobs/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/en/open-jobs;
-    }
-    location ~* ^/fi/staging-avoimet-tyopaikat/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/fi/avoimet-tyopaikat;
-    }
-    location ~* ^/sv/staging-lediga-jobb/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/sv/lediga-jobb;
-    }
-    location ~* ^/en/staging-open-jobs/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/en/open-jobs;
-    }
-
-    # Strategia-talous (paatoksenteko-ja-hallinto)
-    location ~* ^/fi/test-paatoksenteko-ja-hallinto/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/fi/paatoksenteko-ja-hallinto;
-    }
-    location ~* ^/sv/test-beslutsfattande-och-forvaltning/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/sv/beslutsfattande-och-forvaltning;
-    }
-    location ~* ^/en/test-decision-making/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/en/decision-making;
-    }
-    location ~* ^/fi/staging-paatoksenteko-ja-hallinto/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/fi/paatoksenteko-ja-hallinto;
-    }
-    location ~* ^/sv/staging-beslutsfattande-och-forvaltning/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/sv/beslutsfattande-och-forvaltning;
-    }
-    location ~* ^/en/staging-decision-making/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/en/decision-making;
-    }
-
-    # Terveys (sosiaali-ja-terveyspalvelut)
-    location ~* ^/fi/test-sosiaali-ja-terveyspalvelut/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/fi/sosiaali-ja-terveyspalvelut;
-    }
-    location ~* ^/sv/test-social-och-halsovardstjanster/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/sv/social-och-halsovardstjanster;
-    }
-    location ~* ^/en/test-health-and-social-services/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/en/health-and-social-services;
-    }
-    location ~* ^/fi/staging-sosiaali-ja-terveyspalvelut/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/fi/sosiaali-ja-terveyspalvelut;
-    }
-    location ~* ^/sv/staging-social-och-halsovardstjanster/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/sv/social-och-halsovardstjanster;
-    }
-    location ~* ^/en/staging-health-and-social-services/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/en/health-and-social-services;
-    }
-
-    # Tyo-yrittaminen (yritykset-ja-tyo)
-    location ~* ^/fi/test-yritykset-ja-tyo/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/fi/yritykset-ja-tyo;
-    }
-    location ~* ^/sv/test-foretag-och-arbete/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/sv/foretag-och-arbete;
-    }
-    location ~* ^/en/test-business-and-work/?$ {
-      return 302 https://{{ .Values.redirections.testHost }}/en/business-and-work;
-    }
-    location ~* ^/fi/staging-yritykset-ja-tyo/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/fi/yritykset-ja-tyo;
-    }
-    location ~* ^/sv/staging-foretag-och-arbete/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/sv/foretag-och-arbete;
-    }
-    location ~* ^/en/staging-business-and-work/?$ {
-      return 302 https://{{ .Values.redirections.stagingHost }}/en/business-and-work;
-    }
+    {{- end }}
+    {{- end }}
 {{- end }}
