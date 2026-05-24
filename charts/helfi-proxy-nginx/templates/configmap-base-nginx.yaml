@@ -72,8 +72,5 @@ data:
                 return 200 '{"status":"UP"}';
                 add_header Content-Type application/json;
             }
-
-            # Load default location rules from conf.d/
-            include /etc/nginx/conf.d/*.conf;
         }
     }

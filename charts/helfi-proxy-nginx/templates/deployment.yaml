@@ -70,9 +70,9 @@ spec:
               subPath: server.conf
               readOnly: true
             {{- if .Values.redirections.enabled }}
-            # Mount env-jump redirections into default.d/
+            # Mount redirections into conf.d/
             - name: redirections
-              mountPath: /etc/nginx/default.d/redirections.conf
+              mountPath: /etc/nginx/conf.d/redirections.conf
               subPath: redirections.conf
               readOnly: true
             {{- end }}
