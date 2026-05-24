@@ -117,6 +117,15 @@ data:
         }
         {{- end }}
 
+        {{- if .Values.redirections.enabled }}
+        # -------------------------------------------------------
+        # Env-jump and custom redirects
+        # Included here so location blocks are scoped to
+        # server_name {{ .Values.receiver.serverName }} only
+        # -------------------------------------------------------
+        include /etc/nginx/conf.d/redirections.conf;
+        {{- end }}
+
         # -------------------------------------------------------
         # Etusivu — keep last, catch-all for language prefixes
         # -------------------------------------------------------

@@ -63,3 +63,17 @@ receiver:
     - name: "Tyo-yrittaminen"
       paths: "fi/yritykset-ja-tyo|en/business-and-work|sv/foretag-och-arbete|business-and-work|elo-assets/"
       backendKey: "tyo-yrittaminen"
+
+redirections:
+  enabled: true
+
+envJumpRedirects:
+  enabled: true
+  testHost: www.test.hel.ninja
+  stagingHost: www.stage.hel.ninja
+  sections:
+  - name: "Asuminen"
+    test:
+      fi: { from: "fi/test-asuminen", to: "fi/asuminen" }
+      sv: { from: "sv/test-boende",   to: "sv/boende" }
+      en: { from: "en/test-housing",  to: "en/housing" }
