@@ -160,6 +160,7 @@ data:
  
         # Timeouts
         proxy_read_timeout 300;
+        client_max_body_size 32M;
 
         # Security headers
         add_header Strict-Transport-Security "max-age=15768000" always;
@@ -196,6 +197,7 @@ data:
         listen       [::]:8080;
         server_name  {{ .host }};
         root         /var/www/html/public;
+        client_max_body_size 32M;
 
         # Security headers
         add_header Strict-Transport-Security "max-age=15768000" always;
