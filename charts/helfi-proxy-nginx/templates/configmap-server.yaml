@@ -106,6 +106,15 @@ data:
             proxy_set_header Host helsinki-search-results.metatavu.io;
         }
 
+        {{- if .Values.redirections.enabled }}
+        # -------------------------------------------------------
+        # Env-jump and custom redirects
+        # Included here so location blocks are scoped to
+        # server_name {{ .Values.receiver.serverName }} only
+        # -------------------------------------------------------
+        include /etc/nginx/conf.d/redirections.conf;
+        {{- end }}
+
         # -------------------------------------------------------
         # Dynamic Proxied Routes (Managed via Values)
         # -------------------------------------------------------
@@ -115,15 +124,6 @@ data:
             proxy_set_header Host {{ index $.Values.receiver.backends .backendKey }};
             proxy_pass https://$openshift_ip:443{{ .proxyPath | default "" }};
         }
-        {{- end }}
-
-        {{- if .Values.redirections.enabled }}
-        # -------------------------------------------------------
-        # Env-jump and custom redirects
-        # Included here so location blocks are scoped to
-        # server_name {{ .Values.receiver.serverName }} only
-        # -------------------------------------------------------
-        include /etc/nginx/conf.d/redirections.conf;
         {{- end }}
 
         # -------------------------------------------------------
