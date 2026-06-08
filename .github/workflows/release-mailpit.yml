@@ -103,8 +103,9 @@ jobs:
 
       - name: Verify Mailpit UI Status
         run: |
-          # Check deployment status through OpenShift CLI (mailpit uses a Deployment via its subchart)
-          oc rollout status deployment/$RELEASE-mailpit -n $NS
+          DEPLOYMENT_NAME=$(oc get deployment -n $NS -l "app.kubernetes.io/name=mailpit,app.kubernetes.io/instance=$RELEASE" -o jsonpath='{.items[0].metadata.name}')
+          echo "Discovered deployment name: $DEPLOYMENT_NAME"
+          oc rollout status deployment/$DEPLOYMENT_NAME -n $NS
 
           # Verification check against the UI endpoint
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://mailpit-sample-test1.test.hel.ninja/readyz)
@@ -113,7 +114,7 @@ jobs:
           if [ "$STATUS" -ne 200 ]; then
             echo "Verification failed! Expected 200 but got $STATUS"
             # Gather logs from the mailpit container for debugging
-            oc logs deployment/$RELEASE-mailpit -c mailpit -n $NS --tail=50
+            oc logs deployment/$DEPLOYMENT_NAME -c mailpit -n $NS --tail=50
             exit 1
           fi
 
