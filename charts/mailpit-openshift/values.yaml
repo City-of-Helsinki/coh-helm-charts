@@ -4,6 +4,15 @@
 # =============================================================================
 
 # ---------------------------------------------------------------------------
+# Global values (Accessible by both wrapper chart and subcharts)
+# ---------------------------------------------------------------------------
+global:
+  existingSecret: ""
+  externalSecret:
+    enabled: false
+    targetSecretName: "mailpit-ui-auth"
+
+# ---------------------------------------------------------------------------
 # Upstream jouve/mailpit subchart values  (alias: mailpit)
 # ---------------------------------------------------------------------------
 mailpit:
@@ -41,9 +50,8 @@ mailpit:
   extraVolumes:
     - name: mailpit-auth
       secret:
-        # If externalSecret is enabled, use its default name target. 
-        # Otherwise, if an existingSecret is provided, use that.
-        secretName: '{{ if .Values.externalSecret.enabled }}{{ .Values.externalSecret.targetSecretName | default "mailpit-ui-auth" }}{{ else }}{{ .Values.existingSecret | default "mailpit-ui-auth" }}{{ end }}'
+        # Dynamically selects existingSecret if provided, else falls back to targetSecretName
+        secretName: '{{ if .Values.global.existingSecret }}{{ .Values.global.existingSecret }}{{ else }}{{ .Values.global.externalSecret.targetSecretName | default "mailpit-ui-auth" }}{{ end }}'
 
   extraVolumeMounts:
     - name: mailpit-auth
@@ -126,20 +134,12 @@ networkPolicy:
       matchLabels:
 
 # ---------------------------------------------------------------------------
-# Existing Secret (wrapper chart only)
-# ---------------------------------------------------------------------------
-# Provide the name of a pre-existing secret containing the htpasswd file for mailpitauth.
-existingSecret: ""
-
-# ---------------------------------------------------------------------------
-# ExternalSecret  (wrapper chart only)
+# ExternalSecret Configuration
 # ---------------------------------------------------------------------------
 externalSecret:
-  enabled: false # Changed from true to false
   secretStoreName: "cluster-secret-store"
   secretStoreKind: "ClusterSecretStore"
   refreshInterval: "1h"
   remoteRef:
     key: "platta/mailpit/{{ .Release.Namespace }}"
     property: "htpasswd"
-  targetSecretName: "mailpit-ui-auth"
