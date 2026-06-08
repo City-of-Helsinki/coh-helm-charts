@@ -41,7 +41,9 @@ mailpit:
   extraVolumes:
     - name: mailpit-auth
       secret:
-        secretName: mailpit-ui-auth
+        # If externalSecret is enabled, use its default name target. 
+        # Otherwise, if an existingSecret is provided, use that.
+        secretName: '{{ if .Values.externalSecret.enabled }}{{ .Values.externalSecret.targetSecretName | default "mailpit-ui-auth" }}{{ else }}{{ .Values.existingSecret | default "mailpit-ui-auth" }}{{ end }}'
 
   extraVolumeMounts:
     - name: mailpit-auth
@@ -124,10 +126,16 @@ networkPolicy:
       matchLabels:
 
 # ---------------------------------------------------------------------------
+# Existing Secret (wrapper chart only)
+# ---------------------------------------------------------------------------
+# Provide the name of a pre-existing secret containing the htpasswd file for mailpitauth.
+existingSecret: ""
+
+# ---------------------------------------------------------------------------
 # ExternalSecret  (wrapper chart only)
 # ---------------------------------------------------------------------------
 externalSecret:
-  enabled: true
+  enabled: false # Changed from true to false
   secretStoreName: "cluster-secret-store"
   secretStoreKind: "ClusterSecretStore"
   refreshInterval: "1h"
