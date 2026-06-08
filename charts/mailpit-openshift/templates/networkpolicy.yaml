@@ -1,0 +1,132 @@
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mailpit-openshift.fullname" . }}-deny-all
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mailpit-openshift.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mailpit
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mailpit-openshift.fullname" . }}-deny-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mailpit-openshift.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mailpit
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Egress
+{{- if .Values.networkPolicy.smtp.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mailpit-openshift.fullname" . }}-allow-smtp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mailpit-openshift.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mailpit
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.smtp.port }}
+{{- end }}
+{{- if .Values.networkPolicy.http.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mailpit-openshift.fullname" . }}-allow-http
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mailpit-openshift.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mailpit
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- range $key, $val := .Values.networkPolicy.http.podSelector.matchLabels }}
+              {{ $key }}: {{ $val | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.http.port }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mailpit-openshift.fullname" . }}-allow-router
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mailpit-openshift.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mailpit
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-ingress
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.http.port }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mailpit-openshift.fullname" . }}-allow-devops-pipeline
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mailpit-openshift.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mailpit
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: devops-toolchain
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.smtp.port }}
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.http.port }}

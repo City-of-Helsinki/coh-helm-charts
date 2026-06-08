@@ -1,0 +1,137 @@
+# =============================================================================
+# Mailpit – per-namespace SMTP test sink for Platta OpenShift environments
+# Wraps: https://github.com/jouve/charts/tree/main/charts/mailpit
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Upstream jouve/mailpit subchart values  (alias: mailpit)
+# ---------------------------------------------------------------------------
+mailpit:
+  image:
+    registry: docker.io
+    repository: axllent/mailpit
+    # renovate: datasource=docker depName=axllent/mailpit
+    tag: "v1.30.0"
+    pullPolicy: IfNotPresent
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+  extraEnvVars:
+    - name: MP_UI_AUTH_FILE
+      value: "/etc/mailpit-auth/htpasswd"
+    - name: MP_SMTP_AUTH_ACCEPT_ANY
+      value: "true"
+    - name: MP_SMTP_AUTH_ALLOW_INSECURE
+      value: "true"
+    - name: MP_MAX_MESSAGES
+      value: "500"
+    - name: MP_MAX_AGE
+      value: "48h"
+    - name: MP_SMTP_BIND_ADDR
+      value: "0.0.0.0:1025"
+    - name: MP_UI_BIND_ADDR
+      value: "0.0.0.0:8025"
+
+  extraVolumes:
+    - name: mailpit-auth
+      secret:
+        secretName: mailpit-ui-auth
+
+  extraVolumeMounts:
+    - name: mailpit-auth
+      mountPath: /etc/mailpit-auth
+      readOnly: true
+
+  ingress:
+    enabled: false
+
+  # Explicitly disable the subchart's own networkPolicy so it does not
+  # bleed into the rendered output alongside our wrapper networkPolicy.
+  networkPolicy:
+    enabled: false
+
+  service:
+    smtp:
+      type: ClusterIP
+      port: 1025
+    http:
+      type: ClusterIP
+      port: 8025
+
+  # OpenShift assigns UIDs automatically from the namespace range.
+  # Null out every hardcoded ID so the chart does not override that assignment.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser:
+    runAsGroup:
+    fsGroup:
+    seccompProfile:
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser:
+    runAsGroup:
+    seccompProfile:
+
+  livenessProbe:
+    httpGet:
+      path: /livez
+      port: 8025
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 8025
+    initialDelaySeconds: 3
+    periodSeconds: 5
+
+# ---------------------------------------------------------------------------
+# OpenShift Route  (wrapper chart only – not passed to the subchart)
+# ---------------------------------------------------------------------------
+route:
+  enabled: true
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  annotations:
+
+# ---------------------------------------------------------------------------
+# NetworkPolicy  (wrapper chart only – replaces subchart's own networkPolicy)
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  smtp:
+    enabled: true
+    port: 1025
+  http:
+    enabled: true
+    port: 8025
+    podSelector:
+      matchLabels:
+
+# ---------------------------------------------------------------------------
+# ExternalSecret  (wrapper chart only)
+# ---------------------------------------------------------------------------
+externalSecret:
+  enabled: true
+  secretStoreName: "cluster-secret-store"
+  secretStoreKind: "ClusterSecretStore"
+  refreshInterval: "1h"
+  remoteRef:
+    key: "platta/mailpit/{{ .Release.Namespace }}"
+    property: "htpasswd"
+  targetSecretName: "mailpit-ui-auth"

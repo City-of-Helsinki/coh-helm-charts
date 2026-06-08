@@ -1,0 +1,25 @@
+apiVersion: v2
+name: mailpit-openshift
+description: >
+  Wrapper chart that deploys jouve/mailpit with OpenShift-specific extras:
+  Route, NetworkPolicy, and ExternalSecret for per-namespace SMTP test sinks
+  in Platta OpenShift environments.
+type: application
+version: 0.1.0
+appVersion: "1.30.0"
+
+dependencies:
+  - name: mailpit
+    version: "0.34.1"          # pin; bump via Renovate
+    repository: "https://jouve.github.io/charts/"
+    alias: mailpit
+
+maintainers:
+  - name: platta
+    email: platform@helsinki.example
+
+keywords:
+  - mailpit
+  - smtp
+  - testing
+  - openshift
