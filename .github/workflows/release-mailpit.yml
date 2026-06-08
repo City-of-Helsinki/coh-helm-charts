@@ -216,7 +216,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           artifacts: "mailpit-openshift-*.tgz"
-          tag: "${{ inputs.chart_version }}"
+          tag: ${{ steps.version.outputs.git_tag }}
           name: "mailpit-openshift ${{ inputs.chart_version }}"
           body: |
             ## Changelog

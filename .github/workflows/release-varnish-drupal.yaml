@@ -208,7 +208,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           artifacts: "varnish-drupal-*.tgz"
-          tag: "${{ inputs.chart_version }}"
+          tag: ${{ steps.version.outputs.git_tag }}
           name: "varnish-drupal ${{ inputs.chart_version }}"
           body: |
             ## Changelog
