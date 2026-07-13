@@ -112,7 +112,7 @@ data:
       include "/etc/varnish/tmpl/defaults-vcl_backend_response.vcl";
       include "/etc/varnish/tmpl/defaults-vcl_backend_error.vcl";
       include "/etc/varnish/tmpl/defaults-vcl_deliver.vcl";
-      {{- if .Values.vcl.rootRedirect.enabled }}
+      {{- if or .Values.vcl.rootRedirect.enabled (and .Values.vcl.basicAuth (default false .Values.vcl.basicAuth.enabled)) }}
       include "/etc/varnish/tmpl/defaults-vcl_synth.vcl";
       {{- end }}
 
@@ -217,7 +217,7 @@ data:
         }
 
         # Strip hash, server does not need it.
-        if (req.url ~ "\#") {
+        if (req.url ~ "\\#") {
             set req.url = regsub(req.url, "\#.*$", "");
         }
 
@@ -244,6 +244,12 @@ data:
     {{ .Values.vcl.overrides.drupal | nindent 4 }}
     {{- else }}
     sub vcl_recv {
+        {{- if and .Values.vcl.basicAuth (default false .Values.vcl.basicAuth.enabled) }}
+        if (req.http.Authorization != "Basic {{ .Values.vcl.basicAuth.credentials }}") {
+            return (synth(401, "Authentication Required"));
+        }
+        {{- end }}
+
         # Do not cache these paths.
         if (req.url ~ "^/status\.php$"  ||
             req.url ~ "^/update\.php"   ||
@@ -282,8 +288,8 @@ data:
             }
         }
     }
-
     {{- end }}
+
   # ────────────────────────────────────────────────────────────────
   # includes-static.vcl
   # ────────────────────────────────────────────────────────────────
@@ -502,15 +508,24 @@ data:
     }
 
   # ────────────────────────────────────────────────────────────────
-  # defaults-vcl_synth.vcl  — only rendered when rootRedirect is enabled
+  # defaults-vcl_synth.vcl  — only rendered when rootRedirect or basicAuth is enabled
   # ────────────────────────────────────────────────────────────────
-  {{- if .Values.vcl.rootRedirect.enabled }}
+  {{- if or .Values.vcl.rootRedirect.enabled (and .Values.vcl.basicAuth (default false .Values.vcl.basicAuth.enabled)) }}
   defaults-vcl_synth.vcl: |
     sub vcl_synth {
+      {{- if and .Values.vcl.basicAuth (default false .Values.vcl.basicAuth.enabled) }}
+      if (resp.status == 401) {
+        set resp.http.WWW-Authenticate = "Basic realm=\"Restricted Area\"";
+        return (deliver);
+      }
+      {{- end }}
+
+      {{- if .Values.vcl.rootRedirect.enabled }}
       if (resp.status == 302) {
         set resp.http.location = resp.reason;
         set resp.reason = "Moved";
         return (deliver);
       }
+      {{- end }}
     }
   {{- end }}
