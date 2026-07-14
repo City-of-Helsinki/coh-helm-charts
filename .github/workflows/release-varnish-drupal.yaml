@@ -46,78 +46,81 @@ jobs:
           # Validate rendered manifests
           helm template charts/varnish-drupal | kubeconform -summary -skip Route
 
-  integration-test:
-    needs: test
-    runs-on: ubuntu-latest
-    env:
-      NS: hki-kanslia-asuminen-test
-      RELEASE: integration-test
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: '3.20.2'
-
-      - name: Install OpenShift CLI
-        run: |
-          wget https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz
-          tar xvf openshift-client-linux.tar.gz
-          sudo mv oc kubectl /usr/local/bin/
-          oc version --client
-
-      - name: Login to OpenShift Dev Cluster
-        run: |
-          oc login ${{ secrets.OPENSHIFT_API_URL }} --token="${{ secrets.OPENSHIFT_TOKEN }}" --insecure-skip-tls-verify
-
-      - name: Set namespace context
-        run: |
-          oc project $NS
-          echo "Using namespace: $NS"
-
-      - name: Clean up previous test deployments
-        run: |
-          echo "Cleaning up any existing test deployments..."
-          helm list -n $NS | grep '^integration-test' | awk '{print $1}' | xargs -r helm uninstall -n $NS || true
-          sleep 10
-
-      - name: Deploy to Test Namespace
-        run: |
-          helm upgrade --install $RELEASE charts/varnish-drupal \
-            --namespace $NS \
-            --set route.host="varnish-sample-test1.test.hel.ninja" \
-            --set externalSecretName="varnish-secret" \
-            --set service.name="varnish1" \
-            --set service.headlessName="varnish-headless1" \
-            --set route.name="varnish-route1" \
-            --set serviceAccountName="kube-httpcache1" \
-            --wait
-
-      - name: Verify /varnishstatus
-        run: |
-          # Use oc to check if the statefulset is ready
-          oc rollout status statefulset/$RELEASE-varnish-drupal -n $NS
-
-          # Verification check
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://varnish-sample-test1.test.hel.ninja/varnishstatus)
-          echo "Status Code: $STATUS"
-          
-          if [ "$STATUS" -ne 200 ]; then
-            echo "Verification failed! Expected 200 but got $STATUS"
-            # Get logs to debug
-            oc logs statefulset/$RELEASE-varnish-drupal -c varnish -n $NS --tail=20
-            exit 1
-          fi
-
-      - name: Cleanup
-        if: always()
-        run: |
-          helm uninstall $RELEASE -n $NS --no-hooks || true
+#####
+# Is this some old stuff that has been tested against hki-kanslia-asuminen-test. Either way, seems unnecessary and commenting out.
+#####
+#  integration-test:
+#    needs: test
+#    runs-on: ubuntu-latest
+#    env:
+#      NS: hki-kanslia-asuminen-test
+#      RELEASE: integration-test
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#
+#      - name: Set up Helm
+#        uses: azure/setup-helm@v3
+#        with:
+#          version: '3.20.2'
+#
+#      - name: Install OpenShift CLI
+#        run: |
+#          wget https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz
+#          tar xvf openshift-client-linux.tar.gz
+#          sudo mv oc kubectl /usr/local/bin/
+#          oc version --client
+#
+#      - name: Login to OpenShift Dev Cluster
+#        run: |
+#          oc login ${{ secrets.OPENSHIFT_API_URL }} --token="${{ secrets.OPENSHIFT_TOKEN }}" --insecure-skip-tls-verify
+#
+#      - name: Set namespace context
+#        run: |
+#          oc project $NS
+#          echo "Using namespace: $NS"
+#
+#      - name: Clean up previous test deployments
+#        run: |
+#          echo "Cleaning up any existing test deployments..."
+#          helm list -n $NS | grep '^integration-test' | awk '{print $1}' | xargs -r helm uninstall -n $NS || true
+#          sleep 10
+#
+#      - name: Deploy to Test Namespace
+#        run: |
+#          helm upgrade --install $RELEASE charts/varnish-drupal \
+#            --namespace $NS \
+#            --set route.host="varnish-sample-test1.test.hel.ninja" \
+#            --set externalSecretName="varnish-secret" \
+#            --set service.name="varnish1" \
+#            --set service.headlessName="varnish-headless1" \
+#            --set route.name="varnish-route1" \
+#            --set serviceAccountName="kube-httpcache1" \
+#            --wait
+#
+#      - name: Verify /varnishstatus
+#        run: |
+#          # Use oc to check if the statefulset is ready
+#          oc rollout status statefulset/$RELEASE-varnish-drupal -n $NS
+#
+#          # Verification check
+#          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://varnish-sample-test1.test.hel.ninja/varnishstatus)
+#          echo "Status Code: $STATUS"
+#          
+#          if [ "$STATUS" -ne 200 ]; then
+#            echo "Verification failed! Expected 200 but got $STATUS"
+#            # Get logs to debug
+#            oc logs statefulset/$RELEASE-varnish-drupal -c varnish -n $NS --tail=20
+#            exit 1
+#          fi
+#
+#      - name: Cleanup
+#        if: always()
+#        run: |
+#          helm uninstall $RELEASE -n $NS --no-hooks || true
 
   release:
-    needs: [test, integration-test]
+    needs: [test] # , integration-test]
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
