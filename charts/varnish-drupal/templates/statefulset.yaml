@@ -19,6 +19,8 @@ spec:
     metadata:
       labels:
         {{- include "varnish-drupal.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "varnish-drupal/templates/configmap.yaml" . | sha256sum }}
     spec:
       {{- if .Values.nodeSelector }}
       nodeSelector:

@@ -515,7 +515,7 @@ data:
     sub vcl_synth {
       {{- if and .Values.vcl.basicAuth (default false .Values.vcl.basicAuth.enabled) }}
       if (resp.status == 401) {
-        set resp.http.WWW-Authenticate = "Basic realm=\"Restricted Area\"";
+        set resp.http.WWW-Authenticate = "Basic realm=\x22Restricted Area\x22";
         return (deliver);
       }
       {{- end }}
