@@ -6,5 +6,5 @@ description: >
     receiver   - helfi-nginx, serves Drupal compositing for a specific domain
     dispatcher - thin router, owns the public route and fans out to receivers
 type: application
-version: 1.0.0
+version: 1.0.12
 appVersion: "1.26"
