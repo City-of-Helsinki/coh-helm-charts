@@ -44,14 +44,6 @@ data:
         server_name_in_redirect off;
         absolute_redirect off;
 
-        # Security headers
-        add_header Strict-Transport-Security "max-age=15768000" always;
-        add_header X-XSS-Protection "1; mode=block";
-        add_header X-Frame-Options "Sameorigin" always;
-        add_header X-Content-Type-Options "nosniff";
-        add_header Keep-Alive "timeout=10, max=100";
-        add_header Connection "Keep-Alive";
-
         proxy_hide_header X-Powered-By;
         proxy_hide_header X-AspNetMvc-Version;
         proxy_hide_header X-AspNet-Version;
@@ -162,12 +154,6 @@ data:
         proxy_read_timeout 300;
         client_max_body_size 32M;
 
-        # Security headers
-        add_header Strict-Transport-Security "max-age=15768000" always;
-        add_header X-XSS-Protection "1; mode=block";
-        add_header X-Frame-Options "Sameorigin" always;
-        add_header X-Content-Type-Options "nosniff";
-
         # Error pages
         location = /errorpages/virhe_sivu.html {}
         error_page 400 401 402 403 410 500 502 503 504 /errorpages/virhe_sivu.html;
@@ -198,12 +184,6 @@ data:
         server_name  {{ .host }};
         root         /var/www/html/public;
         client_max_body_size 32M;
-
-        # Security headers
-        add_header Strict-Transport-Security "max-age=15768000" always;
-        add_header X-XSS-Protection "1; mode=block";
-        add_header X-Frame-Options "Sameorigin" always;
-        add_header X-Content-Type-Options "nosniff";
 
         # Error pages
         location = /errorpages/virhe_sivu.html {}
