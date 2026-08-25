@@ -243,11 +243,23 @@ data:
     {{- if .Values.vcl.overrides.drupal }}
     {{ .Values.vcl.overrides.drupal | nindent 4 }}
     {{- else }}
+    import std;
+    import blob;
     sub vcl_recv {
         {{- if and .Values.vcl.basicAuth (default false .Values.vcl.basicAuth.enabled) }}
-        if (req.http.Authorization != "Basic {{ .Values.vcl.basicAuth.credentials }}") {
+        if (req.http.Authorization !~ "^Basic\s+") {
             return (synth(401, "Authentication Required"));
         }
+        set req.http.X-Decoded-Auth = blob.transcode(
+            decoding = BASE64,
+            encoding = IDENTITY,
+            encoded = regsub(req.http.Authorization, "^Basic\s+", "")
+        );
+        if (req.http.X-Decoded-Auth != std.getenv("BASIC_AUTH_USER") + ":" + std.getenv("BASIC_AUTH_PASS")) {
+            unset req.http.X-Decoded-Auth;
+            return (synth(401, "Unauthorized"));
+        }
+        unset req.http.X-Decoded-Auth;
         {{- end }}
 
         # Do not cache these paths.
