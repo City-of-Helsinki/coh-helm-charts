@@ -2,5 +2,5 @@ apiVersion: v2
 name: varnish-drupal
 description: Varnish HTTP cache for Drupal on OpenShift (kube-httpcache)
 type: application
-version: 1.0.9
+version: 1.0.11
 appVersion: "stable-4.0"

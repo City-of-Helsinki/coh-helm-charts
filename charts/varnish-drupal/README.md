@@ -27,7 +27,7 @@ Each pod runs two containers:
 
 - OpenShift 4.x (or Kubernetes with the Route CRD available)
 - A `ServiceAccount` named `kube-httpcache` in the target namespace with permission to list/watch Endpoints
-- A `Secret` containing `VARNISH_SECRET` and `VARNISH_PURGE_KEY` (referenced via `externalSecretName`)
+- A `Secret` containing `VARNISH_SECRET` and `VARNISH_PURGE_KEY` and optionally 'Basic_Auth_User' and 'Basic_Auth_Pass' (referenced via `externalSecretName`)
 - Helm 3.x
 
 ## Installing
@@ -148,8 +148,7 @@ service:
 | `vcl.rootRedirect.enabled`   | `false`      | Return `302` for requests to `/`                                                                                                                                    |
 | `vcl.rootRedirect.target`    | `""`         | Redirect target URL. Required when `rootRedirect.enabled=true`.                                                                                                     |
 | `vcl.overrides.backendError` | `""`         | Replace the entire `vcl_backend_error` block. Paste a full `sub vcl_backend_error { ... }` string.                                                                  |
-| `vcl.basicAuth.enabled`      | `false`      | Enable basicAuth                                                                                                                                                    |
-| `vcl.basicAuth.credentials`  | `""`         | Base64 encoded string for basic auth                                                                                                                                |
+| `vcl.basicAuth.enabled`      | `false`      | Enable basicAuth. `Secret` must contain values for Basic_Auth_User and Basic_Auth_Pass                                                                          |
 
 ## Examples
 

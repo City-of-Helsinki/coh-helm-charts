@@ -83,6 +83,11 @@ varnishTransientStorage: "malloc,128M"
 # ──────────────────────────────────────────────
 vcl:
 
+  # ── Require basic authentication ─────────────────────────────── 
+  # Uses Basic_Auth_User and Basic_Auth_Pass secrets from externalSecret
+  basicAuth:
+    enabled: false
+
   # ── Director / load balancing topology ─────────────────────────
   director:
     # "single" (default): one be-drupal backend + directors.hash for
