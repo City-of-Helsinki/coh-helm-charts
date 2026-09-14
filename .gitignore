@@ -1,7 +1,7 @@
 # Helm packages
 *.tgz
 *.tar.gz
-
+*.env
 # IDE
 .vscode/
 .idea/

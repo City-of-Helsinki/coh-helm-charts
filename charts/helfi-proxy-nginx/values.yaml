@@ -96,6 +96,36 @@ receiver:
   proxiedRoutes: []
 
 # -------------------------------------------------------
+# Rate limiting (nginx limit_req)
+# receiver only. Each zone's limit_req_zone directive is
+# rendered into the http{} context (base-nginx ConfigMap);
+# the matching location block is rendered into the server
+# ConfigMap
+#
+# IMPORTANT: limit_req_zone counters are per-pod, NOT
+# shared across replicas. With replicaCount > 1, the real
+# aggregate ceiling is approximately (rate * replicaCount).
+# e.g. rate: "1r/s" with replicaCount: 2 → ~2 req/s actually
+# reaching the backend. There is no cross-pod shared state
+# -------------------------------------------------------
+rateLimiting:
+  enabled: false
+  zones: []
+  # - name: csp_report            # zone name — must be unique per zone
+  #   rate: "1r/s"                 # PER-POD rate, see note above
+  #   key: "global"                 # "global" = one shared counter for all traffic to these paths
+  #   size: "10m"                  # shared memory zone size (optional, default 10m)
+  #   burst: 0                     # optional, default 0
+  #   nodelay: true                # optional, default true — reject immediately, don't queue
+  #   methods: ["GET", "POST"]     # only these methods are rate limited; others get 405
+  #   paths:                       # each must be a full anchored regex
+  #     - "^/fi/log-report-uri/enforce$"
+  #     - "^/sv/log-report-uri/enforce$"
+  #     - "^/en/log-report-uri/enforce$"
+  #   backendKey: "etusivu"        # key into receiver.backends — where accepted requests go
+  #   responseCode: 204            # returned instead of nginx's default 503 when rate-limited
+
+# -------------------------------------------------------
 # Redirections ConfigMap master switch
 # Must be true for any redirections to be mounted.
 # -------------------------------------------------------
