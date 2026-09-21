@@ -52,6 +52,20 @@ data:
             default www.hel.fi;
         }
 
+        {{- if and (eq .Values.type "receiver") .Values.rateLimiting.enabled }}
+        # -------------------------------------------------------
+        # Rate limiting zones
+        # NOTE: counters are per-pod, not shared across replicas.
+        # -------------------------------------------------------
+        {{- range .Values.rateLimiting.zones }}
+        {{- if eq .key "global" }}
+        limit_req_zone $rate_limit_key_{{ .name }} zone={{ .name }}:{{ .size | default "10m" }} rate={{ .rate }};
+        {{- else }}
+        limit_req_zone {{ .key }} zone={{ .name }}:{{ .size | default "10m" }} rate={{ .rate }};
+        {{- end }}
+        {{- end }}
+        {{- end }}
+
         # Load server block configs from default.d/
         include /etc/nginx/default.d/*.conf;
 

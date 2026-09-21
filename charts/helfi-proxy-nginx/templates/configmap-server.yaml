@@ -118,6 +118,39 @@ data:
         }
         {{- end }}
 
+        {{- if .Values.rateLimiting.enabled }}
+        # -------------------------------------------------------
+        # Rate limited paths
+        # -------------------------------------------------------
+        {{- range .Values.rateLimiting.zones }}
+        {{- $zone := . }}
+        {{- $methods := .methods | default (list "GET" "POST") }}
+        # {{ .name }}
+        location ~ ({{ join "|" .paths }}) {
+            if ($request_method !~ ^({{ join "|" $methods }})$) {
+                return 405;
+            }
+            {{- if eq .key "global" }}
+            set $rate_limit_key_{{ .name }} "global";
+            {{- end }}
+            {{- $hasBurst := and .burst (gt (int .burst) 0) }}
+            limit_req zone={{ .name }}{{ if $hasBurst }} burst={{ .burst }}{{ if not (eq .nodelay false) }} nodelay{{ end }}{{ end }};
+            error_page 503 = @{{ .name }}_limited;
+
+            proxy_set_header Host {{ index $.Values.receiver.backends .backendKey }};
+            proxy_pass https://$openshift_ip:443;
+        }
+        {{- end }}
+
+        {{- range .Values.rateLimiting.zones }}
+        location @{{ .name }}_limited {
+            access_log off;
+            add_header Content-Type "";
+            return {{ .responseCode | default 204 }};
+        }
+        {{- end }}
+        {{- end }}
+
         # -------------------------------------------------------
         # Etusivu — keep last, catch-all for language prefixes
         # -------------------------------------------------------

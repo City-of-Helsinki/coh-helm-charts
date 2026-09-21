@@ -42,10 +42,10 @@ helfi-proxy-nginx/
 The nginx config is split into three ConfigMaps deliberately:
 
 ### `configmap-base-nginx`
-Base `nginx.conf` with worker config, geo block, health probes. Never changes per environment. Only updated when base nginx behaviour changes globally.
+Base `nginx.conf` with worker config, geo block, health probes, and `limit_req_zone` rate-limiting zone definitions (see [Rate Limiting](#rate-limiting) below — these must live in the `http{}` context, which only this ConfigMap owns). Never changes per environment beyond which rate-limiting zones are enabled. Only updated when base nginx behaviour changes globally.
 
 ### `configmap-server`
-The server block with all location rules and Varnish backend hostnames. Changes per environment (different Varnish hostnames, different `serverName`). Updated when routing rules change or new Drupal sections are added.
+The server block with all location rules, Varnish backend hostnames, and the `location` blocks that enforce rate limiting for configured zones. Changes per environment (different Varnish hostnames, different `serverName`, different `rateLimiting` config). Updated when routing rules change, new Drupal sections are added, or rate limiting is enabled/adjusted.
 
 ### `configmap-redirections`
 Env-jump convenience redirects — `www.hel.fi/fi/test-asuminen` → `https://www.test.hel.ninja/fi/asuminen` etc. Only enabled in prod (`redirections.enabled: true` in `values-prod.yaml`). These are developer shortcuts so teams can jump from `www.hel.fi` to test or staging environments without remembering the `.hel.ninja` hostnames.
@@ -55,6 +55,7 @@ Test and staging environments do not need these — they ARE the target environm
 This separation means:
 - Routing rule changes → touch `configmap-server` only
 - Adding a new env-jump redirect → touch `configmap-redirections` only
+- Adding/adjusting rate limiting → touch `rateLimiting` values only (no template changes needed for a new zone)
 - No image rebuild needed for any config change
 
 ---
@@ -114,8 +115,50 @@ This list defines the Nginx `location` blocks.
 | `name` | Descriptive name (used as a comment in config) |
 | `paths` | The URI patterns or regex strings to match |
 | `backendKey` | The key from `receiver.backends` to use for the Host header |
-| `matchType` | **Optional.** Nginx modifier. Defaults to `~ ^/` (regex). Use ` ` (space) for prefix. |
+| `matchType` | **Optional.** Nginx modifier. Defaults to `~ ^/` (regex). Use `" "` (a literal single space) for a plain prefix-match location — an empty string `""` will NOT trigger prefix mode, since Helm's `default` treats an empty string as unset and silently falls back to `~ ^/`. |
 | `proxyPath` | **Optional.** Path appended to backend. Use `/` to strip incoming prefixes. |
+
+#### 3. Rate Limiting (`receiver.rateLimiting`) <a name="rate-limiting"></a>
+
+Applies per-pod request rate limiting to specific paths, returning a configurable status code (typically `204`) instead of forwarding to the backend once the limit is exceeded. Used to protect Drupal/the database from traffic spikes on lightweight endpoints (e.g. CSP violation reporting) without needing every request to reach the backend.
+
+| Key | Description | Default |
+|---|---|---|
+| `rateLimiting.enabled` | Master switch for rate limiting on this receiver | `false` |
+| `rateLimiting.zones` | List of rate-limiting zones (see below) | `[]` |
+| `zones[].name` | Zone name — must be unique per receiver; used as the nginx `limit_req_zone` name | — |
+| `zones[].rate` | **Per-pod** rate, nginx format (e.g. `"1r/s"`, `"10r/m"`) | — |
+| `zones[].key` | `"global"` for one shared counter across all clients (site-wide limit); any other value is used verbatim as the nginx rate-limit key (e.g. `"$binary_remote_addr"` for a per-client limit) | — |
+| `zones[].size` | Shared memory zone size | `10m` |
+| `zones[].burst` | Requests allowed to queue above the rate before being delayed/rejected. Only emitted in the rendered config when `> 0` — nginx does not accept `burst=0` as valid syntax, so `0` (or unset) means no burst clause at all, i.e. immediate rejection with no queueing | `0` |
+| `zones[].nodelay` | When `burst > 0`, whether queued requests are rejected immediately instead of delayed. Ignored when `burst` is `0`/unset | `true` |
+| `zones[].methods` | HTTP methods subject to rate limiting; any other method returns `405` | `["GET", "POST"]` |
+| `zones[].paths` | List of fully-anchored regex paths this zone applies to (e.g. `"^/fi/log-report-uri/enforce$"`) | — |
+| `zones[].backendKey` | Key from `receiver.backends` — where accepted (non-rate-limited) requests are proxied | — |
+| `zones[].responseCode` | Status code returned for rate-limited requests | `204` |
+
+**Important — per-pod, not global:** `limit_req_zone` counters are local to each nginx pod; there is no shared state across replicas. The real aggregate ceiling reaching the backend is approximately `rate × replicaCount`, not the configured `rate` alone. With `replicaCount: 2` and `rate: "1r/s"`, expect up to ~2 req/s in practice, occasionally higher in bursts spanning slightly more than one second (each pod's counter resets independently). This is an intentional trade-off — a true global limit would require shared state (e.g. Redis) which isn't implemented here, since this feature is meant as a coarse safeguard against traffic spikes rather than a precise rate guarantee.
+
+**Ordering:** rate-limited `location` blocks are rendered *before* the etusivu catch-all and after `proxiedRoutes`, since nginx evaluates regex locations in file order and stops at the first match.
+
+##### Example
+
+```yaml
+receiver:
+  rateLimiting:
+    enabled: true
+    zones:
+      - name: csp_report
+        rate: "1r/s"
+        key: "global"
+        methods: ["GET", "POST"]
+        paths:
+          - "^/fi/log-report-uri/enforce$"
+          - "^/sv/log-report-uri/enforce$"
+          - "^/en/log-report-uri/enforce$"
+        backendKey: "etusivu"
+        responseCode: 204
+```
 
 ---
 
@@ -162,6 +205,8 @@ Covered sections: etusivu, asuminen, kasvatus-koulutus, kuva, liikenne, rekry, s
 | `dispatcher.routes[].backend` | Internal ClusterIP service name |
 | `dispatcher.routes[].port` | Service port (typically 8080) |
 
+> **Note:** the `dispatcher` role only fans out traffic in prod (`hki-kanslia-proxy-helfi-prod`), which owns the public `www.hel.fi` route. Test and staging have no dispatcher — the `receiver` owns its route directly, so any path reachable by the receiver (rate-limited or not) is reachable without needing a matching dispatcher rule. In prod, a path must be routed to the receiver by the dispatcher (via `dispatcher.routes`) before any `receiver`-side config — including `rateLimiting` — will ever see traffic for it.
+
 ---
 
 ## Environment comparison
@@ -175,6 +220,7 @@ Covered sections: etusivu, asuminen, kasvatus-koulutus, kuva, liikenne, rekry, s
 | Node selector | `devtest` | `stg` | `prod` |
 | Namespace | `hki-kanslia-helfi-etusivu-test` | `hki-kanslia-helfi-etusivu-staging` | `hki-kanslia-helfi-etusivu-prod` |
 | Redirections enabled | `false` | `false` | `true` |
+| Rate limiting (`csp_report`) | `true` | `true` | `true` |
 
 ---
 
