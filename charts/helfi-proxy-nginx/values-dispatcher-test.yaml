@@ -1,0 +1,35 @@
+# -------------------------------------------------------
+# CI scenario: type=dispatcher
+# Used by the gixy job so the dispatcher server.conf branch
+# (and additionalRoutes server blocks) is analysed too.
+# Not deployed anywhere.
+# -------------------------------------------------------
+type: dispatcher
+
+replicaCount: 2
+nodeSelector: devtest
+
+route:
+  host: www.test.hel.ninja
+
+dispatcher:
+  serverName: www.test.hel.ninja
+  routes:
+    # NOTE: `path` is inserted verbatim after `location `, so regex routes need
+    # the leading "~" (a bare "^/(fi|sv|en)" would be a literal prefix match).
+    - path: "~ ^/(fi|sv|en)"
+      backend: helfi-nginx
+      port: 8080
+    - path: "/"
+      backend: legacy-proxy
+      port: 8080
+
+additionalRoutes:
+  - host: hel.test.hel.ninja
+    redirect: true
+    tls:
+      enabled: true
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+    annotations:
+      haproxy.router.openshift.io/timeout: 300s

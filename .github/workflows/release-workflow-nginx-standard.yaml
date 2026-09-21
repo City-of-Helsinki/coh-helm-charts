@@ -156,6 +156,24 @@ jobs:
           
           echo "✓ NGINX configuration syntax appears valid"
 
+      - name: Set up Python (for gixy)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install gixy
+        run: pip install gixy-next==0.7.1
+
+      - name: Gixy security scan for ${{ matrix.use-case }}
+        run: |
+          .github/scripts/gixy-helm.sh \
+            --chart charts/nginx-standard \
+            --name "test-${{ matrix.use-case }}" \
+            -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
+            --map nginx.conf=/etc/nginx/nginx.conf \
+            --map server.conf=/opt/app-root/etc/nginx.default.d/server.conf \
+            --fail-on high
+
       - name: Test use-case specific validations for ${{ matrix.use-case }}
         run: |
           case "${{ matrix.use-case }}" in
