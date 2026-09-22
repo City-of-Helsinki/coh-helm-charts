@@ -1,10 +1,7 @@
 name: Release workflow for helfi-proxy-nginx Helm Chart
 
+# Manual-dispatch only.
 on:
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'charts/helfi-proxy-nginx/**'
   workflow_dispatch:
     inputs:
       chart_version:

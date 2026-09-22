@@ -1,12 +1,6 @@
 name: Release workflow for nginx-standard Helm Chart
 
 on:
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'charts/nginx-standard/**'
-      - '.github/scripts/gixy-helm.sh'
-      - '.github/workflows/release-workflow-nginx-standard.yaml'
   push:
     tags:
       - 'nginx-standard-v*'  # e.g., nginx-standard-v1.2.3
@@ -282,7 +276,6 @@ jobs:
 
   integration-test:
     needs: test
-    if: github.event_name != 'pull_request'  # deploys to OpenShift; PRs stop after `test`
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -451,7 +444,6 @@ jobs:
 
   generate-changelog:
     needs: [test, integration-test]
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       changelog: ${{ steps.changelog.outputs.changelog }}
@@ -547,7 +539,6 @@ jobs:
 
   release:
     needs: [test, integration-test, generate-changelog]
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
