@@ -36,6 +36,8 @@ jobs:
           helm lint charts/helfi-proxy-nginx
           if [ -d "charts/helfi-proxy-nginx/tests" ]; then helm unittest charts/helfi-proxy-nginx; fi
           helm template charts/helfi-proxy-nginx -f charts/helfi-proxy-nginx/values-test.yaml | kubeconform -summary -skip Route
+          helm template charts/helfi-proxy-nginx -f charts/helfi-proxy-nginx/values-dispatcher-test.yaml | kubeconform -summary -skip Route
+          helm template charts/helfi-proxy-nginx -f charts/helfi-proxy-nginx/values-test.yaml -f charts/helfi-proxy-nginx/values-ratelimit-test.yaml | kubeconform -summary -skip Route
 
   gixy:
     name: gixy (${{ matrix.scenario }})
