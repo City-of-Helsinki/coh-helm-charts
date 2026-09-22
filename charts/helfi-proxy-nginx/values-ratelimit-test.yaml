@@ -1,0 +1,31 @@
+# -------------------------------------------------------
+# CI scenario overlay: receiver + rate limiting.
+# Use together with values-test.yaml:
+#   -f values-test.yaml -f values-ratelimit-test.yaml
+# Exercises the limit_req_zone / limit_req / @_limited paths.
+# -------------------------------------------------------
+rateLimiting:
+  enabled: true
+  zones:
+    - name: csp_report
+      rate: "1r/s"
+      key: "global"
+      size: "10m"
+      burst: 0
+      nodelay: true
+      methods: ["GET", "POST"]
+      paths:
+        - "^/fi/log-report-uri/enforce$"
+        - "^/sv/log-report-uri/enforce$"
+        - "^/en/log-report-uri/enforce$"
+      backendKey: "etusivu"
+      responseCode: 204
+    - name: per_ip_search
+      rate: "5r/s"
+      key: "$binary_remote_addr"
+      burst: 10
+      nodelay: false      # set explicitly: the template compares .nodelay to false
+      methods: ["GET"]
+      paths:
+        - "^/fi/haku-api$"
+      backendKey: "etusivu"

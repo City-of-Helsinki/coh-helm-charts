@@ -1,6 +1,6 @@
 # -------------------------------------------------------
-# Test environment overrides
-# www.test.hel.ninja → helfi-etusivu-test namespace
+# helfi-proxy-nginx: Test Environment
+# Deployment: receiver
 # -------------------------------------------------------
 
 type: receiver
@@ -8,14 +8,21 @@ type: receiver
 replicaCount: 2
 nodeSelector: devtest
 
+# ──────────────────────────────────────────────
+# Routing 
+# ──────────────────────────────────────────────
 route:
   host: www.test.hel.ninja
 
+# ──────────────────────────────────────────────
+# Receiver Configuration
+# ──────────────────────────────────────────────
 receiver:
   serverName: www.test.hel.ninja
   openshiftIP: 10.235.227.132
   xForwardedHost: $host
 
+  # Map paths to their respective Varnish/Drupal backends
   backends:
     asuminen:  "varnish-asuminen-test.apps.arodevtest.hel.fi"
     etusivu:   "varnish-etusivu-test.apps.arodevtest.hel.fi"
@@ -31,49 +38,55 @@ receiver:
 
   # Dynamic Routing Definition
   proxiedRoutes:
-    - name: "Asuminen"
-      paths: "fi/asuminen|en/housing|sv/boende|housing|asuminen-assets/"
-      backendKey: "asuminen"
-    - name: "Kasvatus-koulutus"
-      paths: "fi/kasvatus-ja-koulutus|en/childhood-and-education|sv/fostran-och-utbildning|childhood-and-education|kasko-assets/"
-      backendKey: "kasvatus"
-    - name: "Kuva"
-      paths: "fi/kulttuuri-ja-vapaa-aika|sv/kultur-och-fritid|en/culture-and-leisure|culture-and-leisure|kuva-assets/"
-      backendKey: "kuva"
-    - name: "Liikenne"
-      paths: "fi/kaupunkiymparisto-ja-liikenne|sv/stadsmiljo-och-trafik|en/urban-environment-and-traffic|urban-environment-and-traffic|liikenne-assets/"
-      backendKey: "liikenne"
-    - name: "News API"
-      matchType: " " # Leading space makes this a standard prefix match
-      paths: "/uutisapi/"
-      proxyPath: "/" # Strips /uutisapi/ prefix
-      backendKey: "uutisapi"
-    - name: "Rekry"
-      paths: "fi/avoimet-tyopaikat|sv/lediga-jobb|en/open-jobs|open-jobs|rekry-assets/"
-      backendKey: "rekry"
-    - name: "Sitemap"
-      paths: "(sitemap.xml|robots.txt)$" # Regex matches the end of string
-      backendKey: "sitemap"
     - name: "Strategia-talous"
-      paths: "fi/paatoksenteko-ja-hallinto|sv/beslutsfattande-och-forvaltning|en/decision-making|decision-making|hallinto-assets/"
+      paths: "(fi/paatoksenteko-ja-hallinto|sv/beslutsfattande-och-forvaltning|en/decision-making|decision-making|hallinto-assets/)"
       backendKey: "strategia"
     - name: "Terveys"
-      paths: "fi/sosiaali-ja-terveyspalvelut|sv/social-och-halsovardstjanster|en/health-and-social-services|health-and-social-services|terveys-assets/"
+      paths: "(fi/sosiaali-ja-terveyspalvelut|sv/social-och-halsovardstjanster|en/health-and-social-services|health-and-social-services|terveys-assets/)"
       backendKey: "terveys"
+    - name: "Liikenne"
+      paths: "(fi/kaupunkiymparisto-ja-liikenne|sv/stadsmiljo-och-trafik|en/urban-environment-and-traffic|urban-environment-and-traffic|liikenne-assets/)"
+      backendKey: "liikenne"
     - name: "Tyo-yrittaminen"
-      paths: "fi/yritykset-ja-tyo|en/business-and-work|sv/foretag-och-arbete|business-and-work|elo-assets/"
+      paths: "(fi/yritykset-ja-tyo|en/business-and-work|sv/foretag-och-arbete|business-and-work|elo-assets/)"
       backendKey: "tyo-yrittaminen"
+    - name: "Kasvatus-koulutus"
+      paths: "(fi/kasvatus-ja-koulutus|en/childhood-and-education|sv/fostran-och-utbildning|childhood-and-education|kasko-assets/)"
+      backendKey: "kasvatus"
+    - name: "Asuminen"
+      paths: "(fi/asuminen|en/housing|sv/boende|housing|asuminen-assets/)"
+      backendKey: "asuminen"
+    - name: "Rekry"
+      paths: "(fi/avoimet-tyopaikat|sv/lediga-jobb|en/open-jobs|open-jobs|rekry-assets/)"
+      backendKey: "rekry"
+    - name: "Kuva"
+      paths: "(fi/kulttuuri-ja-vapaa-aika|sv/kultur-och-fritid|en/culture-and-leisure|culture-and-leisure|kuva-assets/)"
+      backendKey: "kuva"
+    - name: "News API"
+      matchType: " "
+      paths: "/uutisapi/"
+      proxyPath: "/"
+      backendKey: "uutisapi"
+    - name: "Sitemap"
+      paths: "(sitemap.xml|robots.txt|llms.txt)$"
+      backendKey: "sitemap"
 
-redirections:
+# ──────────────────────────────────────────────
+# Rate limiting — PSD-8122 CSP reporting endpoint
+# 1 req/s per pod. replicaCount: 2 → ~2 req/s
+# aggregate actually reaching Drupal (no shared
+# state across pods).
+# ──────────────────────────────────────────────
+rateLimiting:
   enabled: true
-
-envJumpRedirects:
-  enabled: true
-  testHost: www.test.hel.ninja
-  stagingHost: www.stage.hel.ninja
-  sections:
-  - name: "Asuminen"
-    test:
-      fi: { from: "fi/test-asuminen", to: "fi/asuminen" }
-      sv: { from: "sv/test-boende",   to: "sv/boende" }
-      en: { from: "en/test-housing",  to: "en/housing" }
+  zones:
+    - name: csp_report
+      rate: "1r/s"
+      key: "global"
+      methods: ["GET", "POST"]
+      paths:
+        - "^/fi/log-report-uri/enforce$"
+        - "^/sv/log-report-uri/enforce$"
+        - "^/en/log-report-uri/enforce$"
+      backendKey: "etusivu"
+      responseCode: 204

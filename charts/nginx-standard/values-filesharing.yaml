@@ -27,7 +27,7 @@ fileSharing:
         autoindex_exact_size off;
         autoindex_localtime on;
     
-    - path: "/downloads"
+    - path: "/downloads/"
       alias: "/opt/app-root/src/downloads/"
       autoindex: true
       additionalConfig: |
