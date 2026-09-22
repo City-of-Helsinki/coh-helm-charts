@@ -15,7 +15,7 @@ replicaCount: 2
 image:
   registry: container-registry.platta-net.hel.fi
   repository: hki-kanslia-helfi-etusivu/helfi-proxy-nginx
-  tag: stable-1.0
+  tag: latest
   pullPolicy: Always
 
 imagePullSecrets:
