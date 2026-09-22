@@ -120,7 +120,29 @@ if grep -q "could not fully analyze" "$WORK/stderr.txt"; then
 fi
 
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-  { echo "### gixy — $NAME"; echo '```'; sed "s#$ROOT##g" "$WORK/report.txt" | sed -n '/Summary/,$p'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+  REPORT="$(sed "s#$ROOT##g" "$WORK/report.txt")"
+  COUNTS="$(grep -E '^[[:space:]]+(Informational|Low|Medium|High):' <<<"$REPORT" \
+    | sed -E 's/^[[:space:]]+([A-Za-z]+): ([0-9]+)/\2 \1/' | paste -sd'|' - | sed 's/|/ · /g' || true)"
+  if [[ $GATE -eq 0 ]]; then
+    BADGE="✅"; STATUS_LINE="**Passed**"
+  else
+    BADGE="❌"; STATUS_LINE="**Failed** — severity \`$FAIL_ON\` or higher found"
+  fi
+  {
+    echo "### $BADGE gixy — $NAME"
+    echo ""
+    echo "$STATUS_LINE  ·  fail-on: \`$FAIL_ON\`"
+    echo ""
+    echo "$COUNTS"
+    echo ""
+    echo "<details><summary>Full report</summary>"
+    echo ""
+    echo '```text'
+    echo "$REPORT"
+    echo '```'
+    echo "</details>"
+    echo ""
+  } >> "$GITHUB_STEP_SUMMARY"
 fi
 
 if [[ $GATE -ne 0 ]]; then
