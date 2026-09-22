@@ -70,7 +70,7 @@ jobs:
           echo "Validating ${{ matrix.use-case }} manifests against OpenShift schemas..."
           helm template test-${{ matrix.use-case }} charts/nginx-standard/ \
             -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
-            --exclude charts/nginx-standard/templates/tests/* \
+            --skip-tests \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
 
@@ -84,7 +84,7 @@ jobs:
             --set autoscaling.enabled=true \
             --set autoscaling.minReplicas=2 \
             --set autoscaling.maxReplicas=10 \
-            --exclude 'charts/nginx-standard/templates/tests/*' \
+            --skip-tests \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
           
@@ -93,7 +93,7 @@ jobs:
             -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
             --set observability.metrics.enabled=true \
             --set observability.serviceMonitor.enabled=true \
-            --exclude 'charts/nginx-standard/templates/tests/*' \
+            --skip-tests \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
           
@@ -101,7 +101,7 @@ jobs:
           helm template test-${{ matrix.use-case }}-netpol charts/nginx-standard/ \
             -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
             --set networkPolicy.enabled=true \
-            --exclude 'charts/nginx-standard/templates/tests/*' \
+            --skip-tests \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
           
@@ -110,7 +110,7 @@ jobs:
             -f charts/nginx-standard/values-${{ matrix.use-case }}.yaml \
             --set routes.enabled=true \
             --set routes.items[0].host=test-${{ matrix.use-case }}.apps.example.com \
-            --exclude 'charts/nginx-standard/templates/tests/*' \
+            --skip-tests \
             | yq eval 'select(.kind != null)' - \
             | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
 

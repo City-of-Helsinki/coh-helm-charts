@@ -19,7 +19,7 @@ step "template rendering"
 helm template "test-$UC" "$CHART" -f "$VALUES" --debug >/dev/null || err "helm template failed"
 
 step "OpenShift manifest validation"
-helm template "test-$UC" "$CHART" -f "$VALUES" --exclude "$CHART/templates/tests/*" \
+helm template "test-$UC" "$CHART" -f "$VALUES" --skip-tests \
   | yq eval 'select(.kind != null)' - \
   | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 - \
   || err "kubeconform failed on base render"
@@ -27,25 +27,25 @@ helm template "test-$UC" "$CHART" -f "$VALUES" --exclude "$CHART/templates/tests
 step "custom overrides (autoscaling / metrics / netpol / route)"
 helm template "test-$UC-hpa" "$CHART" -f "$VALUES" \
     --set autoscaling.enabled=true --set autoscaling.minReplicas=2 --set autoscaling.maxReplicas=10 \
-    --exclude "$CHART/templates/tests/*" \
+    --skip-tests \
   | yq eval 'select(.kind != null)' - | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 - \
   || err "kubeconform failed with autoscaling.enabled=true"
 
 helm template "test-$UC-metrics" "$CHART" -f "$VALUES" \
     --set observability.metrics.enabled=true --set observability.serviceMonitor.enabled=true \
-    --exclude "$CHART/templates/tests/*" \
+    --skip-tests \
   | yq eval 'select(.kind != null)' - | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 - \
   || err "kubeconform failed with metrics/serviceMonitor enabled"
 
 helm template "test-$UC-netpol" "$CHART" -f "$VALUES" \
     --set networkPolicy.enabled=true \
-    --exclude "$CHART/templates/tests/*" \
+    --skip-tests \
   | yq eval 'select(.kind != null)' - | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 - \
   || err "kubeconform failed with networkPolicy.enabled=true"
 
 helm template "test-$UC-route" "$CHART" -f "$VALUES" \
     --set routes.enabled=true --set "routes.items[0].host=test-$UC.apps.example.com" \
-    --exclude "$CHART/templates/tests/*" \
+    --skip-tests \
   | yq eval 'select(.kind != null)' - | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 - \
   || err "kubeconform failed with routes.enabled=true"
 
