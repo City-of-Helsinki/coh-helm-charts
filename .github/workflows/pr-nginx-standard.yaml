@@ -99,86 +99,76 @@ jobs:
 
       - name: Clean up this PR's previous test deployments
         run: |
-          # Scoped to THIS PR's own release prefix only — the original release
-          # workflow's version of this step matches every "test-*" release,
-          # which would delete other PRs' still-running deployments here.
           helm list -n nginx-demo --filter "^test-${PR}-" -q | xargs -r -n1 helm uninstall -n nginx-demo || true
           sleep 5
 
-      - name: Test elasticproxy deployment
+      - name: Test all four use-cases
         run: |
-          echo "Testing elasticproxy use case..."
+          set +e  # collect every result — one use-case failing must not stop the others
+
+          declare -A VALUES_FILE=(
+            [elasticproxy]="charts/nginx-standard/values-elasticproxy.yaml"
+            [cache]="charts/nginx-standard/values-cache.yaml"
+            [frontproxy]="charts/nginx-standard/values-frontproxy.yaml"
+            [filesharing]="charts/nginx-standard/values-filesharing.yaml"
+          )
+          declare -A EXTRA_SET=(
+            [elasticproxy]=""
+            [cache]=""
+            [frontproxy]=""
+            # values-filesharing.yaml defaults to a static Azure File PV (a single
+            # pre-created PV, not safe for concurrent PR deploys) plus an
+            # ExternalSecret backed by a real Key Vault. Both disabled here so
+            # this only needs the cluster itself — the real static/PVC/
+            # ExternalSecret manifests are still schema-checked, unmodified, by
+            # kubeconform in the `validate` job. This only proves the pod starts
+            # and serves traffic, not that Azure File actually works.
+            [filesharing]="--set fileSharing.storage.pvc.enabled=false --set externalSecrets.enabled=false"
+          )
+
+          deploy_and_verify() {
+            local uc="$1"
+            local release="test-${PR}-${uc}"
+            {
+              echo "== [$uc] installing"
+              # shellcheck disable=SC2086
+              helm install "$release" charts/nginx-standard/ \
+                -n nginx-demo \
+                -f "${VALUES_FILE[$uc]}" \
+                ${EXTRA_SET[$uc]} \
+                --wait --timeout 3m \
+              && oc rollout status "deployment/${release}-nginx-standard" -n nginx-demo --timeout=3m \
+              && POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=${release}" -o jsonpath="{.items[0].metadata.name}") \
+              && oc exec -n nginx-demo "$POD_NAME" -- curl -f http://localhost:8080/readiness \
+              && oc exec -n nginx-demo "$POD_NAME" -- curl -f http://localhost:8080/healthz \
+              && echo "== [$uc] deployed and healthy"
+            } > "/tmp/log-${uc}.txt" 2>&1
+            echo $? > "/tmp/exit-${uc}.txt"
+          }
 
           # NOTE: values-elasticproxy.yaml hardcodes secretName
-          # "elasticsearch-test-es-elastic-user" (the real ECK secret above),
-          # not this one — this create step is inherited from the original
-          # workflow but the chart doesn't actually read it. Left in place
-          # since it's harmless, not because it's required.
           oc create secret generic "test-${PR}-elastic-creds" \
             -n nginx-demo \
             --from-literal=elastic=testpass123 \
             --dry-run=client -o yaml | oc apply -f -
 
-          helm install "test-${PR}-elasticproxy" charts/nginx-standard/ \
-            -n nginx-demo \
-            -f charts/nginx-standard/values-elasticproxy.yaml \
-            --wait --timeout 3m
+          for uc in elasticproxy cache frontproxy filesharing; do
+            deploy_and_verify "$uc" &
+          done
+          wait
 
-          oc rollout status "deployment/test-${PR}-elasticproxy-nginx-standard" -n nginx-demo --timeout=3m
-
-          POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-${PR}-elasticproxy" -o jsonpath="{.items[0].metadata.name}")
-          oc exec -n nginx-demo "$POD_NAME" -- curl -f http://localhost:8080/readiness || exit 1
-          oc exec -n nginx-demo "$POD_NAME" -- curl -f http://localhost:8080/healthz || exit 1
-          echo "✓ elasticproxy deployed and healthy"
-
-      - name: Test cache deployment
-        run: |
-          echo "Testing cache use case..."
-
-          helm install "test-${PR}-cache" charts/nginx-standard/ \
-            -n nginx-demo \
-            -f charts/nginx-standard/values-cache.yaml \
-            --wait --timeout 3m
-
-          oc rollout status "deployment/test-${PR}-cache-nginx-standard" -n nginx-demo --timeout=3m
-
-          POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-${PR}-cache" -o jsonpath="{.items[0].metadata.name}")
-          oc exec -n nginx-demo "$POD_NAME" -- curl -f http://localhost:8080/readiness || exit 1
-          oc exec -n nginx-demo "$POD_NAME" -- curl -f http://localhost:8080/healthz || exit 1
-          echo "✓ cache deployed and healthy"
-
-      - name: Test frontproxy deployment
-        run: |
-          echo "Testing frontproxy use case..."
-
-          helm install "test-${PR}-frontproxy" charts/nginx-standard/ \
-            -n nginx-demo \
-            -f charts/nginx-standard/values-frontproxy.yaml \
-            --wait --timeout 3m
-
-          oc rollout status "deployment/test-${PR}-frontproxy-nginx-standard" -n nginx-demo --timeout=3m
-
-          POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-${PR}-frontproxy" -o jsonpath="{.items[0].metadata.name}")
-          oc exec -n nginx-demo "$POD_NAME" -- curl -f http://localhost:8080/readiness || exit 1
-          oc exec -n nginx-demo "$POD_NAME" -- curl -f http://localhost:8080/healthz || exit 1
-          echo "✓ frontproxy deployed and healthy"
-
-      - name: Test filesharing deployment
-        run: |
-          echo "Testing filesharing use case..."
-          helm install "test-${PR}-filesharing" charts/nginx-standard/ \
-            -n nginx-demo \
-            -f charts/nginx-standard/values-filesharing.yaml \
-            --set fileSharing.storage.pvc.enabled=false \
-            --set externalSecrets.enabled=false \
-            --wait --timeout 3m
-
-          oc rollout status "deployment/test-${PR}-filesharing-nginx-standard" -n nginx-demo --timeout=3m
-
-          POD_NAME=$(oc get pods -n nginx-demo -l "app.kubernetes.io/name=nginx-standard,app.kubernetes.io/instance=test-${PR}-filesharing" -o jsonpath="{.items[0].metadata.name}")
-          oc exec -n nginx-demo "$POD_NAME" -- curl -f http://localhost:8080/readiness || exit 1
-          oc exec -n nginx-demo "$POD_NAME" -- curl -f http://localhost:8080/healthz || exit 1
-          echo "✓ filesharing deployed and healthy"
+          FAIL=0
+          for uc in elasticproxy cache frontproxy filesharing; do
+            echo "::group::$uc"
+            cat "/tmp/log-${uc}.txt"
+            echo "::endgroup::"
+            code=$(cat "/tmp/exit-${uc}.txt")
+            if [ "$code" -ne 0 ]; then
+              echo "::error::[$uc] deployment/verification failed (exit $code)"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
 
       - name: Display deployment summary
         if: always()
