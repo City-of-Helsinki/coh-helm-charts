@@ -54,9 +54,14 @@ jobs:
   integration-test:
     needs: test
     runs-on: ubuntu-latest
+    concurrency:
+      group: ci-mailpit-openshift
+      cancel-in-progress: false
     env:
-      NS: hki-kanslia-helfi-hakuvahti-dev
-      RELEASE: mailpit-test
+      # Shared CI namespace + route domain on the Sweden Central CI cluster
+      NS: ${{ vars.CI_NAMESPACE || 'platta-components-helm-ci' }}
+      CI_DOMAIN: ${{ vars.CI_ROUTE_DOMAIN || 'test-se.hel.ninja' }}
+      RELEASE: ci-mailpit
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,19 +79,22 @@ jobs:
           oc version --client
 
       - name: Login to OpenShift Dev Cluster
+        env:
+          # Repository variable (not secret): API URL of the CI cluster (Sweden Central)
+          OPENSHIFT_SERVER: ${{ vars.OPENSHIFT_SERVER }}
+          # Repository secret: service-account token for that cluster
+          OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
         run: |
-          oc login ${{ secrets.OPENSHIFT_API_URL }} --token="${{ secrets.OPENSHIFT_TOKEN }}" --insecure-skip-tls-verify
+          : "${OPENSHIFT_SERVER:?Repository variable OPENSHIFT_SERVER is not set}"
+          : "${OPENSHIFT_TOKEN:?Repository secret OPENSHIFT_TOKEN is not set}"
+          oc login "${OPENSHIFT_SERVER}" --token="${OPENSHIFT_TOKEN}" --insecure-skip-tls-verify
+          echo "Logged in to $(oc whoami --show-server) as $(oc whoami)"
 
-      - name: Set namespace context
-        run: |
-          oc project $NS
-          echo "Using namespace: $NS"
+      - name: Prepare CI namespace (access check + test fixtures)
+        run: .github/scripts/ci-prepare-namespace.sh "$NS"
 
-      - name: Clean up previous test deployments
-        run: |
-          echo "Cleaning up any existing test deployments..."
-          helm list -n $NS | grep "^${RELEASE}" | awk '{print $1}' | xargs -r helm uninstall -n $NS || true
-          sleep 10
+      - name: Clean up previous test deployments (leftovers from earlier runs)
+        run: .github/scripts/ci-cleanup.sh "$NS" "^${RELEASE}$"
 
       - name: Build Chart Dependencies
         run: |
@@ -97,7 +105,7 @@ jobs:
           # Deploying with an existingSecret override for integration verification purposes
           helm upgrade --install $RELEASE charts/mailpit-openshift \
             --namespace $NS \
-            --set route.host="mailpit-sample-test1.test.hel.ninja" \
+            --set route.host="mailpit-sample-test1.${CI_DOMAIN}" \
             --set existingSecret="mailpit-ui-auth" \
             --wait
 
@@ -108,7 +116,7 @@ jobs:
           oc rollout status deployment/$DEPLOYMENT_NAME -n $NS
 
           # Verification check against the UI endpoint
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://mailpit-sample-test1.test.hel.ninja/readyz)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://mailpit-sample-test1.${CI_DOMAIN}/readyz)
           echo "Status Code: $STATUS"
           
           if [ "$STATUS" -ne 200 ]; then
@@ -118,10 +126,10 @@ jobs:
             exit 1
           fi
 
-      - name: Cleanup
+      - name: Cleanup (all objects)
         if: always()
-        run: |
-          helm uninstall $RELEASE -n $NS --no-hooks || true
+        run: .github/scripts/ci-cleanup.sh "$NS" "^${RELEASE}$"
+
 
   release:
     needs: [test, integration-test]

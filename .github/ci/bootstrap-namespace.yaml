@@ -1,0 +1,56 @@
+# ==============================================================================
+# One-time setup of the shared Helm CI namespace on the Sweden Central cluster.
+# Run by a cluster admin (NOT by CI):
+#
+#   oc apply -f .github/ci/bootstrap-namespace.yaml
+#   oc get secret github-actions-ci-token -n platta-components-helm-ci \
+#     -o jsonpath='{.data.token}' | base64 -d      # -> GitHub secret OPENSHIFT_TOKEN
+#   oc whoami --show-server                         # -> GitHub variable OPENSHIFT_SERVER
+#
+# The service account is admin of this namespace only. It cannot create projects
+# or touch other namespaces, so the workflows never call `oc new-project`.
+# ==============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platta-components-helm-ci
+  labels:
+    app.kubernetes.io/part-of: platta-components
+    purpose: helm-chart-ci
+  annotations:
+    openshift.io/description: "Ephemeral integration tests for coh-helm-charts (GitHub Actions)"
+    openshift.io/display-name: "Platta components - Helm CI"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-actions-ci
+  namespace: platta-components-helm-ci
+---
+# "admin" (namespace-scoped) is needed because the charts create Roles/RoleBindings
+# (varnish-drupal), NetworkPolicies and Routes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-actions-ci-admin
+  namespace: platta-components-helm-ci
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+  - kind: ServiceAccount
+    name: github-actions-ci
+    namespace: platta-components-helm-ci
+---
+# Long-lived token for GitHub Actions. Rotate by deleting this Secret and re-applying.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-actions-ci-token
+  namespace: platta-components-helm-ci
+  annotations:
+    kubernetes.io/service-account.name: github-actions-ci
+type: kubernetes.io/service-account-token
+# Optional: add a ResourceQuota here. If it limits requests.cpu/memory, also add a
+# LimitRange with defaults - otherwise pods without explicit requests are rejected.

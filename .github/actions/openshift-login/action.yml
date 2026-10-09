@@ -1,0 +1,29 @@
+name: Log in to the CI cluster
+description: Logs in to the Sweden Central CI cluster and prepares the shared CI namespace (access check + fixtures).
+inputs:
+  server:
+    description: API URL (repository variable OPENSHIFT_SERVER)
+    required: true
+  token:
+    description: Service-account token (repository secret OPENSHIFT_TOKEN)
+    required: true
+  namespace:
+    description: Shared CI namespace
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: oc login
+      shell: bash
+      env:
+        OPENSHIFT_SERVER: ${{ inputs.server }}
+        OPENSHIFT_TOKEN: ${{ inputs.token }}
+      run: |
+        : "${OPENSHIFT_SERVER:?Repository variable OPENSHIFT_SERVER is not set}"
+        : "${OPENSHIFT_TOKEN:?Repository secret OPENSHIFT_TOKEN is not set}"
+        oc login "${OPENSHIFT_SERVER}" --token="${OPENSHIFT_TOKEN}" --insecure-skip-tls-verify >/dev/null
+        echo "Logged in to $(oc whoami --show-server) as $(oc whoami)"
+
+    - name: Prepare CI namespace
+      shell: bash
+      run: bash "$GITHUB_WORKSPACE/.github/scripts/ci-prepare-namespace.sh" "${{ inputs.namespace }}"

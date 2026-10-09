@@ -224,10 +224,19 @@ networkPolicy:
 
 ## CI / Release workflow
 
-The chart ships with an optimized GitHub Actions workflow (`release-mailpit.yml`) utilizing three distinct stages:
+Same layout as every chart in this repo (see the repository README, section **CI**):
 
-| Job | Trigger | Description |
+| Workflow | Trigger | Does |
 |---|---|---|
+| `pr-mailpit-openshift.yaml` | PR to `main` touching `charts/mailpit-openshift/**` | Runs `ci-mailpit-openshift.yaml`: dependency build, helm lint, helm-unittest, kubeconform (skipping `Route`/`ExternalSecret`), then deploys to the shared CI namespace `platta-components-helm-ci` on the Sweden Central cluster and checks `/readyz` through the route. Everything is cleaned up afterwards. |
+| `release-mailpit-openshift.yaml` | Manual run with `chart_version`, or tag `mailpit-openshift-v<version>` | Same tests, then the shared `release-chart.yaml`: package (with subchart), publish to `coh-helm-repo` (`gh-pages`), GitHub release with changelog. |
+
+Repository settings used: variable `OPENSHIFT_SERVER`, secrets `OPENSHIFT_TOKEN` and `GH_TOKEN`.
+The UI-auth secret `mailpit-ui-auth` for the test comes from `.github/ci/fixtures.yaml`.
+
+Chart versions are plain SemVer (`1.2.3`); git tags are `mailpit-openshift-v<version>`.
+
+---|---|---|
 | `test` | PR to `main` touching `charts/mailpit-openshift/**` | Standard dependencies builder, chart structure linting, helm-unittest execution, and manifest validation utilizing kubeconform (configured to skip `Route` and `ExternalSecret` CRDs schemas). |
 | `integration-test` | After `test` passes | Deploys to your designated dev cluster namespace (`hki-kanslia-helfi-hakuvahti-dev`), runs a dynamic app label match look-up to discover the active deduplicated subchart deployment resource name, verifies that the `/readyz` HTTP path endpoint returns 200, and performs a complete post-execution teardown context clean up. |
 | `release` | `workflow_dispatch` with `chart_version` input | Bumps `Chart.yaml`, builds subchart binaries, packages the release artifact, pushes files to `coh-helm-repo` (`gh-pages` branch), and sets up a new GitHub Release containing an auto-compiled commit history changelog. |

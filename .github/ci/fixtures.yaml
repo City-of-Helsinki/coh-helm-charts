@@ -1,0 +1,36 @@
+# ==============================================================================
+# Test fixtures for the shared CI namespace (platta-components-helm-ci).
+# Applied by every integration-test job (.github/scripts/ci-prepare-namespace.sh),
+# so the namespace is self-contained. These replace objects the tests used to
+# borrow from devops-toolchain, hki-kanslia-asuminen-test
+# and hki-kanslia-helfi-hakuvahti-dev on the old cluster.
+#
+# All values are DUMMY test credentials - never put real secrets here.
+#
+# nginx-standard needs no fixtures: each run starts its own Elasticsearch (ECK)
+# via .github/scripts/ci-elasticsearch.sh and removes it again afterwards.
+# ==============================================================================
+
+# --- varnish-drupal (was 'varnish-secret' in hki-kanslia-asuminen-test) --------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: varnish-secret
+  labels: {app.kubernetes.io/part-of: helm-ci-fixtures}
+type: Opaque
+stringData:
+  VARNISH_SECRET: ci-varnish-secret
+  VARNISH_PURGE_KEY: ci-purge-key
+  Basic_Auth_User: ci
+  Basic_Auth_Pass: ci-only-password
+---
+# --- mailpit-openshift (was 'mailpit-ui-auth' in hki-kanslia-helfi-hakuvahti-dev)
+# UI login ci / ci-only-password (apr1 htpasswd)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mailpit-ui-auth
+  labels: {app.kubernetes.io/part-of: helm-ci-fixtures}
+type: Opaque
+stringData:
+  htpasswd: "ci:$apr1$cisalt01$8z/Ir27n3Ozq2cLzToQRa/"
