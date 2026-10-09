@@ -47,7 +47,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: "registry.example.com/hki-platta-components/nginx-unprivileged:alpine-perl"
+          value: "registry.example.com/mirrored-images/nginxinc/nginx-unprivileged:alpine-perl"
 
   - it: should keep explicit registry of public images
     template: deployment.yaml
@@ -70,7 +70,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: "image-registry.int.platta.hel.fi/hki-platta-components/nginx-unprivileged@sha256:abc"
+          value: "image-registry.int.platta.hel.fi/mirrored-images/nginxinc/nginx-unprivileged@sha256:abc"
 
   - it: should merge and dedupe global and chart pull secrets
     template: deployment.yaml

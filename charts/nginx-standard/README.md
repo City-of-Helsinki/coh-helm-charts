@@ -637,8 +637,8 @@ nginx:
   images:
     file-sharing:  { registry: registry.redhat.io, repository: rhel9/nginx-124, tag: latest }
     cache:         { registry: registry.redhat.io, repository: rhel9/nginx-124, tag: latest }
-    elastic-proxy: { repository: hki-platta-components/nginx-unprivileged, tag: alpine-perl }
-    front-proxy:   { repository: hki-platta-components/nginx-unprivileged, tag: alpine-perl }
+    elastic-proxy: { repository: mirrored-images/nginxinc/nginx-unprivileged, tag: alpine-perl }
+    front-proxy:   { repository: mirrored-images/nginxinc/nginx-unprivileged, tag: alpine-perl }
 
   # Optional per-release override; each field overrides images.<useCase>
   image:

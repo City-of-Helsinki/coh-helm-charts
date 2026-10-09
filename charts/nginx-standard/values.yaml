@@ -44,10 +44,10 @@ nginx:
       repository: "rhel9/nginx-124"
       tag: "latest"
     elastic-proxy:
-      repository: "hki-platta-components/nginx-unprivileged"
+      repository: "mirrored-images/nginxinc/nginx-unprivileged"
       tag: "alpine-perl"
     front-proxy:
-      repository: "hki-platta-components/nginx-unprivileged"
+      repository: "mirrored-images/nginxinc/nginx-unprivileged"
       tag: "alpine-perl"
 
   # Per-release image override (each field optional, overrides nginx.images.<useCase>)
