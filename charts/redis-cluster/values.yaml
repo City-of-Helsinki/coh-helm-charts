@@ -1,6 +1,17 @@
 # Default values for redis-sentinel chart
 # This is a YAML-formatted file with all available configuration options
 
+# Global image settings
+global:
+  # Registry prepended to images that do not set their own `registry`
+  # (overridden per region by the platform pipeline).
+  imageRegistry: "image-registry.int.platta.hel.fi"
+  # Pull secrets added to every pod
+  imagePullSecrets: []
+
+# Additional chart-specific pull secrets
+imagePullSecrets: []
+
 # Global pod security context
 # These settings apply at the pod level
 podSecurityContext:
@@ -15,9 +26,14 @@ redis:
   # Number of Redis instances (1 master + N-1 replicas)
   replicaCount: 3
   
-  # Redis container image
-  # If not specified, uses default from _helpers.tpl
-  image: ""  # defaults to registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3
+  # Redis container image (public Red Hat image).
+  # Tag is managed centrally in pipeline-templates/common/helm-values/images/redis-cluster.yaml.
+  # A plain string (e.g. "registry.redhat.io/rhel9/redis-7:9.7-1771417604") is still accepted.
+  image:
+    registry: "registry.redhat.io"
+    repository: "rhel9/redis-7"
+    tag: "9.7-1771417604"
+    digest: ""   # optional sha256:...; wins over tag
   
   # Container-level security context for Redis pods
   # Set enabled: true to override pod-level security context
@@ -146,9 +162,9 @@ sentinel:
   # Number of Sentinel instances (always use odd numbers: 3, 5, 7)
   replicaCount: 3
   
-  # Sentinel container image
-  # If not specified, uses default from _helpers.tpl
-  image: "" # defaults to registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3
+  # Sentinel container image. Empty = same image as redis.image.
+  # Accepts a map (registry/repository/tag/digest) or a full reference string.
+  image: {}
   
   # Container-level security context for Sentinel pods
   # Set enabled: true to override pod-level security context

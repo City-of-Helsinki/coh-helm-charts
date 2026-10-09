@@ -77,9 +77,12 @@ This separation means:
 |---|---|---|
 | `type` | Role: `receiver` or `dispatcher` | `receiver` |
 | `replicaCount` | Number of pod replicas | `2` |
-| `image.registry` | Container registry | `container-registry.platta-net.hel.fi` |
-| `image.repository` | Image repository | `hki-kanslia-helfi-etusivu/helfi-proxy-nginx` |
+| `global.imageRegistry` | Registry used when `image.registry` is empty (set per region by the pipeline) | `image-registry.int.platta.hel.fi` |
+| `global.imagePullSecrets` | Pull secrets added to the pod | `[]` |
+| `image.registry` | Registry override (empty = `global.imageRegistry`) | `""` |
+| `image.repository` | Image repository | `hki-platta-components/helfi-proxy-nginx` |
 | `image.tag` | Image tag | `latest` |
+| `image.digest` | Optional digest, wins over tag | `""` |
 | `nodeSelector` | OpenShift node selector value (`devtest` / `stg` / `prod`) | `devtest` |
 | `route.enabled` | Create OpenShift route | `true` |
 | `route.host` | Public hostname for the route | `""` |

@@ -60,6 +60,9 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}  
+      {{- with (include "redis-sentinel.imagePullSecrets" .) }}
+      {{- . | nindent 6 }}
+      {{- end }}
       initContainers:
         - name: config
           image: {{ include "redis-sentinel.sentinel.image" . }}

@@ -143,7 +143,7 @@ jobs:
       - name: Generate Changelog
         id: changelog
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          PREV_TAG=$(git describe --tags --abbrev=0 --match "mailpit-openshift-v*" 2>/dev/null || echo "")
           
           if [ -z "$PREV_TAG" ]; then
             echo "CHANGELOG=Initial release of mailpit-openshift." >> $GITHUB_OUTPUT
@@ -163,28 +163,44 @@ jobs:
 
       - name: Determine Chart Version and Git Tag
         id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.chart_version }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/mailpit-openshift-v* ]]; then
-            CHART_VERSION=${GITHUB_REF#refs/tags/mailpit-openshift-}
-            GIT_TAG=${GITHUB_REF#refs/tags/}
-          elif [ -n "${{ github.event.inputs.chart_version }}" ]; then
-            INPUT_VERSION="${{ github.event.inputs.chart_version }}"
-            CLEAN_VERSION="${INPUT_VERSION#v}"
-            CHART_VERSION="v${CLEAN_VERSION}"
-            GIT_TAG="mailpit-openshift-${CHART_VERSION}"
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/mailpit-openshift-v* ]]; then
+            RAW_VERSION="${GITHUB_REF#refs/tags/mailpit-openshift-}"
+          elif [ -n "${INPUT_VERSION:-}" ]; then
+            RAW_VERSION="${INPUT_VERSION}"
           else
-            echo "Error: Chart version could not be determined"
+            echo "::error::Chart version could not be determined"
             exit 1
           fi
 
-          echo "chart_version=$CHART_VERSION" >> $GITHUB_OUTPUT
-          echo "git_tag=$GIT_TAG"             >> $GITHUB_OUTPUT
-          echo "Chart Version : $CHART_VERSION"
-          echo "Git Tag       : $GIT_TAG"
+          # Helm chart versions are plain SemVer 2.0 (https://semver.org) - no "v" prefix.
+          # A leading "v" in the input is tolerated and stripped.
+          CHART_VERSION="${RAW_VERSION#v}"
+          SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if ! [[ "${CHART_VERSION}" =~ ${SEMVER_RE} ]]; then
+            echo "::error::'${RAW_VERSION}' is not a valid SemVer version (expected e.g. 1.2.3)"
+            exit 1
+          fi
+
+          # Git tags keep the existing "<chart>-v<version>" form so tag history and
+          # changelog lookups stay continuous; only the chart version itself changes.
+          GIT_TAG="mailpit-openshift-v${CHART_VERSION}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && git rev-parse -q --verify "refs/tags/${GIT_TAG}" >/dev/null; then
+            echo "::error::Tag ${GIT_TAG} already exists - bump the version instead of re-releasing"
+            exit 1
+          fi
+
+          echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "git_tag=${GIT_TAG}"             >> "$GITHUB_OUTPUT"
+          echo "Chart Version : ${CHART_VERSION}"
+          echo "Git Tag       : ${GIT_TAG}"
 
       - name: Update Chart Version
         run: |
-          sed -i "s/^version: .*/version: ${{ inputs.chart_version }}/" charts/mailpit-openshift/Chart.yaml
+          sed -i "s/^version: .*/version: ${{ steps.version.outputs.chart_version }}/" charts/mailpit-openshift/Chart.yaml
 
       - name: Build Dependency Package
         run: helm dependency build charts/mailpit-openshift
@@ -217,7 +233,7 @@ jobs:
         with:
           artifacts: "mailpit-openshift-*.tgz"
           tag: ${{ steps.version.outputs.git_tag }}
-          name: "mailpit-openshift ${{ inputs.chart_version }}"
+          name: "mailpit-openshift ${{ steps.version.outputs.chart_version }}"
           body: |
             ## Changelog
             ${{ steps.changelog.outputs.CHANGELOG }}

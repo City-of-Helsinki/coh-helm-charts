@@ -44,5 +44,29 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Full image reference
 */}}
 {{- define "helfi-proxy-nginx.image" -}}
-{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}
+{{- $img := .Values.image -}}
+{{- $global := .Values.global | default dict -}}
+{{- $registry := $img.registry | default $global.imageRegistry | default "" | trimSuffix "/" -}}
+{{- $repo := required "image.repository is required" $img.repository -}}
+{{- $ref := ternary (printf "%s/%s" $registry $repo) $repo (ne $registry "") -}}
+{{- if $img.digest -}}
+{{- printf "%s@%s" $ref $img.digest -}}
+{{- else -}}
+{{- printf "%s:%s" $ref (toString (required "image.tag is required" $img.tag)) -}}
+{{- end -}}
 {{- end }}
+
+{{/*
+imagePullSecrets = global.imagePullSecrets + imagePullSecrets (deduplicated)
+*/}}
+{{- define "helfi-proxy-nginx.imagePullSecrets" -}}
+{{- $out := list -}}
+{{- range (concat ((.Values.global).imagePullSecrets | default list) (.Values.imagePullSecrets | default list)) -}}
+{{- $out = append $out (ternary (dict "name" .) . (kindIs "string" .)) -}}
+{{- end -}}
+{{- $out = uniq $out -}}
+{{- if $out -}}
+imagePullSecrets:
+{{ toYaml $out | indent 2 }}
+{{- end -}}
+{{- end -}}

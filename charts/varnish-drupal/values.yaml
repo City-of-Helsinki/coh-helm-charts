@@ -1,4 +1,11 @@
 # ──────────────────────────────────────────────
+# Global image settings (overridden per region by the platform pipeline)
+# ──────────────────────────────────────────────
+global:
+  imageRegistry: "image-registry.int.platta.hel.fi"
+  imagePullSecrets: []
+
+# ──────────────────────────────────────────────
 # Name overrides (optional)
 # ──────────────────────────────────────────────
 nameOverride: ""
@@ -23,9 +30,12 @@ serviceAccountName: kube-httpcache-sa
 # ──────────────────────────────────────────────
 # Varnish image
 # ──────────────────────────────────────────────
+# Tag is managed centrally in pipeline-templates/common/helm-values/images/varnish-drupal.yaml
 image:
-  repository: container-registry.platta-net.hel.fi/devops-toolchain/kube-httpcache-fork
+  registry: ""                     # empty = global.imageRegistry
+  repository: hki-platta-components/kube-httpcache-fork
   tag: stable-5.0
+  digest: ""                       # optional sha256:...; wins over tag
   pullPolicy: Always
 
 # ──────────────────────────────────────────────

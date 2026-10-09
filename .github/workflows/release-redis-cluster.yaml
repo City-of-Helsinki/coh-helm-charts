@@ -440,18 +440,40 @@ jobs:
 
       - name: Determine version outputs
         id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.chart_version }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/redis-cluster-v* ]]; then
-            GIT_TAG=${GITHUB_REF#refs/tags/}
-          elif [ -n "${{ github.event.inputs.chart_version }}" ]; then
-            INPUT_VERSION="${{ github.event.inputs.chart_version }}"
-            CLEAN_VERSION="${INPUT_VERSION#v}"
-            GIT_TAG="redis-cluster-v${CLEAN_VERSION}"
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/redis-cluster-v* ]]; then
+            RAW_VERSION="${GITHUB_REF#refs/tags/redis-cluster-}"
+          elif [ -n "${INPUT_VERSION:-}" ]; then
+            RAW_VERSION="${INPUT_VERSION}"
           else
-            echo "Error: Chart version could not be determined"
+            echo "::error::Chart version could not be determined"
             exit 1
           fi
-          echo "git_tag=$GIT_TAG" >> $GITHUB_OUTPUT
+
+          # Helm chart versions are plain SemVer 2.0 (https://semver.org) - no "v" prefix.
+          # A leading "v" in the input is tolerated and stripped.
+          CHART_VERSION="${RAW_VERSION#v}"
+          SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if ! [[ "${CHART_VERSION}" =~ ${SEMVER_RE} ]]; then
+            echo "::error::'${RAW_VERSION}' is not a valid SemVer version (expected e.g. 1.2.3)"
+            exit 1
+          fi
+
+          # Git tags keep the existing "<chart>-v<version>" form so tag history and
+          # changelog lookups stay continuous; only the chart version itself changes.
+          GIT_TAG="redis-cluster-v${CHART_VERSION}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && git rev-parse -q --verify "refs/tags/${GIT_TAG}" >/dev/null; then
+            echo "::error::Tag ${GIT_TAG} already exists - bump the version instead of re-releasing"
+            exit 1
+          fi
+
+          echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "git_tag=${GIT_TAG}"             >> "$GITHUB_OUTPUT"
+          echo "Chart Version : ${CHART_VERSION}"
+          echo "Git Tag       : ${GIT_TAG}"
 
       - name: Generate changelog
         id: changelog
@@ -510,24 +532,40 @@ jobs:
 
       - name: Determine Chart Version and Git Tag
         id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.chart_version }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/redis-cluster-v* ]]; then
-            CHART_VERSION=${GITHUB_REF#refs/tags/redis-cluster-}
-            GIT_TAG=${GITHUB_REF#refs/tags/}
-          elif [ -n "${{ github.event.inputs.chart_version }}" ]; then
-            INPUT_VERSION="${{ github.event.inputs.chart_version }}"
-            CLEAN_VERSION="${INPUT_VERSION#v}"
-            CHART_VERSION="v${CLEAN_VERSION}"
-            GIT_TAG="redis-cluster-${CHART_VERSION}"
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/redis-cluster-v* ]]; then
+            RAW_VERSION="${GITHUB_REF#refs/tags/redis-cluster-}"
+          elif [ -n "${INPUT_VERSION:-}" ]; then
+            RAW_VERSION="${INPUT_VERSION}"
           else
-            echo "Error: Chart version could not be determined"
+            echo "::error::Chart version could not be determined"
             exit 1
           fi
 
-          echo "chart_version=$CHART_VERSION" >> $GITHUB_OUTPUT
-          echo "git_tag=$GIT_TAG"             >> $GITHUB_OUTPUT
-          echo "Chart Version : $CHART_VERSION"
-          echo "Git Tag       : $GIT_TAG"
+          # Helm chart versions are plain SemVer 2.0 (https://semver.org) - no "v" prefix.
+          # A leading "v" in the input is tolerated and stripped.
+          CHART_VERSION="${RAW_VERSION#v}"
+          SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if ! [[ "${CHART_VERSION}" =~ ${SEMVER_RE} ]]; then
+            echo "::error::'${RAW_VERSION}' is not a valid SemVer version (expected e.g. 1.2.3)"
+            exit 1
+          fi
+
+          # Git tags keep the existing "<chart>-v<version>" form so tag history and
+          # changelog lookups stay continuous; only the chart version itself changes.
+          GIT_TAG="redis-cluster-v${CHART_VERSION}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && git rev-parse -q --verify "refs/tags/${GIT_TAG}" >/dev/null; then
+            echo "::error::Tag ${GIT_TAG} already exists - bump the version instead of re-releasing"
+            exit 1
+          fi
+
+          echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "git_tag=${GIT_TAG}"             >> "$GITHUB_OUTPUT"
+          echo "Chart Version : ${CHART_VERSION}"
+          echo "Git Tag       : ${GIT_TAG}"
 
       - name: Get chart name
         id: chart

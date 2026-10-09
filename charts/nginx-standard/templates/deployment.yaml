@@ -23,9 +23,8 @@ spec:
       {{- if .Values.serviceAccount.create }}
       serviceAccountName: {{ include "nginx-standard.serviceAccountName" . }}
       {{- end }}
-      {{- if .Values.nginx.image.pullSecrets }}
-      imagePullSecrets:
-        {{- toYaml .Values.nginx.image.pullSecrets | nindent 8 }}
+      {{- with (include "nginx-standard.imagePullSecrets" .) }}
+      {{- . | nindent 6 }}
       {{- end }}
       {{- if (.Values.podSecurityContext).enabled | default false }}
       securityContext:
