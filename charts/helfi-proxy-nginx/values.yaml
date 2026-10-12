@@ -42,14 +42,14 @@ resources:
     cpu: 500m
     memory: 1Gi
 
-# -------------------------------------------------------
-# Node selector - empty by default: pods may run on any worker node.
-# Set it only if your environment needs pinning. Two forms:
-#   nodeSelector:                 # map: any node labels (recommended, e.g. Sweden Central)
-#     environment: test
-#   nodeSelector: prod            # string: legacy West Europe form -> <nodeSelectorKey>: prod
-nodeSelectorKey: env              # label key used by the string form only
-nodeSelector: {}
+# ──────────────────────────────────────────────
+# Pod scheduling (same keys in every coh chart). Empty = any worker node.
+# Empty values fall back to global.nodeSelector / global.tolerations / global.affinity.
+# ──────────────────────────────────────────────
+nodeSelector: {}          # e.g. {environment: test}
+tolerations: []           # e.g. [{key: dedicated, operator: Equal, value: web, effect: NoSchedule}]
+affinity: {}              # Kubernetes affinity (nodeAffinity / podAffinity / podAntiAffinity)
+nodeSelectorKey: env      # legacy: label key when nodeSelector is a plain string (e.g. "prod")
 
 # -------------------------------------------------------
 # Route

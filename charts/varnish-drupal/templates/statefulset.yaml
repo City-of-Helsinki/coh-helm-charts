@@ -22,7 +22,7 @@ spec:
       annotations:
         checksum/config: {{ include "varnish-drupal/templates/configmap.yaml" . | sha256sum }}
     spec:
-      {{- with (include "varnish-drupal.nodeSelector" .) }}
+      {{- with (include "varnish-drupal.scheduling" . | trim) }}
       {{- . | nindent 6 }}
       {{- end }}
       {{- with (include "varnish-drupal.imagePullSecrets" .) }}

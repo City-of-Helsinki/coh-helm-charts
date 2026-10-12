@@ -29,7 +29,7 @@ spec:
       {{- with (include "helfi-proxy-nginx.imagePullSecrets" .) }}
       {{- . | nindent 6 }}
       {{- end }}
-      {{- with (include "helfi-proxy-nginx.nodeSelector" .) }}
+      {{- with (include "helfi-proxy-nginx.scheduling" . | trim) }}
       {{- . | nindent 6 }}
       {{- end }}
       containers:

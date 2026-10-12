@@ -47,12 +47,12 @@ This Helm chart provides a standardized NGINX deployment for OpenShift with four
 ### Basic Installation
 
 ```bash
-# Add the repository (if applicable)
-helm repo add nginx-standard https://github.com/City-of-Helsinki/coh-helm-charts
+# Add the repository
+helm repo add coh https://city-of-helsinki.github.io/coh-helm-repo
 helm repo update
 
 # Install with custom values file
-helm install my-nginx nginx-standard/nginx-standard -f my-values.yaml
+helm install my-nginx coh/nginx-standard -f my-values.yaml
 ```
 
 ### Uninstall
@@ -704,9 +704,15 @@ nginx:
       500: "/custom_50x.html"
     root: "/usr/share/nginx/html"
   
-  nodeSelector: {}
+  nodeSelector: {}   # legacy location - still works and wins over the top-level keys
   tolerations: []
   affinity: {}
+
+# Pod scheduling - same top-level keys in every coh chart (empty = any node,
+# falls back to global.nodeSelector / global.tolerations / global.affinity)
+nodeSelector: {}
+tolerations: []
+affinity: {}
 ```
 
 ### Observability
@@ -1021,3 +1027,39 @@ For issues and questions:
 - Create an issue in the repository
 - Contact the platform team
 - Check existing documentation
+
+## Images per region
+
+| Use case | Sweden Central | West Europe |
+|---|---|---|
+| file-sharing | `registry.redhat.io/rhel9/nginx-124:latest` | same |
+| cache | `registry.redhat.io/rhel9/nginx-124:latest` | same |
+| elastic-proxy | `image-registry.int.platta.hel.fi/mirrored-images/nginxinc/nginx-unprivileged:alpine-perl` | `container-registry.platta-net.hel.fi/devops/nginxinc/nginx-unprivileged:alpine-perl` |
+| front-proxy | `image-registry.int.platta.hel.fi/mirrored-images/nginxinc/nginx-unprivileged:alpine-perl` | `container-registry.platta-net.hel.fi/devops/nginxinc/nginx-unprivileged:alpine-perl` |
+| Pull secret | none (Red Hat: cluster pull secret; `mirrored-images` is a mirror of a public image) | `quay-secret-new` |
+
+`nginx.image.*` (or the legacy `nginx.image.full`) overrides the image for one release.
+
+How the region is chosen: platform deployments (Azure DevOps, `pipeline-templates`) load
+`common/helm-values/region-<se|we>.yaml` (sets `global.imageRegistry` / `global.imagePullSecrets`),
+then `common/helm-values/images/<chart>.yaml` (repository + tag, single source of truth) and, for
+West Europe only, `common/helm-values/images/we/<chart>.yaml` (legacy paths and pull secrets).
+The region follows the service connection name: `*-se` = Sweden Central, anything else = West Europe.
+Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sweden Central images.
+
+---
+
+## Changelog
+
+### 1.1.0
+* Images per use case under `nginx.images` (cache / file-sharing: Red Hat `rhel9/nginx-124`,
+  elastic-proxy / front-proxy: `mirrored-images/nginxinc/nginx-unprivileged`).
+  `nginx.image.full` still works.
+* Top-level `nodeSelector` / `tolerations` / `affinity`; the old `nginx.*` keys still work and win.
+* Images: no registry hostnames in the templates any more. `global.imageRegistry`
+  (default `image-registry.int.platta.hel.fi`, set per region by pipeline-templates),
+  `global.imagePullSecrets`, and per image `registry` / `repository` / `tag` / `digest`.
+* Pod scheduling: the same `nodeSelector` / `tolerations` / `affinity` keys as every coh chart,
+  empty by default (any worker node), falling back to `global.*`.
+* CI runs on the Sweden Central cluster (namespace `devops-toolchain`).
+

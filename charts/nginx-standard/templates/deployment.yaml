@@ -209,17 +209,8 @@ spec:
             successThreshold: {{ .Values.nginx.healthChecks.liveness.successThreshold | default 1 }}
             failureThreshold: {{ .Values.nginx.healthChecks.liveness.failureThreshold | default 3 }}
           {{- end }}
-      {{- with .Values.nginx.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nginx.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nginx.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
+      {{- with (include "nginx-standard.scheduling" . | trim) }}
+      {{- . | nindent 6 }}
       {{- end }}
       restartPolicy: Always
       terminationGracePeriodSeconds: 30

@@ -34,32 +34,9 @@ spec:
         {{- end }}
         {{- end }}
       {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
+      {{- with (include "redis-sentinel.scheduling" (dict "ctx" $ "component" "sentinel") | trim) }}
+      {{- . | nindent 6 }}
       {{- end }}
-      {{- if .Values.affinity.enabled }}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: "app.kubernetes.io/name"
-                  operator: In
-                  values:
-                  - "redis-sentinel"
-                - key: "app.kubernetes.io/component"
-                  operator: In
-                  values:
-                  - "sentinel"
-              topologyKey: "kubernetes.io/hostname"
-      {{- end }} 
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}  
       {{- with (include "redis-sentinel.imagePullSecrets" .) }}
       {{- . | nindent 6 }}
       {{- end }}

@@ -153,15 +153,43 @@ imagePullSecrets:
 {{- end -}}
 
 {{/*
-nodeSelector: map -> used as-is; non-empty string -> { <nodeSelectorKey>: <value> }; empty -> none
+Pod scheduling - the same contract in every coh chart:
+  nodeSelector  map of node labels        (default {} = any node)
+  tolerations   list of tolerations       (default [])
+  affinity      Kubernetes affinity map   (default {})
+Empty chart values fall back to global.nodeSelector / global.tolerations / global.affinity,
+so a platform pipeline can set a default per region or cluster.
+varnish-drupal extra: with no affinity set, a soft pod anti-affinity spreads the replicas
+over nodes (podAntiAffinity.enabled, default true).
+Legacy: nodeSelector may also be a plain string (old West Europe form), rendered as
+<nodeSelectorKey>: <value> (key default "env").
 */}}
-{{- define "varnish-drupal.nodeSelector" -}}
-{{- $ns := .Values.nodeSelector -}}
-{{- if and (kindIs "map" $ns) $ns -}}
-nodeSelector:
-{{ toYaml $ns | indent 2 }}
-{{- else if and (not (kindIs "map" $ns)) $ns -}}
-nodeSelector:
-  {{ .Values.nodeSelectorKey | default "env" }}: {{ $ns | toString | quote }}
+{{- define "varnish-drupal.scheduling" -}}
+{{- $v := .Values -}}
+{{- $g := $v.global | default dict -}}
+{{- $ns := $v.nodeSelector -}}
+{{- if and $ns (not (kindIs "map" $ns)) -}}
+{{- $ns = dict ($v.nodeSelectorKey | default "env") ($ns | toString) -}}
 {{- end -}}
+{{- $ns = $ns | default $g.nodeSelector -}}
+{{- $tol := $v.tolerations | default $g.tolerations -}}
+{{- $aff := $v.affinity | default $g.affinity -}}
+{{- /* built-in soft anti-affinity: spread the Varnish replicas over nodes */ -}}
+{{- $pa := $v.podAntiAffinity | default dict -}}
+{{- if and (not $aff) (or (not (hasKey $pa "enabled")) $pa.enabled) -}}
+{{- $sel := include "varnish-drupal.selectorLabels" . | fromYaml -}}
+{{- $aff = dict "podAntiAffinity" (dict "preferredDuringSchedulingIgnoredDuringExecution" (list (dict "weight" 100 "podAffinityTerm" (dict "topologyKey" "kubernetes.io/hostname" "labelSelector" (dict "matchLabels" $sel))))) -}}
+{{- end -}}
+{{- with $ns }}
+nodeSelector:
+{{ toYaml . | indent 2 }}
+{{- end }}
+{{- with $tol }}
+tolerations:
+{{ toYaml . | indent 2 }}
+{{- end }}
+{{- with $aff }}
+affinity:
+{{ toYaml . | indent 2 }}
+{{- end }}
 {{- end -}}

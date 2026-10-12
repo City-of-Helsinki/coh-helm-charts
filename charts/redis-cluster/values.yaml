@@ -244,13 +244,15 @@ nodeSelector: {}
   # workload: redis
   # disktype: ssd
 
-# Pod anti-affinity configuration
-# Spreads Redis and Sentinel pods across different nodes
-affinity:
+# Kubernetes affinity (same key in every coh chart). Empty = the built-in soft
+# pod anti-affinity below. Set your own map to replace it completely.
+# (Legacy "affinity: {enabled: true|false}" is still understood.)
+affinity: {}
+
+# Built-in soft anti-affinity (preferredDuringScheduling) that spreads Redis and
+# Sentinel pods over different nodes; used only when affinity is empty.
+podAntiAffinity:
   enabled: true
-  # When enabled, uses preferredDuringSchedulingIgnoredDuringExecution
-  # This is a soft rule - pods will still schedule if not enough nodes
-  # For hard rule, modify the StatefulSet templates directly
 
 # Tolerations for pod assignment
 # Example: allow pods on nodes with redis taint

@@ -33,7 +33,7 @@ Every chart has the same three workflows:
 | File | Name in GitHub | Runs on | Does |
 |---|---|---|---|
 | `ci-<chart>.yaml` | `CI: <chart>` | called by the two below | **lint** (helm lint, unit tests, kubeconform, chart-specific checks, gixy) + **integration** on OpenShift |
-| `pr-<chart>.yaml` | `PR: <chart>` | pull requests touching `charts/<chart>/**` | runs `ci-<chart>` |
+| `pr-<chart>.yaml` | `PR: <chart>` | pull requests touching `charts/<chart>/**`, its CI/PR workflow or the shared CI files (`.github/actions`, `.github/ci`, cleanup/prepare scripts); or by hand | runs `ci-<chart>` |
 | `release-<chart>.yaml` | `Release: <chart>` | manual run with a version, or tag `<chart>-v1.2.3` | runs `ci-<chart>`, then `release-chart.yaml` |
 
 `release-chart.yaml` (`Release: chart (reusable)`) holds the release steps shared by all charts:
@@ -51,6 +51,25 @@ to test a chart on `main` or any branch without opening a PR (run names `ci-<cha
 
 > Branch protection: status check names changed, e.g. `ci / lint` and
 > `ci / integration (OpenShift)`. Update required checks if you use them.
+
+### Pod scheduling (all charts)
+
+Every chart uses the same keys, all empty by default so pods may run on any worker node:
+
+```yaml
+nodeSelector: {}   # map of node labels, e.g. {environment: test}
+tolerations: []    # list of Kubernetes tolerations
+affinity: {}       # Kubernetes affinity (nodeAffinity / podAffinity / podAntiAffinity)
+```
+
+* Empty chart values fall back to `global.nodeSelector`, `global.tolerations`, `global.affinity`,
+  so a pipeline can set one default for a whole region or cluster.
+* `mailpit-openshift`: same keys under `mailpit:` (the upstream subchart renders them).
+* Backwards compatible: `nginx.nodeSelector|tolerations|affinity` (nginx-standard) still work and
+  win; `nodeSelector: prod` as a plain string (helfi-proxy-nginx, varnish-drupal) still renders
+  `env: prod` (key from `nodeSelectorKey`); `affinity.enabled: true|false` (redis-cluster) still
+  switches the built-in anti-affinity. redis-cluster and varnish-drupal (StatefulSets) add a soft pod anti-affinity by
+  default (`podAntiAffinity.enabled: true`) that spreads replicas over nodes, unless you set your own `affinity`.
 
 ### Integration tests
 
@@ -71,7 +90,7 @@ All integration tests run on the **Sweden Central** OpenShift cluster, in the ex
 | `OPENSHIFT_SE_TOKEN` | **secret** | Token of the `github-actions-ci` service account (see below) |
 | `GH_TOKEN` | **secret** | Push access to `coh-helm-repo` (release only, unchanged) |
 | `CI_NAMESPACE` | variable (optional) | Default `devops-toolchain` |
-| `CI_ROUTE_DOMAIN` | variable (optional) | Default `test-se.hel.ninja` (or `dev-se.hel.ninja`) |
+| `CI_ROUTE_DOMAIN` | variable (optional) | Domain for the test routes, default `test-se.hel.ninja`. Must reach the Sweden router from GitHub's runners; if the route checks return 404, use `apps.dev-se.platta.hel.fi` |
 | `CI_ES_VERSION` | variable (optional) | Elasticsearch version for nginx-standard tests, default `8.15.3` |
 | `CI_ES_IMAGE` | variable (optional) | Elasticsearch image override (e.g. a mirror); default is ECK's |
 | `CI_ECK_VERSION` | variable (optional) | ECK operator version for nginx-standard tests, default `3.1.0` (must match the ECK CRDs on the cluster) |
@@ -136,3 +155,14 @@ name it removes the Helm releases (including failed ones, waiting for deletion),
 object still labelled `app.kubernetes.io/instance=<run>…` (including the Elasticsearch),
 StatefulSet PVCs (which Helm never deletes) and secrets the workflow created, then warns
 about anything left over. Shared fixtures are kept on purpose.
+
+Run-specific helpers follow the same naming, so the same cleanup removes them: the varnish test
+creates a stand-in backend Service `ci-varnish-<run>-drupal` (Varnish only needs the name to
+resolve), and nginx-standard additionally runs `ci-eck.sh release` to remove the shared ECK
+operator once no Elasticsearch is left.
+
+After a run, only the `ci-fixture-*` secrets should remain:
+
+```bash
+oc get all,secret,configmap,pvc,elasticsearch,role,rolebinding -n devops-toolchain | grep ci-
+```

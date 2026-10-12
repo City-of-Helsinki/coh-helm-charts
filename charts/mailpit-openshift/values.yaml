@@ -16,6 +16,12 @@ global:
 # Upstream jouve/mailpit subchart values  (alias: mailpit)
 # ---------------------------------------------------------------------------
 mailpit:
+  # Pod scheduling - same keys as every coh chart, but under "mailpit:" because the
+  # upstream subchart renders them. Empty = any worker node.
+  nodeSelector: {}        # e.g. {environment: test}
+  tolerations: []
+  affinity: {}
+
   image:
     registry: docker.io
     repository: axllent/mailpit

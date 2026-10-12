@@ -4,7 +4,7 @@ A Helm wrapper chart that deploys [jouve/mailpit](https://github.com/jouve/chart
 
 | Field | Value |
 |---|---|
-| Chart version | 0.1.0 |
+| Chart version | see `Chart.yaml` (set by the release workflow) |
 | App version | 1.30.0 |
 | Upstream chart | `jouve/mailpit` 0.34.1 |
 | Chart type | application |
@@ -244,3 +244,25 @@ Chart versions are plain SemVer (`1.2.3`); git tags are `mailpit-openshift-v<ver
 |---|---|---|
 | 1025 | TCP | SMTP |
 | 8025 | TCP | Web UI / HTTP API |
+
+## Images per region
+
+| Image | Sweden Central | West Europe |
+|---|---|---|
+| mailpit | `docker.io/axllent/mailpit:v1.30.0` | same |
+| Pull secret | none (public Docker Hub image) | same |
+
+mailpit-openshift has no `pipeline-templates` deployment and does not use `global.imageRegistry`
+(the upstream subchart renders the image). To use a mirror, set `mailpit.image.registry` /
+`mailpit.image.repository`, e.g. `image-registry.int.platta.hel.fi` + `mirrored-images/axllent/mailpit`.
+
+---
+
+## Changelog
+
+### Next release
+* Pod scheduling defaults visible in `values.yaml`: `mailpit.nodeSelector` / `mailpit.tolerations`
+  / `mailpit.affinity` (empty = any worker node; under `mailpit:` because the upstream subchart
+  renders them).
+* CI runs on the Sweden Central cluster (namespace `devops-toolchain`) with the test secret
+  `ci-fixture-mailpit-ui-auth`.

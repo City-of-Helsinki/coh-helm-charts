@@ -274,3 +274,48 @@ Generate Sentinel configuration with auto-merge (extraConfig wins)
 {{- end }}
 {{- end }}
 {{- end }}
+{{/*
+Pod scheduling - the same contract in every coh chart:
+  nodeSelector  map of node labels        (default {} = any node)
+  tolerations   list of tolerations       (default [])
+  affinity      Kubernetes affinity map   (default {})
+Empty chart values fall back to global.nodeSelector / global.tolerations / global.affinity,
+so a platform pipeline can set a default per region or cluster.
+redis-cluster extra: when no affinity is set, a soft pod anti-affinity spreads the
+pods of each component over nodes (podAntiAffinity.enabled, default true).
+Legacy: affinity.enabled: true|false (old switch) is still understood.
+Call with (dict "ctx" $ "component" "redis"|"sentinel").
+*/}}
+{{- define "redis-sentinel.scheduling" -}}
+{{- $v := .ctx.Values -}}
+{{- $g := $v.global | default dict -}}
+{{- $ns := $v.nodeSelector | default $g.nodeSelector -}}
+{{- $tol := $v.tolerations | default $g.tolerations -}}
+{{- $userAff := $v.affinity | default dict -}}
+{{- $anti := dict "podAntiAffinity" (dict "preferredDuringSchedulingIgnoredDuringExecution" (list (dict "weight" 100 "podAffinityTerm" (dict "topologyKey" "kubernetes.io/hostname" "labelSelector" (dict "matchExpressions" (list (dict "key" "app.kubernetes.io/name" "operator" "In" "values" (list "redis-sentinel")) (dict "key" "app.kubernetes.io/component" "operator" "In" "values" (list .component)))))))) -}}
+{{- $aff := dict -}}
+{{- if hasKey $userAff "enabled" -}}
+{{- if $userAff.enabled }}{{ $aff = $anti }}{{ end -}}
+{{- else if $userAff -}}
+{{- $aff = $userAff -}}
+{{- else if $g.affinity -}}
+{{- $aff = $g.affinity -}}
+{{- else -}}
+{{- $pa := $v.podAntiAffinity | default dict -}}
+{{- if or (not (hasKey $pa "enabled")) $pa.enabled -}}
+{{- $aff = $anti -}}
+{{- end -}}
+{{- end -}}
+{{- with $ns }}
+nodeSelector:
+{{ toYaml . | indent 2 }}
+{{- end }}
+{{- with $tol }}
+tolerations:
+{{ toYaml . | indent 2 }}
+{{- end }}
+{{- with $aff }}
+affinity:
+{{ toYaml . | indent 2 }}
+{{- end }}
+{{- end -}}
