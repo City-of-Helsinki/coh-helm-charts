@@ -290,6 +290,8 @@ jobs:
     env:
       NS: ${{ vars.CI_NAMESPACE || 'devops-toolchain' }}
       RUN: ci-redis-${{ inputs.run-id }}
+      # Object names = <release>-<chart>
+      FULL: ci-redis-${{ inputs.run-id }}-redis-cluster
       REDIS_PASSWORD: ci-redis-password
     steps:
       - uses: actions/checkout@v4
@@ -322,22 +324,22 @@ jobs:
 
       - name: Verify StatefulSet rollouts
         run: |
-          oc rollout status "statefulset/${RUN}-redis" -n "$NS" --timeout=5m
-          oc rollout status "statefulset/${RUN}-sentinel" -n "$NS" --timeout=5m
+          oc rollout status "statefulset/${FULL}-redis" -n "$NS" --timeout=5m
+          oc rollout status "statefulset/${FULL}-sentinel" -n "$NS" --timeout=5m
 
       - name: Smoke test Redis and Sentinel pods
         run: |
           set -euo pipefail
           for i in 0 1 2; do
-            oc exec -n "$NS" "${RUN}-redis-${i}" -- redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
-            echo "✓ ${RUN}-redis-${i} responds"
-            oc exec -n "$NS" "${RUN}-sentinel-${i}" -- redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
-            echo "✓ ${RUN}-sentinel-${i} responds"
+            oc exec -n "$NS" "${FULL}-redis-${i}" -- redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+            echo "✓ ${FULL}-redis-${i} responds"
+            oc exec -n "$NS" "${FULL}-sentinel-${i}" -- redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+            echo "✓ ${FULL}-sentinel-${i} responds"
           done
 
       - name: Verify Sentinel knows the master
         run: |
-          oc exec -n "$NS" "${RUN}-sentinel-0" -- \
+          oc exec -n "$NS" "${FULL}-sentinel-0" -- \
             redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning sentinel master mymaster | grep -q flags
           echo "✓ Sentinel master info returned"
 
