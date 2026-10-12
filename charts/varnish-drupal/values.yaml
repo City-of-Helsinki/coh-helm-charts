@@ -48,8 +48,20 @@ imagePullSecrets: []
 # Scaling & scheduling
 # ──────────────────────────────────────────────
 replicaCount: 2
-nodeSelector: ""
 revisionHistoryLimit: 3
+
+# ──────────────────────────────────────────────
+# Pod scheduling (same keys in every coh chart). Empty = any worker node.
+# Empty values fall back to global.nodeSelector / global.tolerations / global.affinity.
+# ──────────────────────────────────────────────
+nodeSelector: {}          # e.g. {environment: test}
+tolerations: []           # e.g. [{key: dedicated, operator: Equal, value: web, effect: NoSchedule}]
+affinity: {}              # Kubernetes affinity (nodeAffinity / podAffinity / podAntiAffinity)
+# Built-in soft anti-affinity (preferredDuringScheduling) that spreads the Varnish
+# replicas over different nodes; used only when affinity (and global.affinity) is empty.
+podAntiAffinity:
+  enabled: true
+nodeSelectorKey: env      # legacy: label key when nodeSelector is a plain string (e.g. "prod")
 
 # ──────────────────────────────────────────────
 # Resources

@@ -61,7 +61,8 @@ nginx:
     pullPolicy: "Always"
     pullSecrets: []
   
-  # Pod scheduling configuration
+  # Legacy pod scheduling keys - still honoured and win over the top-level ones below.
+  # New values files should use the top-level nodeSelector / tolerations / affinity.
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -630,3 +631,11 @@ tests:
   credentials:
     secretName: elasticsearch-test-es-elastic-user
     secretKey: elastic
+
+# ---------------------------------------------------------------------------
+# Pod scheduling (same keys in every coh chart). Empty = any worker node.
+# Empty values fall back to global.nodeSelector / global.tolerations / global.affinity.
+# ---------------------------------------------------------------------------
+nodeSelector: {}          # e.g. {environment: test}
+tolerations: []           # e.g. [{key: dedicated, operator: Equal, value: web, effect: NoSchedule}]
+affinity: {}              # Kubernetes affinity (nodeAffinity / podAffinity / podAntiAffinity)

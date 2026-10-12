@@ -68,7 +68,11 @@ helm uninstall my-varnish --namespace my-app
 | `fullnameOverride`     | `""`    | Override the full resource name entirely                                       |
 | `replicaCount`         | `2`     | Number of Varnish pods                                                         |
 | `revisionHistoryLimit` | `3`     | StatefulSet revision history to retain                                         |
-| `nodeSelector`         | `""`    | Value for the `env` node label (e.g. `prod`, `staging`)                        |
+| `nodeSelector`         | `{}`    | Node labels as a map (e.g. `{environment: test}`), or a legacy string for `<nodeSelectorKey>` (e.g. `prod`). Empty = any node |
+| `nodeSelectorKey`      | `env`   | Label key for the string form only |
+| `tolerations`          | `[]`    | Pod tolerations; empty falls back to `global.tolerations` |
+| `affinity`             | `{}`    | Kubernetes affinity; empty falls back to `global.affinity`, then the built-in anti-affinity |
+| `podAntiAffinity.enabled` | `true` | Soft anti-affinity spreading the replicas over nodes, used when `affinity` is empty |
 | `externalSecretName`   | `""`    | **Required.** Name of the Secret with `VARNISH_SECRET` and `VARNISH_PURGE_KEY` |
 
 ### Routing
@@ -255,3 +259,40 @@ The purge method (regex / exact / page) is auto-detected from the URL or can be 
 
 **`helm template` fails with "must be false when director.mode is multi"**
 - Set `vcl.healthEndpoint.enabled: false` in your values when using `director.mode: multi`.
+
+## Images per region
+
+| Image | Sweden Central | West Europe |
+|---|---|---|
+| varnish (kube-httpcache fork) | `image-registry.int.platta.hel.fi/hki-platta-components/kube-httpcache-fork:<tag>` | `container-registry.platta-net.hel.fi/devops-toolchain/kube-httpcache-fork:<tag>` |
+| Pull secret | none (public repository) | namespace default (`quay-secret-new` where required) |
+
+`<tag>`: chart default `stable-6.0`; platform deployments use the tag in
+`pipeline-templates/common/helm-values/images/varnish-drupal.yaml`. The image is built by the
+`kube-httpcache` repository (Go binary + Varnish on UBI 9) and published to both registries.
+
+How the region is chosen: platform deployments (Azure DevOps, `pipeline-templates`) load
+`common/helm-values/region-<se|we>.yaml` (sets `global.imageRegistry` / `global.imagePullSecrets`),
+then `common/helm-values/images/<chart>.yaml` (repository + tag, single source of truth) and, for
+West Europe only, `common/helm-values/images/we/<chart>.yaml` (legacy paths and pull secrets).
+The region follows the service connection name: `*-se` = Sweden Central, anything else = West Europe.
+Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sweden Central images.
+
+---
+
+## Changelog
+
+### 1.1.0
+* **Behaviour change:** soft pod anti-affinity by default - replicas are spread over nodes
+  when possible (`podAntiAffinity.enabled: true`; replaced by any `affinity` you set).
+* Default image `hki-platta-components/kube-httpcache-fork:stable-6.0`. A legacy
+  `image.repository` that still contains a registry host keeps working.
+* `nodeSelector` accepts a map or the old string form (`prod` -> `env: prod`); new
+  `tolerations` and `affinity` values.
+* Images: no registry hostnames in the templates any more. `global.imageRegistry`
+  (default `image-registry.int.platta.hel.fi`, set per region by pipeline-templates),
+  `global.imagePullSecrets`, and per image `registry` / `repository` / `tag` / `digest`.
+* Pod scheduling: the same `nodeSelector` / `tolerations` / `affinity` keys as every coh chart,
+  empty by default (any worker node), falling back to `global.*`.
+* CI runs on the Sweden Central cluster (namespace `devops-toolchain`).
+

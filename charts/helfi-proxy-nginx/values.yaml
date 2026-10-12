@@ -42,11 +42,14 @@ resources:
     cpu: 500m
     memory: 1Gi
 
-# -------------------------------------------------------
-# OpenShift node selector
-# devtest / stg / prod
-# -------------------------------------------------------
-nodeSelector: devtest
+# ──────────────────────────────────────────────
+# Pod scheduling (same keys in every coh chart). Empty = any worker node.
+# Empty values fall back to global.nodeSelector / global.tolerations / global.affinity.
+# ──────────────────────────────────────────────
+nodeSelector: {}          # e.g. {environment: test}
+tolerations: []           # e.g. [{key: dedicated, operator: Equal, value: web, effect: NoSchedule}]
+affinity: {}              # Kubernetes affinity (nodeAffinity / podAffinity / podAntiAffinity)
+nodeSelectorKey: env      # legacy: label key when nodeSelector is a plain string (e.g. "prod")
 
 # -------------------------------------------------------
 # Route

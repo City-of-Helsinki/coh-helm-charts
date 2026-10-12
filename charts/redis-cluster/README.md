@@ -1,7 +1,7 @@
 # Redis Sentinel Helm Chart
 
-![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-blue)
-![AppVersion: 7.0](https://img.shields.io/badge/appVersion-7.0-blue)
+![Version: 1.1.0](https://img.shields.io/badge/version-1.1.0-blue)
+![AppVersion: 7.2.11](https://img.shields.io/badge/appVersion-7.2.11-blue)
 
 A production-ready Helm chart for deploying highly available Redis clusters with Sentinel for automatic failover in Kubernetes and OpenShift.
 
@@ -25,17 +25,17 @@ A production-ready Helm chart for deploying highly available Redis clusters with
 
 ```bash
 # Add Helm repository
-helm repo add redis-cluster https://github.com/City-of-Helsinki/coh-helm-charts
+helm repo add coh https://city-of-helsinki.github.io/coh-helm-repo
 helm repo update
 
 # Install the chart
-helm install my-redis redis-cluster/redis-cluster
+helm install my-redis coh/redis-cluster
 ```
 
 ### Install with Custom Password
 
 ```bash
-helm install my-redis redis-cluster/redis-cluster \
+helm install my-redis coh/redis-cluster \
   --set redis.password.password=mySecurePassword123
 ```
 
@@ -141,7 +141,7 @@ Modify Redis or Sentinel configuration without reinstalling.
 
 ```bash
 # Update Redis memory limit
-helm upgrade my-redis redis-cluster/redis-cluster \
+helm upgrade my-redis coh/redis-cluster \
   --set redis.config.maxmemory=2gb \
   --reuse-values
 ```
@@ -159,9 +159,10 @@ helm upgrade my-redis redis-cluster/redis-cluster \
 | `podSecurityContext.runAsGroup` | Group ID for pod | `""` |
 | `podSecurityContext.fsGroup` | FS group for pod | `""` |
 | `podSecurityContext.fsGroupChangePolicy` | FS group change policy | `""` |
-| `nodeSelector` | Node labels | `{}` |
-| `tolerations` | Tolerations | `[]` |
-| `affinity.enabled` | Enable pod anti-affinity | `true` |
+| `nodeSelector` | Node labels (map); empty = any node, falls back to `global.nodeSelector` | `{}` |
+| `tolerations` | Tolerations; falls back to `global.tolerations` | `[]` |
+| `affinity` | Kubernetes affinity map; replaces the built-in anti-affinity. Legacy `affinity.enabled` still works | `{}` |
+| `podAntiAffinity.enabled` | Built-in soft anti-affinity (spread pods over nodes) when `affinity` is empty | `true` |
 
 ---
 
@@ -374,13 +375,13 @@ Upgrade the Helm release to apply configuration changes or update to a new chart
 
 ```bash
 # Upgrade with new values file
-helm upgrade my-redis redis-cluster/redis-cluster -f new-values.yaml
+helm upgrade my-redis coh/redis-cluster -f new-values.yaml
 
 # Upgrade to specific chart version
-helm upgrade my-redis redis-cluster/redis-cluster --version 1.1.0
+helm upgrade my-redis coh/redis-cluster --version 1.1.0
 
 # Upgrade single parameter
-helm upgrade my-redis redis-cluster/redis-cluster \
+helm upgrade my-redis coh/redis-cluster \
   --set redis.resources.limits.memory=1Gi \
   --reuse-values
 ```
@@ -456,12 +457,12 @@ Increase detection timeouts, verify resource allocation, and check network stabi
 oc logs my-redis-sentinel-0 | grep -i failover
 
 # Increase timeout
-helm upgrade my-redis redis-sentinel/redis-sentinel \
+helm upgrade my-redis coh/redis-cluster \
   --set sentinel.config.downAfterMilliseconds=10000 \
   --reuse-values
 
 # Increase resources
-helm upgrade my-redis redis-sentinel/redis-sentinel \
+helm upgrade my-redis coh/redis-cluster \
   --set redis.resources.limits.memory=2Gi \
   --reuse-values
 ```
@@ -532,8 +533,40 @@ Solutions: scale up replica resources, increase network bandwidth, reduce write 
 
 Contributions are welcome! Please fork the repository, create a feature branch, make your changes, and submit a pull request.
 
+## Images per region
+
+| Image | Sweden Central | West Europe |
+|---|---|---|
+| redis | `registry.redhat.io/rhel9/redis-7:9.7-1771417604` | same |
+| sentinel | same as `redis.image` (unless `sentinel.image` is set) | same |
+| Pull secret | none in the chart: OpenShift's cluster pull secret covers `registry.redhat.io` | same |
+
+The Red Hat image sets its own `registry`, so `global.imageRegistry` does not change it; both
+regions pull the same image. The tag is pinned in
+`pipeline-templates/common/helm-values/images/redis-cluster.yaml`.
+
+How the region is chosen: platform deployments (Azure DevOps, `pipeline-templates`) load
+`common/helm-values/region-<se|we>.yaml` (sets `global.imageRegistry` / `global.imagePullSecrets`),
+then `common/helm-values/images/<chart>.yaml` (repository + tag, single source of truth) and, for
+West Europe only, `common/helm-values/images/we/<chart>.yaml` (legacy paths and pull secrets).
+The region follows the service connection name: `*-se` = Sweden Central, anything else = West Europe.
+Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sweden Central images.
+
 ---
 ## Changelog
+
+### 1.1.0
+* `affinity` is now a regular Kubernetes affinity map. The built-in soft anti-affinity is
+  still on by default (`podAntiAffinity.enabled: true`) and is used when `affinity` is empty;
+  the old `affinity: {enabled: true|false}` switch keeps working.
+* `redis.image` / `sentinel.image` as a map (`registry` / `repository` / `tag` / `digest`); a
+  full reference string still works.
+* Images: no registry hostnames in the templates any more. `global.imageRegistry`
+  (default `image-registry.int.platta.hel.fi`, set per region by pipeline-templates),
+  `global.imagePullSecrets`, and per image `registry` / `repository` / `tag` / `digest`.
+* Pod scheduling: the same `nodeSelector` / `tolerations` / `affinity` keys as every coh chart,
+  empty by default (any worker node), falling back to `global.*`.
+* CI runs on the Sweden Central cluster (namespace `devops-toolchain`).
 
 ### Version 1.0.0
 * Initial release with Redis 7.0 support

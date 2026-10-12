@@ -1,6 +1,8 @@
 name: "PR: nginx-standard"
 
 on:
+  # Manual run (Actions -> this workflow -> Run workflow) tests the chart without a PR.
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
@@ -10,6 +12,7 @@ on:
       - '.github/scripts/test-nginx-standard-usecase.sh'
       - '.github/scripts/gixy-helm.sh'
       - '.github/scripts/ci-elasticsearch.sh'
+      - '.github/scripts/ci-eck.sh'
       - '.github/scripts/ci-nginx-deploy.sh'
       - '.github/scripts/ci-nginx-e2e.sh'
       - '.github/actions/**'
@@ -19,7 +22,7 @@ on:
 
 # New pushes to the same PR cancel the previous run (its cleanup step still runs).
 concurrency:
-  group: pr-nginx-standard-${{ github.event.pull_request.number }}
+  group: pr-nginx-standard-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -29,5 +32,5 @@ jobs:
   ci:
     uses: ./.github/workflows/ci-nginx-standard.yaml
     with:
-      run-id: pr-${{ github.event.pull_request.number }}
+      run-id: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('manual-{0}', github.run_number) }}
     secrets: inherit

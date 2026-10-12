@@ -64,8 +64,12 @@ This separation means:
 
 - Helm 3.x
 - OpenShift CLI (`oc`) or `kubectl`
-- Image `container-registry.platta-net.hel.fi/hki-kanslia-helfi-etusivu/helfi-proxy-nginx` built and pushed
-- `quay-secret-new` pull secret present in target namespace
+- Image built by the `devops-toolchain/helfi-proxy-nginx` repository (Dockerfile + error pages)
+  and pushed to both registries:
+  - Sweden Central: `image-registry.int.platta.hel.fi/hki-platta-components/helfi-proxy-nginx`
+    (public repository, no pull secret needed) - the chart default
+  - West Europe: `container-registry.platta-net.hel.fi/devops-toolchain/helfi-proxy-nginx`
+    (pull secret `quay-secret-new`, set by pipeline-templates)
 
 ---
 
@@ -83,7 +87,10 @@ This separation means:
 | `image.repository` | Image repository | `hki-platta-components/helfi-proxy-nginx` |
 | `image.tag` | Image tag | `latest` |
 | `image.digest` | Optional digest, wins over tag | `""` |
-| `nodeSelector` | OpenShift node selector value (`devtest` / `stg` / `prod`) | `devtest` |
+| `nodeSelector` | Node labels as a map (e.g. `{environment: test}`), or a legacy string value for `<nodeSelectorKey>` (e.g. `prod`). Empty = any node | `{}` |
+| `nodeSelectorKey` | Label key for the string form only | `env` |
+| `tolerations` | Pod tolerations; empty falls back to `global.tolerations` | `[]` |
+| `affinity` | Kubernetes affinity; empty falls back to `global.affinity` | `{}` |
 | `route.enabled` | Create OpenShift route | `true` |
 | `route.host` | Public hostname for the route | `""` |
 | `route.tls.enabled` | Enable TLS on route | `true` |
@@ -212,7 +219,7 @@ Covered sections: etusivu, asuminen, kasvatus-koulutus, kuva, liikenne, rekry, s
 
 ---
 
-## Environment comparison
+## Environment comparison (West Europe)
 
 | | test | staging | prod |
 |---|---|---|---|
@@ -220,10 +227,13 @@ Covered sections: etusivu, asuminen, kasvatus-koulutus, kuva, liikenne, rekry, s
 | Cluster | devtest | stageprod | stageprod |
 | OpenShift IP | `10.235.227.132` | `10.235.230.132` | `10.235.230.132` |
 | X-Forwarded-Host | `$host` | `$host` | `$xfh` (geo block) |
-| Node selector | `devtest` | `stg` | `prod` |
+| Node selector (`env=`, West Europe only) | `devtest` | `stg` | `prod` |
 | Namespace | `hki-kanslia-helfi-etusivu-test` | `hki-kanslia-helfi-etusivu-staging` | `hki-kanslia-helfi-etusivu-prod` |
 | Redirections enabled | `false` | `false` | `true` |
 | Rate limiting (`csp_report`) | `true` | `true` | `true` |
+
+> Sweden Central nodes are labelled `environment=dev|test|...`, not `env=...`. Leave
+> `nodeSelector` empty there (any worker) or use the map form, e.g. `{environment: test}`.
 
 ---
 
@@ -240,3 +250,42 @@ Check revision history:
 ```bash
 helm history helfi-nginx -n <namespace>
 ```
+
+## Images per region
+
+| Image | Sweden Central | West Europe |
+|---|---|---|
+| nginx (receiver / dispatcher) | `image-registry.int.platta.hel.fi/hki-platta-components/helfi-proxy-nginx:latest` | `container-registry.platta-net.hel.fi/devops-toolchain/helfi-proxy-nginx:latest` |
+| Pull secret | none (public repository) | `quay-secret-new` |
+
+Built from the `devops-toolchain/helfi-proxy-nginx` repository (Red Hat `ubi9/nginx-126` + error
+pages) and pushed to both registries; every build is tagged `build-<BuildId>` and promoted to `latest`.
+The West Europe path applies once `pipeline-templates/common/helm-values/images/we/helfi-proxy-nginx.yaml`
+points at `devops-toolchain/helfi-proxy-nginx` (older West Europe deployments used
+`hki-kanslia-helfi-etusivu/helfi-proxy-nginx`).
+
+How the region is chosen: platform deployments (Azure DevOps, `pipeline-templates`) load
+`common/helm-values/region-<se|we>.yaml` (sets `global.imageRegistry` / `global.imagePullSecrets`),
+then `common/helm-values/images/<chart>.yaml` (repository + tag, single source of truth) and, for
+West Europe only, `common/helm-values/images/we/<chart>.yaml` (legacy paths and pull secrets).
+The region follows the service connection name: `*-se` = Sweden Central, anything else = West Europe.
+Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sweden Central images.
+
+---
+
+## Changelog
+
+### 1.1.0
+* **Behaviour change:** the default `nodeSelector: devtest` is gone - pods may run on any
+  worker unless a values file sets `nodeSelector`. A plain string (`nodeSelector: prod`)
+  still renders `env: prod`; a map (`{environment: test}`) is used as-is.
+* New `tolerations` and `affinity` values.
+* Default image `hki-platta-components/helfi-proxy-nginx:latest` (source moved to the
+  `devops-toolchain/helfi-proxy-nginx` repository).
+* Images: no registry hostnames in the templates any more. `global.imageRegistry`
+  (default `image-registry.int.platta.hel.fi`, set per region by pipeline-templates),
+  `global.imagePullSecrets`, and per image `registry` / `repository` / `tag` / `digest`.
+* Pod scheduling: the same `nodeSelector` / `tolerations` / `affinity` keys as every coh chart,
+  empty by default (any worker node), falling back to `global.*`.
+* CI runs on the Sweden Central cluster (namespace `devops-toolchain`).
+

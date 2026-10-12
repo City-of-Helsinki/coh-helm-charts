@@ -7,7 +7,7 @@
 type: dispatcher
 
 replicaCount: 2
-nodeSelector: devtest
+nodeSelector: {}        # any node; e.g. {environment: test} to pin
 
 route:
   host: www.test.hel.ninja

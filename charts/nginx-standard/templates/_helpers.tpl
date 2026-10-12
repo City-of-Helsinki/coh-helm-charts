@@ -900,3 +900,32 @@ location / {
 }
 {{- include "nginx-standard.healthCheckLocations" . }}
 {{- end }}
+{{/*
+Pod scheduling - the same contract in every coh chart:
+  nodeSelector  map of node labels        (default {} = any node)
+  tolerations   list of tolerations       (default [])
+  affinity      Kubernetes affinity map   (default {})
+Empty chart values fall back to global.nodeSelector / global.tolerations / global.affinity,
+so a platform pipeline can set a default per region or cluster.
+Legacy: nginx.nodeSelector / nginx.tolerations / nginx.affinity still work and win.
+*/}}
+{{- define "nginx-standard.scheduling" -}}
+{{- $v := .Values -}}
+{{- $g := $v.global | default dict -}}
+{{- $n := $v.nginx | default dict -}}
+{{- $ns := $n.nodeSelector | default $v.nodeSelector | default $g.nodeSelector -}}
+{{- $tol := $n.tolerations | default $v.tolerations | default $g.tolerations -}}
+{{- $aff := $n.affinity | default $v.affinity | default $g.affinity -}}
+{{- with $ns }}
+nodeSelector:
+{{ toYaml . | indent 2 }}
+{{- end }}
+{{- with $tol }}
+tolerations:
+{{ toYaml . | indent 2 }}
+{{- end }}
+{{- with $aff }}
+affinity:
+{{ toYaml . | indent 2 }}
+{{- end }}
+{{- end -}}
