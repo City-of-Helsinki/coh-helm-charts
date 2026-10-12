@@ -43,13 +43,13 @@ resources:
     memory: 1Gi
 
 # -------------------------------------------------------
-# OpenShift node selector: <nodeSelectorKey>: <nodeSelector>
-#   West Europe    : env=devtest / stg / prod          (default)
-#   Sweden Central : environment=dev / test / ...      -> nodeSelectorKey: environment
-# Empty nodeSelector = no nodeSelector.
-# -------------------------------------------------------
-nodeSelectorKey: env
-nodeSelector: devtest
+# Node selector - empty by default: pods may run on any worker node.
+# Set it only if your environment needs pinning. Two forms:
+#   nodeSelector:                 # map: any node labels (recommended, e.g. Sweden Central)
+#     environment: test
+#   nodeSelector: prod            # string: legacy West Europe form -> <nodeSelectorKey>: prod
+nodeSelectorKey: env              # label key used by the string form only
+nodeSelector: {}
 
 # -------------------------------------------------------
 # Route

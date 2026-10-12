@@ -72,7 +72,6 @@ All integration tests run on the **Sweden Central** OpenShift cluster, in the ex
 | `GH_TOKEN` | **secret** | Push access to `coh-helm-repo` (release only, unchanged) |
 | `CI_NAMESPACE` | variable (optional) | Default `devops-toolchain` |
 | `CI_ROUTE_DOMAIN` | variable (optional) | Default `test-se.hel.ninja` (or `dev-se.hel.ninja`) |
-| `CI_NODE_ENV` | variable (optional) | `environment=` node label for helfi-proxy-nginx tests (`dev` or `test` on Sweden Central); unset = no nodeSelector |
 | `CI_ES_VERSION` | variable (optional) | Elasticsearch version for nginx-standard tests, default `8.15.3` |
 | `CI_ES_IMAGE` | variable (optional) | Elasticsearch image override (e.g. a mirror); default is ECK's |
 | `CI_ECK_VERSION` | variable (optional) | ECK operator version for nginx-standard tests, default `3.1.0` (must match the ECK CRDs on the cluster) |

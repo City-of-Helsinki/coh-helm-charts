@@ -151,3 +151,17 @@ imagePullSecrets:
 {{ toYaml $out | indent 2 }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+nodeSelector: map -> used as-is; non-empty string -> { <nodeSelectorKey>: <value> }; empty -> none
+*/}}
+{{- define "varnish-drupal.nodeSelector" -}}
+{{- $ns := .Values.nodeSelector -}}
+{{- if and (kindIs "map" $ns) $ns -}}
+nodeSelector:
+{{ toYaml $ns | indent 2 }}
+{{- else if and (not (kindIs "map" $ns)) $ns -}}
+nodeSelector:
+  {{ .Values.nodeSelectorKey | default "env" }}: {{ $ns | toString | quote }}
+{{- end -}}
+{{- end -}}

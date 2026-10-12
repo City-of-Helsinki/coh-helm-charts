@@ -6,7 +6,7 @@
 type: receiver
 
 replicaCount: 2
-nodeSelector: devtest
+nodeSelector: {}        # any node; e.g. {environment: test} to pin
 
 # ──────────────────────────────────────────────
 # Routing 

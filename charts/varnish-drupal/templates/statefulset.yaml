@@ -22,9 +22,8 @@ spec:
       annotations:
         checksum/config: {{ include "varnish-drupal/templates/configmap.yaml" . | sha256sum }}
     spec:
-      {{- if .Values.nodeSelector }}
-      nodeSelector:
-        env: {{ .Values.nodeSelector }}
+      {{- with (include "varnish-drupal.nodeSelector" .) }}
+      {{- . | nindent 6 }}
       {{- end }}
       {{- with (include "varnish-drupal.imagePullSecrets" .) }}
       {{- . | nindent 6 }}

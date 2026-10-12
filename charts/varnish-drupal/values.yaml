@@ -48,7 +48,13 @@ imagePullSecrets: []
 # Scaling & scheduling
 # ──────────────────────────────────────────────
 replicaCount: 2
-nodeSelector: ""
+# Node selector - empty by default: pods may run on any worker node.
+# Set it only if your environment needs pinning. Two forms:
+#   nodeSelector:                 # map: any node labels (recommended, e.g. Sweden Central)
+#     environment: test
+#   nodeSelector: prod            # string: legacy West Europe form -> <nodeSelectorKey>: prod
+nodeSelectorKey: env              # label key used by the string form only
+nodeSelector: {}
 revisionHistoryLimit: 3
 
 # ──────────────────────────────────────────────

@@ -68,7 +68,8 @@ helm uninstall my-varnish --namespace my-app
 | `fullnameOverride`     | `""`    | Override the full resource name entirely                                       |
 | `replicaCount`         | `2`     | Number of Varnish pods                                                         |
 | `revisionHistoryLimit` | `3`     | StatefulSet revision history to retain                                         |
-| `nodeSelector`         | `""`    | Value for the `env` node label (e.g. `prod`, `staging`)                        |
+| `nodeSelector`         | `{}`    | Node labels as a map (e.g. `{environment: test}`), or a legacy string for `<nodeSelectorKey>` (e.g. `prod`). Empty = any node |
+| `nodeSelectorKey`      | `env`   | Label key for the string form only |
 | `externalSecretName`   | `""`    | **Required.** Name of the Secret with `VARNISH_SECRET` and `VARNISH_PURGE_KEY` |
 
 ### Routing

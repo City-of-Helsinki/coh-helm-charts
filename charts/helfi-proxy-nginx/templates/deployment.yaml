@@ -29,9 +29,8 @@ spec:
       {{- with (include "helfi-proxy-nginx.imagePullSecrets" .) }}
       {{- . | nindent 6 }}
       {{- end }}
-      {{- if .Values.nodeSelector }}
-      nodeSelector:
-        {{ .Values.nodeSelectorKey | default "env" }}: {{ .Values.nodeSelector | quote }}
+      {{- with (include "helfi-proxy-nginx.nodeSelector" .) }}
+      {{- . | nindent 6 }}
       {{- end }}
       containers:
         - name: {{ include "helfi-proxy-nginx.fullname" . }}
