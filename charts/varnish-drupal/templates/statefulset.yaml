@@ -26,9 +26,8 @@ spec:
       nodeSelector:
         env: {{ .Values.nodeSelector }}
       {{- end }}
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+      {{- with (include "varnish-drupal.imagePullSecrets" .) }}
+      {{- . | nindent 6 }}
       {{- end }}
       restartPolicy: Always
       serviceAccountName: {{ include "varnish-drupal.serviceAccountName" . }}
@@ -53,7 +52,7 @@ spec:
       containers:
         # ── Varnish ──────────────────────────────────────────────
         - name: varnish
-          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          image: {{ include "varnish-drupal.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
             requests:
@@ -153,7 +152,7 @@ spec:
 
         # ── Access log sidecar ───────────────────────────────────
         - name: logger
-          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          image: {{ include "varnish-drupal.image" . | quote }}
           command:
             - sh
             - "-c"

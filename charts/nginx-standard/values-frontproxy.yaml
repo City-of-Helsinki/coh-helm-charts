@@ -1,15 +1,13 @@
 nginx:
   useCase: "front-proxy"
   replicaCount: 2
-  image:
-    full: 'container-registry.platta-net.hel.fi/devops/nginxinc/nginx-unprivileged:alpine-perl'
 
 frontProxy:
   enabled: true
   
   # --- 1a. PLAIN ENV VARIABLES  ---
   env:
-    HOST_PROXY: "https://elasticsearch-test-es-http.nginx-demo.svc.cluster.local:9200"
+    HOST_PROXY: "https://elasticsearch-test-es-http.devops-toolchain.svc.cluster.local:9200"
     HOST_EN: "en.example.com"
     HOST_SV: "sv.example.com"
 
@@ -61,7 +59,7 @@ frontProxy:
             if ($allowed = 0) {
               return 403 "blocked $remote_addr";
             }
-            proxy_pass https://elasticsearch-test-es-http.nginx-demo.svc.cluster.local:9200;
+            proxy_pass https://elasticsearch-test-es-http.devops-toolchain.svc.cluster.local:9200;
 
 observability:
   metrics:

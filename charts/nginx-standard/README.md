@@ -619,6 +619,8 @@ frontProxy:
 ```yaml
 global:
   namespace: ""  # Override release namespace
+  imageRegistry: "image-registry.int.platta.hel.fi"  # used by images without their own registry
+  imagePullSecrets: []                              # added to every pod
 
 nameOverride: ""  # Override chart name
 fullnameOverride: ""  # Override full resource names
@@ -631,11 +633,22 @@ nginx:
   useCase: "file-sharing"  # file-sharing | elastic-proxy | cache | front-proxy
   replicaCount: 2
   
+  # Defaults per use case (images without `registry` use global.imageRegistry)
+  images:
+    file-sharing:  { registry: registry.redhat.io, repository: rhel9/nginx-124, tag: latest }
+    cache:         { registry: registry.redhat.io, repository: rhel9/nginx-124, tag: latest }
+    elastic-proxy: { repository: mirrored-images/nginxinc/nginx-unprivileged, tag: alpine-perl }
+    front-proxy:   { repository: mirrored-images/nginxinc/nginx-unprivileged, tag: alpine-perl }
+
+  # Optional per-release override; each field overrides images.<useCase>
   image:
-    full: 'registry.redhat.io/rhel8/nginx-120:latest'
-    pullPolicy: "IfNotPresent"
-    pullSecrets:
-      - name: "quay-secret-new"
+    registry: ""
+    repository: ""
+    tag: ""
+    digest: ""
+    full: ""          # legacy full reference, wins over everything
+    pullPolicy: "Always"
+    pullSecrets: []   # merged with global.imagePullSecrets
   
   resources:
     requests:

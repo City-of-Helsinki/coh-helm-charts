@@ -110,3 +110,44 @@ Validate incompatible vcl flag combination.
 {{- fail "vcl.rootRedirect.target must be set when vcl.rootRedirect.enabled is true" }}
 {{- end }}
 {{- end }}
+
+{{/*
+Varnish image reference. No registry hostnames are hard-coded here.
+  image.registry   -> optional, falls back to global.imageRegistry
+  image.repository -> required. Legacy values that still include the registry host
+                      (e.g. "container-registry.platta-net.hel.fi/devops-toolchain/x") are
+                      detected and used as-is, so global.imageRegistry is not prepended twice.
+  image.digest     -> optional, wins over tag
+*/}}
+{{- define "varnish-drupal.image" -}}
+{{- $img := .Values.image -}}
+{{- $global := .Values.global | default dict -}}
+{{- $repo := required "image.repository is required" $img.repository -}}
+{{- $registry := $img.registry | default $global.imageRegistry | default "" | trimSuffix "/" -}}
+{{- /* Backwards compatibility: repository already starts with a registry host (contains "." or ":" before first "/") */ -}}
+{{- $first := first (splitList "/" $repo) -}}
+{{- if and (not $img.registry) (or (contains "." $first) (contains ":" $first)) (gt (len (splitList "/" $repo)) 1) -}}
+{{- $registry = "" -}}
+{{- end -}}
+{{- $ref := ternary (printf "%s/%s" $registry $repo) $repo (ne $registry "") -}}
+{{- if $img.digest -}}
+{{- printf "%s@%s" $ref $img.digest -}}
+{{- else -}}
+{{- printf "%s:%s" $ref (toString (required "image.tag is required" $img.tag)) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+imagePullSecrets = global.imagePullSecrets + imagePullSecrets (deduplicated)
+*/}}
+{{- define "varnish-drupal.imagePullSecrets" -}}
+{{- $out := list -}}
+{{- range (concat ((.Values.global).imagePullSecrets | default list) (.Values.imagePullSecrets | default list)) -}}
+{{- $out = append $out (ternary (dict "name" .) . (kindIs "string" .)) -}}
+{{- end -}}
+{{- $out = uniq $out -}}
+{{- if $out -}}
+imagePullSecrets:
+{{ toYaml $out | indent 2 }}
+{{- end -}}
+{{- end -}}

@@ -1,0 +1,158 @@
+name: "CI: nginx-standard"
+
+# Reusable: lint + integration tests for charts/nginx-standard.
+# Called by pr-nginx-standard.yaml and release-nginx-standard.yaml so a PR is
+# tested exactly like a release.
+on:
+  workflow_call:
+    inputs:
+      run-id:
+        description: Unique suffix for this run's objects in the shared namespace (pr-<n> or rel)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CHART: charts/nginx-standard
+
+jobs:
+  lint:
+    name: lint (${{ matrix.use-case }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        use-case: [filesharing, elasticproxy, cache, frontproxy]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+        with:
+          gixy: "true"
+
+      - name: helm lint
+        if: matrix.use-case == 'filesharing'   # chart-level checks once, not per use case
+        run: helm lint "$CHART"
+
+      - name: Unit tests
+        if: matrix.use-case == 'filesharing'
+        run: helm unittest "$CHART"
+
+      - name: Render, kubeconform, nginx syntax, gixy, use-case checks
+        run: bash .github/scripts/test-nginx-standard-usecase.sh "${{ matrix.use-case }}"
+
+  integration:
+    name: integration (OpenShift)
+    needs: lint
+    # Fork PRs have no access to the cluster secrets
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: ci-nginx-standard-${{ inputs.run-id }}
+      cancel-in-progress: false
+    env:
+      NS: ${{ vars.CI_NAMESPACE || 'devops-toolchain' }}
+      CI_DOMAIN: ${{ vars.CI_ROUTE_DOMAIN || 'test-se.hel.ninja' }}
+      RUN: ci-nginx-${{ inputs.run-id }}
+      ES_NAME: ci-nginx-${{ inputs.run-id }}-es
+      ES_SECRET: ci-nginx-${{ inputs.run-id }}-es-es-elastic-user
+      ES_VERSION: ${{ vars.CI_ES_VERSION || '8.15.3' }}
+      ES_IMAGE: ${{ vars.CI_ES_IMAGE }}
+      ECK_VERSION: ${{ vars.CI_ECK_VERSION || '3.1.0' }}
+      ECK_OPERATOR_REPOSITORY: ${{ vars.CI_ECK_OPERATOR_REPOSITORY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+        with:
+          kubeconform: "false"
+          unittest: "false"
+          oc: "true"
+      - uses: ./.github/actions/openshift-login
+        with:
+          server: ${{ vars.OPENSHIFT_SE_SERVER }}
+          token: ${{ secrets.OPENSHIFT_SE_TOKEN }}
+          namespace: ${{ env.NS }}
+
+      - name: Clean up leftovers from earlier runs
+        run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"
+
+      - name: Create Elasticsearch (ECK) for this run
+        # Creates the Elasticsearch resource, starts the namespace-scoped ECK operator in
+        # $NS if it is not running yet (.github/scripts/ci-eck.sh), and returns once ECK has
+        # created the service + elastic-user secret; Elasticsearch keeps starting in the background.
+        run: bash .github/scripts/ci-elasticsearch.sh create "$NS" "$ES_NAME"
+
+      - name: Render CI values for this run
+        # values-*.yaml reference elasticsearch-test-es-* in devops-toolchain and
+        # *.test-se.hel.ninja; point them at this run's Elasticsearch, namespace and hosts.
+        # front-proxy: allow 127.0.0.2 in the geo allow-list so the e2e test can exercise
+        # both the blocked and the allowed path without depending on the pod network range.
+        run: |
+          mkdir -p ci-values
+          for uc in filesharing elasticproxy cache frontproxy; do
+            sed -e "s/elasticsearch-test-es-/${ES_NAME}-es-/g" \
+                -e "s/\.devops-toolchain\.svc/.${NS}.svc/g" \
+                -e "s/test-elastic-proxy-api\.test-se\.hel\.ninja/${RUN}-elasticproxy-api.${CI_DOMAIN}/g" \
+                -e "s/test-elastic-proxy\.test-se\.hel\.ninja/${RUN}-elasticproxy.${CI_DOMAIN}/g" \
+                -e "s/test-fileshare\.test-se\.hel\.ninja/${RUN}-filesharing.${CI_DOMAIN}/g" \
+                "$CHART/values-${uc}.yaml" > "ci-values/${uc}.yaml"
+          done
+          sed -i '/^        default 0;$/a\        127.0.0.2/32 1;   # CI e2e: allowed test client' ci-values/frontproxy.yaml
+          grep -q '127.0.0.2/32 1;' ci-values/frontproxy.yaml || { echo "::error::could not add CI client to the front-proxy geo allow-list"; exit 1; }
+          grep -h "es-http\|es-elastic-user\|host:\|127.0.0.2" ci-values/*.yaml | sort -u
+
+      - name: Deploy filesharing, cache, front-proxy (do not wait for Elasticsearch)
+        run: bash .github/scripts/ci-nginx-deploy.sh "$NS" "$RUN" filesharing cache frontproxy
+
+      # Each e2e step runs on its own so one failing use case never hides the others
+      - name: "e2e: filesharing"
+        if: ${{ !cancelled() }}
+        run: bash .github/scripts/ci-nginx-e2e.sh filesharing "$NS" "${RUN}-filesharing" "${RUN}-filesharing.${CI_DOMAIN}"
+
+      - name: Wait for Elasticsearch and seed test data
+        id: es
+        if: ${{ !cancelled() }}
+        run: bash .github/scripts/ci-elasticsearch.sh wait "$NS" "$ES_NAME"
+
+      - name: Deploy elastic-proxy
+        id: deploy_ep
+        if: ${{ !cancelled() && steps.es.outcome == 'success' }}
+        run: bash .github/scripts/ci-nginx-deploy.sh "$NS" "$RUN" elasticproxy
+
+      - name: "e2e: cache"
+        if: ${{ !cancelled() && steps.es.outcome == 'success' }}
+        run: bash .github/scripts/ci-nginx-e2e.sh cache "$NS" "${RUN}-cache"
+
+      - name: "e2e: front-proxy"
+        if: ${{ !cancelled() && steps.es.outcome == 'success' }}
+        run: bash .github/scripts/ci-nginx-e2e.sh frontproxy "$NS" "${RUN}-frontproxy"
+
+      - name: "e2e: elastic-proxy"
+        if: ${{ !cancelled() && steps.deploy_ep.outcome == 'success' }}
+        run: bash .github/scripts/ci-nginx-e2e.sh elasticproxy "$NS" "${RUN}-elasticproxy" "${RUN}-elasticproxy.${CI_DOMAIN}"
+
+      - name: Deployment summary
+        if: always()
+        run: oc get elasticsearch,deploy,sts,pods,svc,route -n "$NS" -o wide 2>/dev/null | grep -E "NAME|${RUN}" || true
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          for inst in $(oc get pods -n "$NS" -o jsonpath='{range .items[*]}{.metadata.labels.app\.kubernetes\.io/instance}{"\n"}{end}' | grep "^${RUN}" | sort -u); do
+            for POD in $(oc get pods -n "$NS" -l "app.kubernetes.io/instance=$inst" -o name); do
+              echo "::group::$POD"
+              oc logs -n "$NS" "$POD" --all-containers --tail=100 || true
+              oc describe -n "$NS" "$POD" | tail -30 || true
+              echo "::endgroup::"
+            done
+          done
+
+      - name: Clean up (all objects incl. Elasticsearch)
+        if: always()
+        run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"
+
+      - name: Remove the ECK operator (unless another run still uses it)
+        if: always()
+        run: bash .github/scripts/ci-eck.sh release "$NS"

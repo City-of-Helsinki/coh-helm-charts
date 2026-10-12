@@ -12,7 +12,7 @@ elasticProxy:
     passwordKey: "elastic"                      
   
   upstream:
-    url: "https://elasticsearch-test-es-http.nginx-demo.svc.cluster.local:9200" # ELASTICSEARCH_URL env var
+    url: "https://elasticsearch-test-es-http.devops-toolchain.svc.cluster.local:9200" # ELASTICSEARCH_URL env var
 
 # ============================================================================
 # OPENSHIFT ROUTE CONFIGURATION 
@@ -21,8 +21,8 @@ routes:
   enabled: true
   items:
     - nameSuffix: "" # Creates a route named: {{ .Release.Name }}-nginx-standard
-      host: "test-elastic-proxy.apps.arodevtest.hel.fi"
+      host: "test-elastic-proxy.test-se.hel.ninja"
       path: ""
     - nameSuffix: "-internal" # Creates a route named: {{ .Release.Name }}-nginx-standard-internal
-      host: "test-elastic-proxy.api.hel.ninja"
+      host: "test-elastic-proxy-api.test-se.hel.ninja"
       path: "/internal"

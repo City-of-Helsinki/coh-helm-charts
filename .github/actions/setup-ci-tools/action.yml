@@ -1,0 +1,62 @@
+name: Set up chart CI tools
+description: Installs pinned Helm plus optional kubeconform, yq, helm-unittest, gixy and the OpenShift CLI.
+inputs:
+  helm-version:
+    description: Helm version (keep in line with the Azure DevOps deploy pipelines)
+    default: "v3.19.2"
+  kubeconform:
+    default: "true"
+  yq:
+    default: "true"
+  unittest:
+    default: "true"
+  gixy:
+    default: "false"
+  oc:
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: azure/setup-helm@v4
+      with:
+        version: ${{ inputs.helm-version }}
+
+    - name: kubeconform
+      if: inputs.kubeconform == 'true'
+      shell: bash
+      run: |
+        curl -sSfL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+        sudo mv kubeconform /usr/local/bin/
+        kubeconform -v
+
+    - name: yq
+      if: inputs.yq == 'true'
+      shell: bash
+      run: |
+        sudo curl -sSfL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+        sudo chmod +x /usr/local/bin/yq
+        yq --version
+
+    - name: helm-unittest
+      if: inputs.unittest == 'true'
+      shell: bash
+      run: helm plugin install https://github.com/helm-unittest/helm-unittest --version v0.4.1
+
+    - name: Python (gixy)
+      if: inputs.gixy == 'true'
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: gixy
+      if: inputs.gixy == 'true'
+      shell: bash
+      run: pip install gixy-next==0.7.1
+
+    - name: OpenShift CLI
+      if: inputs.oc == 'true'
+      shell: bash
+      run: |
+        curl -sSfL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz | tar xz oc kubectl
+        sudo mv oc kubectl /usr/local/bin/
+        oc version --client

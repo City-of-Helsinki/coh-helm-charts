@@ -1,0 +1,91 @@
+name: "CI: mailpit-openshift"
+
+# Reusable: lint + integration tests for charts/mailpit-openshift.
+# Called by pr-mailpit-openshift.yaml and release-mailpit-openshift.yaml so a PR is tested exactly like a release.
+on:
+  workflow_call:
+    inputs:
+      run-id:
+        description: Unique suffix for this run's objects in the shared namespace (pr-<n> or rel)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CHART: charts/mailpit-openshift
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+
+      - name: Build chart dependencies (jouve/mailpit subchart)
+        run: helm dependency build "$CHART"
+
+      - name: helm lint + unit tests + kubeconform
+        run: |
+          set -euo pipefail
+          helm lint "$CHART"
+          if [ -d "$CHART/tests" ]; then helm unittest "$CHART"; fi
+          helm template "$CHART" | kubeconform -summary -skip Route,ExternalSecret
+
+  integration:
+    name: integration (OpenShift)
+    needs: lint
+    # Fork PRs have no access to the cluster secrets
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: ci-mailpit-openshift-${{ inputs.run-id }}
+      cancel-in-progress: false
+    env:
+      NS: ${{ vars.CI_NAMESPACE || 'devops-toolchain' }}
+      CI_DOMAIN: ${{ vars.CI_ROUTE_DOMAIN || 'test-se.hel.ninja' }}
+      RUN: ci-mailpit-${{ inputs.run-id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+        with:
+          kubeconform: "false"
+          unittest: "false"
+          oc: "true"
+      - uses: ./.github/actions/openshift-login
+        with:
+          server: ${{ vars.OPENSHIFT_SE_SERVER }}
+          token: ${{ secrets.OPENSHIFT_SE_TOKEN }}
+          namespace: ${{ env.NS }}
+
+      - name: Clean up leftovers from earlier runs
+        run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"
+
+      - name: Build chart dependencies
+        run: helm dependency build "$CHART"
+
+      - name: Deploy (UI auth from fixture secret ci-fixture-mailpit-ui-auth)
+        run: |
+          helm upgrade --install "$RUN" "$CHART" -n "$NS" \
+            --set route.host="${RUN}.${CI_DOMAIN}" \
+            --set existingSecret="ci-fixture-mailpit-ui-auth" \
+            --wait --timeout 5m
+
+      - name: Verify /readyz through the route
+        run: |
+          DEPLOYMENT=$(oc get deployment -n "$NS" -l "app.kubernetes.io/name=mailpit,app.kubernetes.io/instance=${RUN}" -o jsonpath='{.items[0].metadata.name}')
+          oc rollout status "deployment/${DEPLOYMENT}" -n "$NS" --timeout=3m
+          for _ in $(seq 1 12); do
+            STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "https://${RUN}.${CI_DOMAIN}/readyz" || true)
+            [ "$STATUS" = "200" ] && { echo "readyz -> 200"; exit 0; }
+            sleep 5
+          done
+          echo "::error::https://${RUN}.${CI_DOMAIN}/readyz -> $STATUS"
+          oc logs "deployment/${DEPLOYMENT}" -c mailpit -n "$NS" --tail=50 || true
+          exit 1
+
+      - name: Clean up (all objects)
+        if: always()
+        run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"

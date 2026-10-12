@@ -49,7 +49,7 @@ externalSecrets:
 routes:
   enabled: true
   items:
-    - host: "test-fileshare.test.hel.ninja"  # REQUIRED
+    - host: "test-fileshare.test-se.hel.ninja"  # REQUIRED
 
 observability:
   metrics:

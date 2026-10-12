@@ -26,10 +26,13 @@ spec:
         checksum/redirections: {{ include (print $.Template.BasePath "/configmap-redirections.yaml") . | sha256sum }}
         {{- end }}
     spec:
-      imagePullSecrets:
-        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- with (include "helfi-proxy-nginx.imagePullSecrets" .) }}
+      {{- . | nindent 6 }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
       nodeSelector:
         env: {{ .Values.nodeSelector }}
+      {{- end }}
       containers:
         - name: {{ include "helfi-proxy-nginx.fullname" . }}
           image: {{ include "helfi-proxy-nginx.image" . }}

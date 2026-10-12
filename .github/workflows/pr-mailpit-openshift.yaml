@@ -1,0 +1,28 @@
+name: "PR: mailpit-openshift"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'charts/mailpit-openshift/**'
+      - '.github/workflows/ci-mailpit-openshift.yaml'
+      - '.github/workflows/pr-mailpit-openshift.yaml'
+      - '.github/actions/**'
+      - '.github/ci/**'
+      - '.github/scripts/ci-cleanup.sh'
+      - '.github/scripts/ci-prepare-namespace.sh'
+
+# New pushes to the same PR cancel the previous run (its cleanup step still runs).
+concurrency:
+  group: pr-mailpit-openshift-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci-mailpit-openshift.yaml
+    with:
+      run-id: pr-${{ github.event.pull_request.number }}
+    secrets: inherit

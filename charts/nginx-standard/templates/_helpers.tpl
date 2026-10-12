@@ -99,25 +99,73 @@ Replica count (respects autoscaling)
 {{- end }}
 
 {{/*
-Image reference - Selects image based on use case
+Render an image reference from a structured image map.
+Input dict: { "image": <map|string>, "global": .Values.global }
+  - string           -> returned as-is (backwards compatible "full" reference)
+  - map.registry     -> optional; falls back to global.imageRegistry
+  - map.repository   -> required
+  - map.digest       -> optional; wins over tag (repo@sha256:...)
+  - map.tag          -> required when no digest
+No registry hostnames are hard-coded in templates; defaults live in values.yaml
+and the platform pipeline supplies region-specific overrides.
+*/}}
+{{- define "nginx-standard.imageRef" -}}
+{{- $img := .image -}}
+{{- $global := .global | default dict -}}
+{{- if kindIs "string" $img -}}
+{{- $img -}}
+{{- else -}}
+{{- $registry := $img.registry | default $global.imageRegistry | default "" | trimSuffix "/" -}}
+{{- $repo := required "image.repository is required" $img.repository -}}
+{{- $ref := ternary (printf "%s/%s" $registry $repo) $repo (ne $registry "") -}}
+{{- if $img.digest -}}
+{{- printf "%s@%s" $ref $img.digest -}}
+{{- else -}}
+{{- printf "%s:%s" $ref (toString (required (printf "image tag is required for %s" $repo) $img.tag)) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Main NGINX image - selected by use case.
+Precedence (highest first):
+  1. nginx.image.full                      (legacy full reference, still supported)
+  2. nginx.image.{registry,repository,tag,digest}  (per-release override, field by field)
+  3. nginx.images.<useCase>                (defaults per use case; set centrally by the pipeline)
 */}}
 {{- define "nginx-standard.image" -}}
 {{- $useCase := default "file-sharing" .Values.nginx.useCase -}}
-
-{{/* Check if there's a custom image specified in values */}}
 {{- if .Values.nginx.image.full -}}
 {{- .Values.nginx.image.full -}}
 {{- else -}}
-  {{/* Default images for each use case */}}
-  {{- if eq $useCase "file-sharing" -}}
-registry.redhat.io/rhel9/nginx-124:latest
-  {{- else if eq $useCase "elastic-proxy" -}}
-container-registry.platta-net.hel.fi/devops/nginxinc/nginx-unprivileged:alpine-perl
-  {{- else if eq $useCase "cache" -}}
-registry.redhat.io/rhel9/nginx-124:latest
-  {{- else if eq $useCase "front-proxy" -}}
-container-registry.platta-net.hel.fi/devops/nginxinc/nginx-unprivileged:alpine-perl
-  {{- end -}}
+{{- $base := index (.Values.nginx.images | default dict) $useCase | default dict -}}
+{{- $o := .Values.nginx.image -}}
+{{- $img := dict
+      "registry"   ($o.registry   | default $base.registry)
+      "repository" ($o.repository | default $base.repository)
+      "tag"        ($o.tag        | default $base.tag)
+      "digest"     ($o.digest     | default $base.digest) -}}
+{{- if not $img.repository -}}
+{{- fail (printf "no image configured for useCase %q: set nginx.images.%s or nginx.image.*" $useCase $useCase) -}}
+{{- end -}}
+{{- include "nginx-standard.imageRef" (dict "image" $img "global" .Values.global) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+imagePullSecrets = global.imagePullSecrets + nginx.image.pullSecrets (deduplicated).
+Accepts entries as {name: x} maps or plain strings.
+*/}}
+{{- define "nginx-standard.imagePullSecrets" -}}
+{{- $out := list -}}
+{{- range (concat ((.Values.global).imagePullSecrets | default list) (.Values.nginx.image.pullSecrets | default list)) -}}
+{{- $entry := ternary (dict "name" .) . (kindIs "string" .) -}}
+{{- $out = append $out $entry -}}
+{{- end -}}
+{{- $out = uniq $out -}}
+{{- if $out -}}
+imagePullSecrets:
+{{ toYaml $out | indent 2 }}
 {{- end -}}
 {{- end -}}
 

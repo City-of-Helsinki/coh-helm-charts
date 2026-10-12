@@ -100,8 +100,12 @@ service:
 
 | Key                | Default                                                                     | Description                                           |
 | ------------------ | --------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `image.repository` | `container-registry.platta-net.hel.fi/devops-toolchain/kube-httpcache-fork` | Image repository                                      |
-| `image.tag`        | `stable-3.0`                                                                | Image tag                                             |
+| `global.imageRegistry` | `image-registry.int.platta.hel.fi` | Registry for images without their own `registry` |
+| `global.imagePullSecrets` | `[]` | Pull secrets added to every pod |
+| `image.registry` | `""` | Registry override (empty = `global.imageRegistry`) |
+| `image.repository` | `hki-platta-components/kube-httpcache-fork` | Image repository (without registry) |
+| `image.tag`        | `stable-6.0` | Image tag |
+| `image.digest` | `""` | Optional digest, wins over tag |
 | `image.pullPolicy` | `Always`                                                                    | Pull policy                                           |
 | `imagePullSecrets` | `[]`                                                                        | List of pull secret names, e.g. `[{name: my-secret}]` |
 

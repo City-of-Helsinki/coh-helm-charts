@@ -92,26 +92,61 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Render an image reference.
+Input dict: { "image": <map|string>, "global": .Values.global }
+  - string (non-empty) -> returned as-is (backwards compatible full reference)
+  - map: registry (falls back to global.imageRegistry), repository, tag, digest (wins over tag)
+No registry hostnames are hard-coded here; defaults live in values.yaml.
+*/}}
+{{- define "redis-sentinel.imageRef" -}}
+{{- $img := .image -}}
+{{- $global := .global | default dict -}}
+{{- if kindIs "string" $img -}}
+{{- $img -}}
+{{- else -}}
+{{- $registry := $img.registry | default $global.imageRegistry | default "" | trimSuffix "/" -}}
+{{- $repo := required "image.repository is required" $img.repository -}}
+{{- $ref := ternary (printf "%s/%s" $registry $repo) $repo (ne $registry "") -}}
+{{- if $img.digest -}}
+{{- printf "%s@%s" $ref $img.digest -}}
+{{- else -}}
+{{- printf "%s:%s" $ref (toString (required (printf "image tag is required for %s" $repo) $img.tag)) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Get the Redis image
 */}}
 {{- define "redis-sentinel.redis.image" -}}
-{{- if .Values.redis.image -}}
-{{- .Values.redis.image -}}
-{{- else -}}
-registry.redhat.io/rhel9/redis-7:9.7-1771417604
-{{- end -}}
+{{- include "redis-sentinel.imageRef" (dict "image" .Values.redis.image "global" .Values.global) -}}
 {{- end }}
 
 {{/*
-Get the Sentinel image
+Get the Sentinel image (defaults to the Redis image when sentinel.image is empty)
 */}}
 {{- define "redis-sentinel.sentinel.image" -}}
-{{- if .Values.sentinel.image -}}
-{{- .Values.sentinel.image -}}
-{{- else -}}
-registry.redhat.io/rhel9/redis-7:9.7-1771417604
+{{- $img := .Values.sentinel.image -}}
+{{- if or (not $img) (and (kindIs "map" $img) (not $img.repository)) -}}
+{{- $img = .Values.redis.image -}}
 {{- end -}}
+{{- include "redis-sentinel.imageRef" (dict "image" $img "global" .Values.global) -}}
 {{- end }}
+
+{{/*
+imagePullSecrets from global.imagePullSecrets + imagePullSecrets (deduplicated)
+*/}}
+{{- define "redis-sentinel.imagePullSecrets" -}}
+{{- $out := list -}}
+{{- range (concat ((.Values.global).imagePullSecrets | default list) (.Values.imagePullSecrets | default list)) -}}
+{{- $out = append $out (ternary (dict "name" .) . (kindIs "string" .)) -}}
+{{- end -}}
+{{- $out = uniq $out -}}
+{{- if $out -}}
+imagePullSecrets:
+{{ toYaml $out | indent 2 }}
+{{- end -}}
+{{- end -}}
 
 {{/*
 Get the redis password secret
