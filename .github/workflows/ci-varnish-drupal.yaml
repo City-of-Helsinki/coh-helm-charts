@@ -60,11 +60,35 @@ jobs:
       - name: Clean up leftovers from earlier runs
         run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"
 
+      # Varnish compiles its VCL only if the backend host resolves. The old CI borrowed the
+      # "drupal" service of an app namespace; here each run gets its own stand-in Service
+      # (ClusterIP only, no pods - /varnishstatus is answered by Varnish itself).
+      - name: Create stand-in Drupal backend service
+        run: |
+          oc apply -n "$NS" -f - <<YAML
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: ${RUN}-drupal
+            labels:
+              app.kubernetes.io/instance: ${RUN}-drupal
+              app.kubernetes.io/part-of: helm-ci
+          spec:
+            selector:
+              app.kubernetes.io/instance: ${RUN}-drupal
+            ports:
+              - name: http
+                port: 8080
+                targetPort: 8080
+          YAML
+
       - name: Deploy (secrets from fixture ci-fixture-varnish-secret)
         run: |
           helm upgrade --install "$RUN" "$CHART" -n "$NS" \
             --set route.host="${RUN}.${CI_DOMAIN}" \
             --set externalSecretName="ci-fixture-varnish-secret" \
+            --set backend.host="${RUN}-drupal" \
+            --set backend.port=8080 \
             --set service.name="${RUN}" \
             --set service.headlessName="${RUN}-headless" \
             --set route.name="${RUN}" \
