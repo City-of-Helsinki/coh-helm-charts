@@ -46,6 +46,9 @@ Charts: `helfi-proxy-nginx`, `mailpit-openshift`, `nginx-standard`, `redis-clust
 Shared pieces: `.github/actions/setup-ci-tools` (pinned Helm v3.19.2, kubeconform, yq,
 helm-unittest, gixy, oc) and `.github/actions/openshift-login`.
 
+Every `pr-<chart>.yaml` can also be started by hand (Actions → *PR: <chart>* → **Run workflow**)
+to test a chart on `main` or any branch without opening a PR (run names `ci-<chart>-manual-<n>`).
+
 > Branch protection: status check names changed, e.g. `ci / lint` and
 > `ci / integration (OpenShift)`. Update required checks if you use them.
 
@@ -69,7 +72,7 @@ All integration tests run on the **Sweden Central** OpenShift cluster, in the ex
 | `GH_TOKEN` | **secret** | Push access to `coh-helm-repo` (release only, unchanged) |
 | `CI_NAMESPACE` | variable (optional) | Default `devops-toolchain` |
 | `CI_ROUTE_DOMAIN` | variable (optional) | Default `test-se.hel.ninja` (or `dev-se.hel.ninja`) |
-| `CI_NODE_ENV` | variable (optional) | `env=` node label for helfi-proxy-nginx tests, default `devtest`; empty = no nodeSelector |
+| `CI_NODE_ENV` | variable (optional) | `environment=` node label for helfi-proxy-nginx tests (`dev` or `test` on Sweden Central); unset = no nodeSelector |
 | `CI_ES_VERSION` | variable (optional) | Elasticsearch version for nginx-standard tests, default `8.15.3` |
 | `CI_ES_IMAGE` | variable (optional) | Elasticsearch image override (e.g. a mirror); default is ECK's |
 | `CI_ECK_VERSION` | variable (optional) | ECK operator version for nginx-standard tests, default `3.1.0` (must match the ECK CRDs on the cluster) |
@@ -92,8 +95,9 @@ The service account is `admin` of `devops-toolchain` only (no `oc new-project`, 
 elsewhere), plus the rights to run a namespace-scoped ECK operator there.
 
 > **Token scope.** Being admin of `devops-toolchain` means the token can also read the other
-> secrets in that namespace, e.g. the Quay push secrets used by the image builds. Stored it only
-> as this repository's secret (not an organisation secret), and  Fork PRs never get it.
+> secrets in that namespace, e.g. the Quay push secrets used by the image builds. Store it only
+> as this repository's secret (not an organisation secret), and remember that anyone who can
+> push a branch here can run a workflow that uses it. Fork PRs never get it.
 
 #### ECK operator (nginx-standard only)
 

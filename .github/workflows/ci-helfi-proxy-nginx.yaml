@@ -91,7 +91,8 @@ jobs:
         run: |
           helm upgrade --install "$RUN" "$CHART" -n "$NS" \
             -f "$CHART/values-test.yaml" \
-            --set nodeSelector="${{ vars.CI_NODE_ENV || 'devtest' }}" \
+            --set nodeSelectorKey=environment \
+            --set nodeSelector="${{ vars.CI_NODE_ENV }}" \
             --set route.host="${RUN}.${CI_DOMAIN}" \
             --wait --timeout 5m
 

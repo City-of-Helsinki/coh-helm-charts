@@ -1,6 +1,8 @@
 name: "PR: varnish-drupal"
 
 on:
+  # Manual run (Actions -> this workflow -> Run workflow) tests the chart without a PR.
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
@@ -14,7 +16,7 @@ on:
 
 # New pushes to the same PR cancel the previous run (its cleanup step still runs).
 concurrency:
-  group: pr-varnish-drupal-${{ github.event.pull_request.number }}
+  group: pr-varnish-drupal-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -24,5 +26,5 @@ jobs:
   ci:
     uses: ./.github/workflows/ci-varnish-drupal.yaml
     with:
-      run-id: pr-${{ github.event.pull_request.number }}
+      run-id: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('manual-{0}', github.run_number) }}
     secrets: inherit

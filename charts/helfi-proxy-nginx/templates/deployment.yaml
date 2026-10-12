@@ -31,7 +31,7 @@ spec:
       {{- end }}
       {{- if .Values.nodeSelector }}
       nodeSelector:
-        env: {{ .Values.nodeSelector }}
+        {{ .Values.nodeSelectorKey | default "env" }}: {{ .Values.nodeSelector | quote }}
       {{- end }}
       containers:
         - name: {{ include "helfi-proxy-nginx.fullname" . }}

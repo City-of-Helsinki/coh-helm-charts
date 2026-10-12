@@ -83,7 +83,8 @@ This separation means:
 | `image.repository` | Image repository | `hki-platta-components/helfi-proxy-nginx` |
 | `image.tag` | Image tag | `latest` |
 | `image.digest` | Optional digest, wins over tag | `""` |
-| `nodeSelector` | OpenShift node selector value (`devtest` / `stg` / `prod`) | `devtest` |
+| `nodeSelectorKey` | Node label key (`env` in West Europe, `environment` in Sweden Central) | `env` |
+| `nodeSelector` | Node label value (WE `devtest` / `stg` / `prod`, SE e.g. `dev` / `test`); empty = none | `devtest` |
 | `route.enabled` | Create OpenShift route | `true` |
 | `route.host` | Public hostname for the route | `""` |
 | `route.tls.enabled` | Enable TLS on route | `true` |

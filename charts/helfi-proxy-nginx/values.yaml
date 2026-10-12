@@ -43,9 +43,12 @@ resources:
     memory: 1Gi
 
 # -------------------------------------------------------
-# OpenShift node selector
-# devtest / stg / prod
+# OpenShift node selector: <nodeSelectorKey>: <nodeSelector>
+#   West Europe    : env=devtest / stg / prod          (default)
+#   Sweden Central : environment=dev / test / ...      -> nodeSelectorKey: environment
+# Empty nodeSelector = no nodeSelector.
 # -------------------------------------------------------
+nodeSelectorKey: env
 nodeSelector: devtest
 
 # -------------------------------------------------------
