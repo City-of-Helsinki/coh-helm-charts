@@ -3,6 +3,11 @@
 # ==============================================================================
 global:
   namespace: ""  # Override release namespace (leave empty to use release namespace)
+  # Registry prepended to any image that does not set its own `registry`.
+  # The platform pipeline overrides this per region (see pipeline-templates/common/helm-values/region-*.yaml).
+  imageRegistry: "image-registry.int.platta.hel.fi"
+  # Pull secrets added to every pod (merged with nginx.image.pullSecrets).
+  imagePullSecrets: []
 
 # Chart naming overrides
 nameOverride: ""  # Override chart name
@@ -26,13 +31,35 @@ nginx:
   # Number of pod replicas (ignored if autoscaling.enabled is true)
   replicaCount: 2
   
-  # Container image configuration
+  # Default image per use case. Images without `registry` use global.imageRegistry.
+  # Tags are managed centrally in pipeline-templates/common/helm-values/images/nginx-standard.yaml;
+  # the values below are only fallbacks for running the chart on its own.
+  images:
+    file-sharing:
+      registry: "registry.redhat.io"          # public
+      repository: "rhel9/nginx-124"
+      tag: "latest"
+    cache:
+      registry: "registry.redhat.io"          # public
+      repository: "rhel9/nginx-124"
+      tag: "latest"
+    elastic-proxy:
+      repository: "mirrored-images/nginxinc/nginx-unprivileged"
+      tag: "alpine-perl"
+    front-proxy:
+      repository: "mirrored-images/nginxinc/nginx-unprivileged"
+      tag: "alpine-perl"
+
+  # Per-release image override (each field optional, overrides nginx.images.<useCase>)
   image:
-    # Full image reference including registry, repository, and tag
+    registry: ""
+    repository: ""
+    tag: ""
+    digest: ""      # e.g. sha256:...; wins over tag
+    # Legacy: full image reference (registry/repo:tag). Wins over everything above.
     full: ''
     pullPolicy: "Always"
-    pullSecrets: 
-      - name: "quay-secret-new"
+    pullSecrets: []
   
   # Pod scheduling configuration
   nodeSelector: {}

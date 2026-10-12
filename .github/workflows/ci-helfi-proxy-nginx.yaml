@@ -1,0 +1,112 @@
+name: "CI: helfi-proxy-nginx"
+
+# Reusable: lint + integration tests for charts/helfi-proxy-nginx.
+# Called by pr-helfi-proxy-nginx.yaml and release-helfi-proxy-nginx.yaml so a PR is tested exactly like a release.
+on:
+  workflow_call:
+    inputs:
+      run-id:
+        description: Unique suffix for this run's objects in the shared namespace (pr-<n> or rel)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CHART: charts/helfi-proxy-nginx
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+        with:
+          gixy: "true"
+
+      - name: helm lint + unit tests
+        run: |
+          helm lint "$CHART"
+          if [ -d "$CHART/tests" ]; then helm unittest "$CHART"; fi
+
+      - name: kubeconform (receiver, dispatcher, receiver + rate limiting)
+        run: |
+          set -euo pipefail
+          helm template "$CHART" -f "$CHART/values-test.yaml" | kubeconform -summary -skip Route
+          helm template "$CHART" -f "$CHART/values-dispatcher-test.yaml" | kubeconform -summary -skip Route
+          helm template "$CHART" -f "$CHART/values-test.yaml" -f "$CHART/values-ratelimit-test.yaml" | kubeconform -summary -skip Route
+
+      - name: gixy security scan (all scenarios)
+        run: |
+          declare -A SCENARIOS=(
+            [receiver]="-f $CHART/values-test.yaml"
+            [receiver-ratelimit]="-f $CHART/values-test.yaml -f $CHART/values-ratelimit-test.yaml"
+            [dispatcher]="-f $CHART/values-dispatcher-test.yaml"
+          )
+          FAIL=0
+          for name in receiver receiver-ratelimit dispatcher; do
+            echo "::group::gixy - $name"
+            # shellcheck disable=SC2086
+            bash .github/scripts/gixy-helm.sh --chart "$CHART" --name "$name" ${SCENARIOS[$name]} \
+              --map nginx.conf=/etc/nginx/nginx.conf \
+              --map server.conf=/etc/nginx/default.d/server.conf \
+              --optional-map redirections.conf=/etc/nginx/conf.d/redirections.conf \
+              --fail-on high || { echo "::error::gixy failed for scenario '$name'"; FAIL=1; }
+            echo "::endgroup::"
+          done
+          exit $FAIL
+
+  integration:
+    name: integration (OpenShift)
+    needs: lint
+    # Fork PRs have no access to the cluster secrets
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: ci-helfi-proxy-nginx-${{ inputs.run-id }}
+      cancel-in-progress: false
+    env:
+      NS: ${{ vars.CI_NAMESPACE || 'devops-toolchain' }}
+      CI_DOMAIN: ${{ vars.CI_ROUTE_DOMAIN || 'test-se.hel.ninja' }}
+      RUN: ci-helfi-${{ inputs.run-id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+        with:
+          kubeconform: "false"
+          unittest: "false"
+          oc: "true"
+      - uses: ./.github/actions/openshift-login
+        with:
+          server: ${{ vars.OPENSHIFT_SE_SERVER }}
+          token: ${{ secrets.OPENSHIFT_SE_TOKEN }}
+          namespace: ${{ env.NS }}
+
+      - name: Clean up leftovers from earlier runs
+        run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"
+
+      - name: Deploy (receiver)
+        run: |
+          helm upgrade --install "$RUN" "$CHART" -n "$NS" \
+            -f "$CHART/values-test.yaml" \
+            --set nodeSelector="${{ vars.CI_NODE_ENV || 'devtest' }}" \
+            --set route.host="${RUN}.${CI_DOMAIN}" \
+            --wait --timeout 5m
+
+      - name: Verify /healthz through the route
+        run: |
+          oc rollout status "deployment/${RUN}-helfi-proxy-nginx" -n "$NS" --timeout=3m
+          for _ in $(seq 1 12); do
+            STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "https://${RUN}.${CI_DOMAIN}/healthz" || true)
+            [ "$STATUS" = "200" ] && { echo "healthz -> 200"; exit 0; }
+            sleep 5
+          done
+          echo "::error::https://${RUN}.${CI_DOMAIN}/healthz -> $STATUS"
+          oc logs "deployment/${RUN}-helfi-proxy-nginx" -n "$NS" --tail=50 || true
+          exit 1
+
+      - name: Clean up (all objects)
+        if: always()
+        run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"

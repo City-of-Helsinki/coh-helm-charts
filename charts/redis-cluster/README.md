@@ -172,7 +172,9 @@ helm upgrade my-redis redis-cluster/redis-cluster \
 | Parameter | Description | Default |
 |----------|-------------|---------|
 | `redis.replicaCount` | Number of Redis instances | `3` |
-| `redis.image` | Redis image | `registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3` |
+| `redis.image` | Redis image as map (`registry`, `repository`, `tag`, `digest`) or full reference string | `registry.redhat.io/rhel9/redis-7:9.7-1771417604` |
+| `global.imageRegistry` | Registry for images without their own `registry` | `image-registry.int.platta.hel.fi` |
+| `global.imagePullSecrets` / `imagePullSecrets` | Pull secrets added to pods | `[]` |
 | `redis.securityContext.enabled` | Enable security context | `false` |
 
 ---
@@ -272,7 +274,7 @@ helm upgrade my-redis redis-cluster/redis-cluster \
 |----------|-------------|---------|
 | `sentinel.enabled` | Enable Sentinel instances | `true` |
 | `sentinel.replicaCount` | Sentinel instances | `3` |
-| `sentinel.image` | Sentinel image | `registry.redhat.io/rhel9/redis-7@sha256:3d31c0cfaf4219f5bd1c52882b603215d1cb4aaef5b8d1a128d0174e090f96f3` |
+| `sentinel.image` | Sentinel image (map or string); empty = same as `redis.image` | `{}` |
 | `sentinel.securityContext.enabled` | Enable security context | `false` |
 
 ---

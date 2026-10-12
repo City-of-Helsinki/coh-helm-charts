@@ -12,14 +12,21 @@ type: receiver
 # -------------------------------------------------------
 replicaCount: 2
 
+# Global image settings (overridden per region by the platform pipeline)
+global:
+  imageRegistry: "image-registry.int.platta.hel.fi"
+  imagePullSecrets: []
+
+# Tag is managed centrally in pipeline-templates/common/helm-values/images/helfi-proxy-nginx.yaml
 image:
-  registry: container-registry.platta-net.hel.fi
-  repository: hki-kanslia-helfi-etusivu/helfi-proxy-nginx
+  registry: ""                 # empty = global.imageRegistry
+  repository: hki-platta-components/helfi-proxy-nginx
   tag: latest
+  digest: ""                   # optional sha256:...; wins over tag
   pullPolicy: Always
 
-imagePullSecrets:
-  - name: quay-secret-hki-kanslia-helfi-etusivu
+# Chart-specific pull secrets (merged with global.imagePullSecrets)
+imagePullSecrets: []
 
 nameOverride: ""
 fullnameOverride: ""

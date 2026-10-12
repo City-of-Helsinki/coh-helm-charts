@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-nginx-standard-usecase.sh <use-case>
-# Runs the same per-use-case checks that release-workflow-nginx-standard.yaml's
-# matrix `test` job runs for one use-case, against charts/nginx-standard.
+# Runs the per-use-case checks used by ci-nginx-standard.yaml (lint job) for
+# one use-case, against charts/nginx-standard.
 
 set -uo pipefail  # not -e: we want every check below to run and report, not stop at the first failure
 
@@ -62,7 +62,7 @@ CLOSE=$(grep -o "}" /tmp/nginx-$UC.conf | wc -l)
 [[ "$OPEN" -eq "$CLOSE" ]] || err "unbalanced braces in nginx.conf (open: $OPEN, close: $CLOSE)"
 
 step "gixy security scan"
-.github/scripts/gixy-helm.sh \
+bash .github/scripts/gixy-helm.sh \
     --chart "$CHART" \
     --name "test-$UC" \
     -f "$VALUES" \

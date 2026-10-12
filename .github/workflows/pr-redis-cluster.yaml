@@ -1,0 +1,28 @@
+name: "PR: redis-cluster"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'charts/redis-cluster/**'
+      - '.github/workflows/ci-redis-cluster.yaml'
+      - '.github/workflows/pr-redis-cluster.yaml'
+      - '.github/actions/**'
+      - '.github/ci/**'
+      - '.github/scripts/ci-cleanup.sh'
+      - '.github/scripts/ci-prepare-namespace.sh'
+
+# New pushes to the same PR cancel the previous run (its cleanup step still runs).
+concurrency:
+  group: pr-redis-cluster-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci-redis-cluster.yaml
+    with:
+      run-id: pr-${{ github.event.pull_request.number }}
+    secrets: inherit

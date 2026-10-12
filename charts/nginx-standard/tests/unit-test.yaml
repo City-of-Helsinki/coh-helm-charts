@@ -37,6 +37,65 @@ tests:
           path: spec.template.spec.containers[0].image
           value: "nginx:1.24"
 
+  - it: should compose use-case image with global.imageRegistry
+    template: deployment.yaml
+    set:
+      global:
+        imageRegistry: "registry.example.com"
+      nginx:
+        useCase: front-proxy
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "registry.example.com/mirrored-images/nginxinc/nginx-unprivileged:alpine-perl"
+
+  - it: should keep explicit registry of public images
+    template: deployment.yaml
+    set:
+      global:
+        imageRegistry: "registry.example.com"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "registry.redhat.io/rhel9/nginx-124:latest"
+
+  - it: should apply per-release tag and digest overrides
+    template: deployment.yaml
+    set:
+      nginx:
+        useCase: front-proxy
+        image:
+          tag: "1.27"
+          digest: "sha256:abc"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "image-registry.int.platta.hel.fi/mirrored-images/nginxinc/nginx-unprivileged@sha256:abc"
+
+  - it: should merge and dedupe global and chart pull secrets
+    template: deployment.yaml
+    set:
+      global:
+        imagePullSecrets:
+          - name: shared
+      nginx:
+        image:
+          pullSecrets:
+            - name: shared
+            - name: own
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: shared
+            - name: own
+
+  - it: should omit imagePullSecrets when none are configured
+    template: deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+
   - it: should mount config volume correctly
     template: deployment.yaml
     asserts:

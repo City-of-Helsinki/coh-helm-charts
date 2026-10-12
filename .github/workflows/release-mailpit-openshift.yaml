@@ -1,0 +1,40 @@
+name: "Release: mailpit-openshift"
+
+# Run manually with a version (1.2.3), or push a tag mailpit-openshift-v1.2.3.
+# The chart is released only after the same lint + integration tests as a PR pass.
+on:
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: "Chart version, plain SemVer (e.g. 1.2.3)"
+        required: true
+        type: string
+  push:
+    tags:
+      - 'mailpit-openshift-v*'
+
+# Never run two releases of the same chart at once
+concurrency:
+  group: release-mailpit-openshift
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci-mailpit-openshift.yaml
+    with:
+      run-id: rel
+    secrets: inherit
+
+  release:
+    needs: ci
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-chart.yaml
+    with:
+      chart: mailpit-openshift
+      chart_version: ${{ inputs.chart_version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}

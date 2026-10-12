@@ -1,0 +1,39 @@
+# ==============================================================================
+# Test fixtures for the CI namespace (devops-toolchain on Sweden Central).
+# Applied by every integration-test job (.github/scripts/ci-prepare-namespace.sh).
+# They replace objects the tests used to borrow from hki-kanslia-asuminen-test and
+# hki-kanslia-helfi-hakuvahti-dev on the old cluster.
+#
+# devops-toolchain is SHARED with real workloads (image builds, push secrets), so every
+# fixture is prefixed "ci-fixture-" and labelled app.kubernetes.io/part-of=helm-ci-fixtures.
+# ci-prepare-namespace.sh refuses to overwrite an object of the same name without that label.
+#
+# All values are DUMMY test credentials - never put real secrets here.
+#
+# nginx-standard needs no fixtures: each run starts its own Elasticsearch (ECK)
+# via .github/scripts/ci-elasticsearch.sh and removes it again afterwards.
+# ==============================================================================
+
+# --- varnish-drupal (was 'varnish-secret' in hki-kanslia-asuminen-test) --------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ci-fixture-varnish-secret
+  labels: {app.kubernetes.io/part-of: helm-ci-fixtures}
+type: Opaque
+stringData:
+  VARNISH_SECRET: ci-varnish-secret
+  VARNISH_PURGE_KEY: ci-purge-key
+  Basic_Auth_User: ci
+  Basic_Auth_Pass: ci-only-password
+---
+# --- mailpit-openshift (was 'mailpit-ui-auth' in hki-kanslia-helfi-hakuvahti-dev)
+# UI login ci / ci-only-password (apr1 htpasswd)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ci-fixture-mailpit-ui-auth
+  labels: {app.kubernetes.io/part-of: helm-ci-fixtures}
+type: Opaque
+stringData:
+  htpasswd: "ci:$apr1$cisalt01$8z/Ir27n3Ozq2cLzToQRa/"

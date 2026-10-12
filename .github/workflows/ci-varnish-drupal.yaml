@@ -1,0 +1,88 @@
+name: "CI: varnish-drupal"
+
+# Reusable: lint + integration tests for charts/varnish-drupal.
+# Called by pr-varnish-drupal.yaml and release-varnish-drupal.yaml so a PR is tested exactly like a release.
+on:
+  workflow_call:
+    inputs:
+      run-id:
+        description: Unique suffix for this run's objects in the shared namespace (pr-<n> or rel)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CHART: charts/varnish-drupal
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+
+      - name: helm lint + unit tests + kubeconform
+        run: |
+          set -euo pipefail
+          helm lint "$CHART"
+          if [ -d "$CHART/tests" ]; then helm unittest "$CHART"; fi
+          helm template "$CHART" | kubeconform -summary -skip Route
+
+  integration:
+    name: integration (OpenShift)
+    needs: lint
+    # Fork PRs have no access to the cluster secrets
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: ci-varnish-drupal-${{ inputs.run-id }}
+      cancel-in-progress: false
+    env:
+      NS: ${{ vars.CI_NAMESPACE || 'devops-toolchain' }}
+      CI_DOMAIN: ${{ vars.CI_ROUTE_DOMAIN || 'test-se.hel.ninja' }}
+      RUN: ci-varnish-${{ inputs.run-id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+        with:
+          kubeconform: "false"
+          unittest: "false"
+          oc: "true"
+      - uses: ./.github/actions/openshift-login
+        with:
+          server: ${{ vars.OPENSHIFT_SE_SERVER }}
+          token: ${{ secrets.OPENSHIFT_SE_TOKEN }}
+          namespace: ${{ env.NS }}
+
+      - name: Clean up leftovers from earlier runs
+        run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"
+
+      - name: Deploy (secrets from fixture ci-fixture-varnish-secret)
+        run: |
+          helm upgrade --install "$RUN" "$CHART" -n "$NS" \
+            --set route.host="${RUN}.${CI_DOMAIN}" \
+            --set externalSecretName="ci-fixture-varnish-secret" \
+            --set service.name="${RUN}" \
+            --set service.headlessName="${RUN}-headless" \
+            --set route.name="${RUN}" \
+            --set serviceAccountName="${RUN}-sa" \
+            --wait --timeout 5m
+
+      - name: Verify /varnishstatus through the route
+        run: |
+          oc rollout status "statefulset/${RUN}-varnish-drupal" -n "$NS" --timeout=5m
+          for _ in $(seq 1 12); do
+            STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "https://${RUN}.${CI_DOMAIN}/varnishstatus" || true)
+            [ "$STATUS" = "200" ] && { echo "varnishstatus -> 200"; exit 0; }
+            sleep 5
+          done
+          echo "::error::https://${RUN}.${CI_DOMAIN}/varnishstatus -> $STATUS"
+          oc logs "statefulset/${RUN}-varnish-drupal" -c varnish -n "$NS" --tail=50 || true
+          exit 1
+
+      - name: Clean up (all objects)
+        if: always()
+        run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"

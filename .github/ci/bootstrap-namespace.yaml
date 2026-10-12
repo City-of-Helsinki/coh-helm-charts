@@ -1,0 +1,107 @@
+# ==============================================================================
+# One-time setup of Helm chart CI in the EXISTING devops-toolchain namespace on the
+# Sweden Central cluster. Run by a cluster admin (NOT by CI):
+#
+#   # ECK CRDs: already on the cluster (OLM, OperatorHub ECK 3.1.0) - do NOT install
+#   # them again with Helm. CI starts its own operator in devops-toolchain when needed
+#   # and removes it afterwards (.github/scripts/ci-eck.sh), matching CI_ECK_VERSION
+#   # (default 3.1.0) to the CRD version.
+#
+#   # Service account, permissions and token for GitHub Actions
+#   oc apply -f .github/ci/bootstrap-namespace.yaml
+#   oc get secret github-actions-ci-token -n devops-toolchain \
+#     -o jsonpath='{.data.token}' | base64 -d      # -> GitHub secret   OPENSHIFT_SE_TOKEN
+#   oc whoami --show-server                         # -> GitHub variable OPENSHIFT_SE_SERVER
+#
+# No Namespace object here on purpose: devops-toolchain already exists and is shared
+# with the image builds (BuildConfigs, push secrets, registry-ca). CI only ever touches
+# objects named/labelled ci-* (see .github/scripts/ci-cleanup.sh and ci-eck.sh).
+#
+# The service account is "admin" of devops-toolchain only. That includes READING the
+# other secrets in the namespace (e.g. the Quay push secrets), see the README.
+# ==============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-actions-ci
+  namespace: devops-toolchain
+  labels:
+    app.kubernetes.io/part-of: helm-ci
+---
+# Namespace admin: the charts create Roles/RoleBindings (varnish-drupal),
+# NetworkPolicies, Routes, StatefulSets, ...
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-actions-ci-admin
+  namespace: devops-toolchain
+  labels:
+    app.kubernetes.io/part-of: helm-ci
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+  - kind: ServiceAccount
+    name: github-actions-ci
+    namespace: devops-toolchain
+---
+# Extra rights for the namespace-scoped ECK operator, granted in devops-toolchain ONLY
+# (through the RoleBinding below - the ClusterRole itself grants nothing on its own):
+#  - manage Elastic resources (ECK is not installed cluster-wide, so "admin" has no
+#    aggregated ECK rules)
+#  - create the operator's Role, which contains rules "admin" does not hold
+#    (e.g. subjectaccessreviews) -> escalate/bind on Roles in this namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: helm-ci-eck-operator
+  labels:
+    app.kubernetes.io/part-of: helm-ci
+rules:
+  - apiGroups:
+      - elasticsearch.k8s.elastic.co
+      - kibana.k8s.elastic.co
+      - apm.k8s.elastic.co
+      - enterprisesearch.k8s.elastic.co
+      - beat.k8s.elastic.co
+      - agent.k8s.elastic.co
+      - maps.k8s.elastic.co
+      - logstash.k8s.elastic.co
+      - stackconfigpolicy.k8s.elastic.co
+      - autoscaling.k8s.elastic.co
+      - autoops.k8s.elastic.co
+      - packageregistry.k8s.elastic.co
+    resources: ["*"]
+    verbs: ["*"]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles]
+    verbs: [escalate, bind]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-actions-ci-eck-operator
+  namespace: devops-toolchain
+  labels:
+    app.kubernetes.io/part-of: helm-ci
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: helm-ci-eck-operator
+subjects:
+  - kind: ServiceAccount
+    name: github-actions-ci
+    namespace: devops-toolchain
+---
+# Long-lived token for GitHub Actions. Rotate by deleting this Secret and re-applying.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-actions-ci-token
+  namespace: devops-toolchain
+  labels:
+    app.kubernetes.io/part-of: helm-ci
+  annotations:
+    kubernetes.io/service-account.name: github-actions-ci
+type: kubernetes.io/service-account-token

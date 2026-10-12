@@ -1,0 +1,144 @@
+name: "Release: chart (reusable)"
+
+# Shared release steps for every chart. Called by release-<chart>.yaml after
+# that chart's CI (lint + integration) has passed.
+on:
+  workflow_call:
+    inputs:
+      chart:
+        description: Chart directory name under charts/
+        required: true
+        type: string
+      chart_version:
+        description: SemVer version (empty when triggered by a <chart>-v* tag)
+        required: false
+        type: string
+        default: ""
+    secrets:
+      GH_TOKEN:
+        description: Token with push access to coh-helm-repo (gh-pages)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CHART: ${{ inputs.chart }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci-tools
+        with:
+          kubeconform: "false"
+          unittest: "false"
+
+      - name: Determine chart version and git tag
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.chart_version }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/${CHART}-v* ]]; then
+            RAW_VERSION="${GITHUB_REF#refs/tags/"${CHART}"-}"
+          elif [ -n "${INPUT_VERSION:-}" ]; then
+            RAW_VERSION="${INPUT_VERSION}"
+          else
+            echo "::error::Chart version could not be determined"
+            exit 1
+          fi
+
+          # Helm chart versions are plain SemVer 2.0 (https://semver.org) - no "v" prefix.
+          # A leading "v" in the input is tolerated and stripped.
+          CHART_VERSION="${RAW_VERSION#v}"
+          SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if ! [[ "${CHART_VERSION}" =~ ${SEMVER_RE} ]]; then
+            echo "::error::'${RAW_VERSION}' is not a valid SemVer version (expected e.g. 1.2.3)"
+            exit 1
+          fi
+
+          # Git tags keep the "<chart>-v<version>" form so tag history stays continuous.
+          GIT_TAG="${CHART}-v${CHART_VERSION}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && git rev-parse -q --verify "refs/tags/${GIT_TAG}" >/dev/null; then
+            echo "::error::Tag ${GIT_TAG} already exists - bump the version instead of re-releasing"
+            exit 1
+          fi
+
+          echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "git_tag=${GIT_TAG}"             >> "$GITHUB_OUTPUT"
+          echo "Chart: ${CHART}  Version: ${CHART_VERSION}  Tag: ${GIT_TAG}"
+
+      - name: Generate changelog
+        id: changelog
+        env:
+          GIT_TAG: ${{ steps.version.outputs.git_tag }}
+        run: |
+          set -euo pipefail
+          PREV_TAG=$(git tag -l "${CHART}-v*" --sort=-v:refname | grep -vx "${GIT_TAG}" | head -n1 || true)
+          RANGE="HEAD"; [ -n "$PREV_TAG" ] && RANGE="${PREV_TAG}..HEAD"
+          echo "Changelog range: ${RANGE}"
+          COMMITS=$(git log "${RANGE}" --pretty=format:"- %s (%h)" --no-merges -- "charts/${CHART}/" || true)
+
+          section() { local title="$1" lines="$2"; [ -n "$lines" ] && printf '### %s\n%s\n\n' "$title" "$lines"; true; }
+          {
+            echo "changelog<<CHANGELOG_EOF"
+            section "Features"      "$(echo "$COMMITS" | grep -i '^- feat'  || true)"
+            section "Bug fixes"     "$(echo "$COMMITS" | grep -i '^- fix'   || true)"
+            section "Documentation" "$(echo "$COMMITS" | grep -i '^- docs'  || true)"
+            section "Maintenance"   "$(echo "$COMMITS" | grep -i '^- chore' || true)"
+            section "Other changes" "$(echo "$COMMITS" | grep -iv '^- \(feat\|fix\|docs\|chore\)' | grep . || true)"
+            [ -z "$COMMITS" ] && echo "No changes in charts/${CHART}/ since ${PREV_TAG:-the beginning}."
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Package chart
+        env:
+          CHART_VERSION: ${{ steps.version.outputs.chart_version }}
+        run: |
+          set -euo pipefail
+          # Version is set for packaging only, not committed back to main
+          yq -i ".version = \"${CHART_VERSION}\"" "charts/${CHART}/Chart.yaml"
+          if [ "$(yq '.dependencies | length' "charts/${CHART}/Chart.yaml")" != "0" ]; then
+            helm dependency build "charts/${CHART}"
+          fi
+          mkdir -p dist
+          helm package "charts/${CHART}" --version "${CHART_VERSION}" --destination dist
+          ls -l dist
+
+      - name: Publish to coh-helm-repo (gh-pages)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          CHART_VERSION: ${{ steps.version.outputs.chart_version }}
+        run: |
+          set -euo pipefail
+          REPO="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository_owner }}/coh-helm-repo.git"
+          git clone --branch gh-pages --depth 1 "$REPO" helm-repo
+          cd helm-repo
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p "${CHART}"
+          cp ../dist/*.tgz "${CHART}/"
+          helm repo index . --url "https://${{ github.repository_owner }}.github.io/coh-helm-repo" --merge index.yaml
+          git add .
+          git commit -m "feat: Release ${CHART} ${CHART_VERSION}" || echo "No changes to commit"
+          git push origin gh-pages
+
+      - name: Create GitHub release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: dist/*.tgz
+          tag: ${{ steps.version.outputs.git_tag }}
+          commit: ${{ github.sha }}
+          name: "${{ inputs.chart }} ${{ steps.version.outputs.chart_version }}"
+          body: |
+            # ${{ inputs.chart }} ${{ steps.version.outputs.chart_version }}
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            - [Chart README](https://github.com/${{ github.repository }}/blob/${{ steps.version.outputs.git_tag }}/charts/${{ inputs.chart }}/README.md)
+            - [values.yaml](https://github.com/${{ github.repository }}/blob/${{ steps.version.outputs.git_tag }}/charts/${{ inputs.chart }}/values.yaml)
+          token: ${{ secrets.GITHUB_TOKEN }}

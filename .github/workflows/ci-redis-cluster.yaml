@@ -1,0 +1,360 @@
+name: "CI: redis-cluster"
+
+# Reusable: lint + integration tests for charts/redis-cluster.
+# Called by pr-redis-cluster.yaml and release-redis-cluster.yaml so a PR is tested exactly like a release.
+on:
+  workflow_call:
+    inputs:
+      run-id:
+        description: Unique suffix for this run's objects in the shared namespace (pr-<n> or rel)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CHART: charts/redis-cluster
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+
+      - name: Lint chart
+        run: |
+          helm lint charts/redis-cluster/
+
+      - name: Run unit tests
+        run: |
+          if ls charts/redis-cluster/tests/*_test.yaml 1>/dev/null 2>&1; then
+            helm unittest charts/redis-cluster/
+          else
+            echo "No unit test files found in tests/ directory, skipping unit tests"
+          fi
+
+      - name: Test default template rendering
+        run: |
+          helm template test-redis-cluster charts/redis-cluster/ --debug
+
+      - name: Validate manifests against Kubernetes schemas
+        run: |
+          helm template test-redis-cluster charts/redis-cluster/ \
+            --exclude charts/redis-cluster/templates/tests/* \
+            | yq eval 'select(.kind != null)' - \
+            | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+
+      - name: Validate manifests with persistence enabled
+        run: |
+          helm template test-redis-cluster-pvc charts/redis-cluster/ \
+            --set redis.persistence.enabled=true \
+            --set redis.persistence.size=2Gi \
+            --exclude charts/redis-cluster/templates/tests/* \
+            | yq eval 'select(.kind != null)' - \
+            | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+
+      - name: Validate manifests with PDB enabled
+        run: |
+          helm template test-redis-cluster-pdb charts/redis-cluster/ \
+            --set redis.pdb.enabled=true \
+            --set redis.pdb.minAvailable=1 \
+            --exclude charts/redis-cluster/templates/tests/* \
+            | yq eval 'select(.kind != null)' - \
+            | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+
+      - name: Validate manifests with existing secret
+        run: |
+          helm template test-redis-cluster-secret charts/redis-cluster/ \
+            --set redis.password.existingSecret=my-redis-secret \
+            --set redis.password.secretKey=REDIS_PASSWORD \
+            --exclude charts/redis-cluster/templates/tests/* \
+            | yq eval 'select(.kind != null)' - \
+            | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+
+      - name: Validate manifests with custom replica counts
+        run: |
+          helm template test-redis-cluster-replicas charts/redis-cluster/ \
+            --set redis.replicaCount=3 \
+            --set sentinel.replicaCount=3 \
+            --exclude charts/redis-cluster/templates/tests/* \
+            | yq eval 'select(.kind != null)' - \
+            | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.27.0 -
+
+      - name: Validate Redis StatefulSet structure
+        run: |
+          echo "Checking Redis StatefulSet is generated..."
+          helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "StatefulSet" and .metadata.name == "*-redis")' - > /tmp/redis-sts.yaml
+
+          if [ ! -s /tmp/redis-sts.yaml ]; then
+            echo "ERROR: Redis StatefulSet not found in rendered manifests"
+            exit 1
+          fi
+          echo "✓ Redis StatefulSet present"
+
+          # Confirm the init container for config bootstrapping is present
+          if ! helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "StatefulSet") | .spec.template.spec.initContainers[].name' - \
+            | grep -q "config"; then
+            echo "ERROR: Init container 'config' not found in Redis StatefulSet"
+            exit 1
+          fi
+          echo "✓ Redis init container present"
+
+      - name: Validate Sentinel StatefulSet structure
+        run: |
+          echo "Checking Sentinel StatefulSet is generated..."
+          helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "StatefulSet" and .metadata.name == "*-sentinel")' - > /tmp/sentinel-sts.yaml
+
+          if [ ! -s /tmp/sentinel-sts.yaml ]; then
+            echo "ERROR: Sentinel StatefulSet not found in rendered manifests"
+            exit 1
+          fi
+          echo "✓ Sentinel StatefulSet present"
+
+          # Confirm sentinel init container is present
+          if ! helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "StatefulSet") | .spec.template.spec.initContainers[].name' - \
+            | grep -q "config"; then
+            echo "ERROR: Init container 'config' not found in Sentinel StatefulSet"
+            exit 1
+          fi
+          echo "✓ Sentinel init container present"
+
+      - name: Validate Services
+        run: |
+          echo "Checking all required Services are generated..."
+          SERVICES=$(helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "Service") | .metadata.name' -)
+
+          # Headless service for Redis
+          if ! echo "$SERVICES" | grep -q "\-headless"; then
+            echo "ERROR: Redis headless Service not found"
+            exit 1
+          fi
+          echo "✓ Redis headless Service present"
+
+          # Sentinel service
+          if ! echo "$SERVICES" | grep -q "\-sentinel$"; then
+            echo "ERROR: Sentinel Service not found"
+            exit 1
+          fi
+          echo "✓ Sentinel Service present"
+
+          # Sentinel headless service
+          if ! echo "$SERVICES" | grep -q "\-sentinel-headless"; then
+            echo "ERROR: Sentinel headless Service not found"
+            exit 1
+          fi
+          echo "✓ Sentinel headless Service present"
+
+      - name: Validate ConfigMaps
+        run: |
+          echo "Checking ConfigMaps are generated..."
+          CONFIGMAPS=$(helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "ConfigMap") | .metadata.name' -)
+
+          # Scripts ConfigMap
+          if ! echo "$CONFIGMAPS" | grep -q "\-scripts"; then
+            echo "ERROR: Scripts ConfigMap not found"
+            exit 1
+          fi
+          echo "✓ Scripts ConfigMap present"
+
+          # Config ConfigMap
+          if ! echo "$CONFIGMAPS" | grep -q "\-config"; then
+            echo "ERROR: Config ConfigMap not found"
+            exit 1
+          fi
+          echo "✓ Config ConfigMap present"
+
+          # Verify redis.conf and sentinel.conf are present in the config ConfigMap
+          if ! helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "ConfigMap" and .metadata.name == "*-config") | .data | keys' - \
+            | grep -q "redis.conf"; then
+            echo "ERROR: redis.conf not found in config ConfigMap"
+            exit 1
+          fi
+          echo "✓ redis.conf present in config ConfigMap"
+
+          if ! helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "ConfigMap" and .metadata.name == "*-config") | .data | keys' - \
+            | grep -q "sentinel.conf"; then
+            echo "ERROR: sentinel.conf not found in config ConfigMap"
+            exit 1
+          fi
+          echo "✓ sentinel.conf present in config ConfigMap"
+
+          # Verify redis_init.sh and sentinel_init.sh are present in scripts ConfigMap
+          if ! helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "ConfigMap" and .metadata.name == "*-scripts") | .data | keys' - \
+            | grep -q "redis_init.sh"; then
+            echo "ERROR: redis_init.sh not found in scripts ConfigMap"
+            exit 1
+          fi
+          echo "✓ redis_init.sh present in scripts ConfigMap"
+
+          if ! helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "ConfigMap" and .metadata.name == "*-scripts") | .data | keys' - \
+            | grep -q "sentinel_init.sh"; then
+            echo "ERROR: sentinel_init.sh not found in scripts ConfigMap"
+            exit 1
+          fi
+          echo "✓ sentinel_init.sh present in scripts ConfigMap"
+
+      - name: Validate Secret behaviour
+        run: |
+          echo "Checking Secret is generated when no existingSecret is set..."
+          helm template test-redis-cluster charts/redis-cluster/ \
+            | yq eval 'select(.kind == "Secret")' - > /tmp/secret.yaml
+
+          if [ ! -s /tmp/secret.yaml ]; then
+            echo "ERROR: Secret not generated when existingSecret is unset"
+            exit 1
+          fi
+          echo "✓ Secret generated when existingSecret is unset"
+
+          echo "Checking Secret is NOT generated when existingSecret is provided..."
+          helm template test-redis-cluster charts/redis-cluster/ \
+            --set redis.password.existingSecret=my-redis-secret \
+            | yq eval 'select(.kind == "Secret")' - > /tmp/secret-suppressed.yaml
+
+          if [ -s /tmp/secret-suppressed.yaml ]; then
+            echo "ERROR: Secret should not be generated when existingSecret is set"
+            exit 1
+          fi
+          echo "✓ Secret suppressed when existingSecret is set"
+
+      - name: Validate PDB behaviour
+        run: |
+          echo "Checking both Redis and Sentinel PDBs are generated by default (enabled: true in values.yaml)..."
+          COUNT=$(helm template test-redis-cluster charts/redis-cluster/ \
+            | grep -c "kind: PodDisruptionBudget" || true)
+
+          if [ "$COUNT" -ne 2 ]; then
+            echo "ERROR: Expected 2 PodDisruptionBudgets (redis + sentinel) by default, got $COUNT"
+            exit 1
+          fi
+          echo "✓ Both Redis and Sentinel PDBs present with default values"
+
+          echo "Checking PDB is NOT generated when explicitly disabled..."
+          COUNT=$(helm template test-redis-cluster charts/redis-cluster/ \
+            --set redis.pdb.enabled=false \
+            --set sentinel.pdb.enabled=false \
+            | grep -c "kind: PodDisruptionBudget" || true)
+
+          if [ "$COUNT" -ne 0 ]; then
+            echo "ERROR: PDB should not be generated when redis.pdb.enabled=false and sentinel.pdb.enabled=false"
+            exit 1
+          fi
+          echo "✓ PDB absent when explicitly disabled"
+
+      - name: Validate persistence behaviour
+        run: |
+          echo "Checking emptyDir is used when persistence is disabled..."
+          VOLUMES=$(helm template test-redis-cluster charts/redis-cluster/ \
+            --set redis.persistence.enabled=false \
+            | yq eval 'select(.kind == "StatefulSet" and .metadata.name == "*-redis") | .spec.template.spec.volumes[] | select(.name == "data") | .emptyDir' -)
+
+          if [ -z "$VOLUMES" ]; then
+            echo "ERROR: emptyDir not set for data volume when persistence is disabled"
+            exit 1
+          fi
+          echo "✓ emptyDir used when persistence disabled"
+
+          echo "Checking volumeClaimTemplates are set when persistence is enabled..."
+          helm template test-redis-cluster charts/redis-cluster/ \
+            --set redis.persistence.enabled=true \
+            --set redis.persistence.size=2Gi \
+            | yq eval 'select(.kind == "StatefulSet" and .metadata.name == "*-redis") | .spec.volumeClaimTemplates' - > /tmp/vct.yaml
+
+          if [ ! -s /tmp/vct.yaml ] || grep -q "^null$" /tmp/vct.yaml; then
+            echo "ERROR: volumeClaimTemplates not set when persistence is enabled"
+            exit 1
+          fi
+          echo "✓ volumeClaimTemplates present when persistence enabled"
+
+  integration:
+    name: integration (OpenShift)
+    needs: lint
+    # Fork PRs have no access to the cluster secrets
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: ci-redis-cluster-${{ inputs.run-id }}
+      cancel-in-progress: false
+    env:
+      NS: ${{ vars.CI_NAMESPACE || 'devops-toolchain' }}
+      RUN: ci-redis-${{ inputs.run-id }}
+      REDIS_PASSWORD: ci-redis-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+        with:
+          kubeconform: "false"
+          unittest: "false"
+          oc: "true"
+      - uses: ./.github/actions/openshift-login
+        with:
+          server: ${{ vars.OPENSHIFT_SE_SERVER }}
+          token: ${{ secrets.OPENSHIFT_SE_TOKEN }}
+          namespace: ${{ env.NS }}
+
+      - name: Clean up leftovers from earlier runs
+        run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"
+
+      - name: Create password secret
+        run: |
+          oc create secret generic "${RUN}-secret" -n "$NS" \
+            --from-literal=REDIS_PASSWORD="$REDIS_PASSWORD" \
+            --dry-run=client -o yaml | oc apply -f -
+
+      - name: Deploy redis-cluster
+        run: |
+          helm install "$RUN" "$CHART" -n "$NS" \
+            --set redis.password.existingSecret="${RUN}-secret" \
+            --set redis.password.secretKey=REDIS_PASSWORD \
+            --wait --timeout 8m
+
+      - name: Verify StatefulSet rollouts
+        run: |
+          oc rollout status "statefulset/${RUN}-redis" -n "$NS" --timeout=5m
+          oc rollout status "statefulset/${RUN}-sentinel" -n "$NS" --timeout=5m
+
+      - name: Smoke test Redis and Sentinel pods
+        run: |
+          set -euo pipefail
+          for i in 0 1 2; do
+            oc exec -n "$NS" "${RUN}-redis-${i}" -- redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+            echo "✓ ${RUN}-redis-${i} responds"
+            oc exec -n "$NS" "${RUN}-sentinel-${i}" -- redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+            echo "✓ ${RUN}-sentinel-${i} responds"
+          done
+
+      - name: Verify Sentinel knows the master
+        run: |
+          oc exec -n "$NS" "${RUN}-sentinel-0" -- \
+            redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning sentinel master mymaster | grep -q flags
+          echo "✓ Sentinel master info returned"
+
+      - name: Deployment summary
+        if: always()
+        run: oc get sts,pods,svc -n "$NS" -l "app.kubernetes.io/instance=${RUN}" -o wide || true
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          for POD in $(oc get pods -n "$NS" -l "app.kubernetes.io/instance=${RUN}" -o name); do
+            echo "::group::$POD"
+            oc logs -n "$NS" "$POD" --all-containers --tail=100 || true
+            oc describe -n "$NS" "$POD" | tail -30 || true
+            echo "::endgroup::"
+          done
+
+      - name: Clean up (all objects)
+        if: always()
+        run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"

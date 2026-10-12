@@ -1,0 +1,40 @@
+name: "Release: nginx-standard"
+
+# Run manually with a version (1.2.3), or push a tag nginx-standard-v1.2.3.
+# The chart is released only after the same lint + integration tests as a PR pass.
+on:
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: "Chart version, plain SemVer (e.g. 1.2.3)"
+        required: true
+        type: string
+  push:
+    tags:
+      - 'nginx-standard-v*'
+
+# Never run two releases of the same chart at once
+concurrency:
+  group: release-nginx-standard
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci-nginx-standard.yaml
+    with:
+      run-id: rel
+    secrets: inherit
+
+  release:
+    needs: ci
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-chart.yaml
+    with:
+      chart: nginx-standard
+      chart_version: ${{ inputs.chart_version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
