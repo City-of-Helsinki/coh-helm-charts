@@ -101,13 +101,13 @@ tests:
   - it: should mount config volume correctly
     template: deployment.yaml
     asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: config-volume
-            configMap:
-              name: RELEASE-NAME-nginx-standard-config
-          any: true   # partial match: the volume also has items and defaultMode
+      # exact paths instead of `contains`: the volume also has items and defaultMode
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: config-volume
+      - equal:
+          path: spec.template.spec.volumes[0].configMap.name
+          value: RELEASE-NAME-nginx-standard-config
       - contains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
