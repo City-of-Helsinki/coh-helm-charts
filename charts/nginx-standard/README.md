@@ -859,6 +859,9 @@ data:
 ```yaml
 routes:
   enabled: false
+  # Labels for all routes, e.g. to be served by a sharded IngressController (routeSelector)
+  labels:
+    router: application
   annotations:
     haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains;preload"
   items:
@@ -1103,6 +1106,10 @@ Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sw
 ---
 
 ## Changelog
+
+### 1.3.0
+* Routes: `routes.labels` (all routes) and `routes.items[].labels` (per route, wins), e.g.
+  `router: application` so a sharded IngressController with a `routeSelector` admits the route.
 
 ### 1.2.0
 * File sharing, static mode: `azureFile.driver: csi` creates a `file.csi.azure.com` PV with

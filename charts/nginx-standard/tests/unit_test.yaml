@@ -375,6 +375,41 @@ tests:
           path: spec.httpHeaders.actions.request[0].name
           value: X-Request-Id
 
+  - it: should add global and per-route labels to routes
+    template: route.yaml
+    set:
+      routes:
+        enabled: true
+        labels:
+          router: application
+        items:
+          - host: a.example.com
+          - host: b.example.com
+            nameSuffix: "-b"
+            labels:
+              router: other
+              extra: "yes"
+    asserts:
+      - documentIndex: 0
+        equal:
+          path: metadata.labels.router
+          value: application
+      - documentIndex: 0
+        notExists:
+          path: metadata.labels.extra
+      - documentIndex: 1
+        equal:
+          path: metadata.labels.router
+          value: other
+      - documentIndex: 1
+        equal:
+          path: metadata.labels.extra
+          value: "yes"
+      - documentIndex: 1
+        equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: nginx-standard
+
   - it: should mount file-content-volume for file-sharing
     template: deployment.yaml
     set:

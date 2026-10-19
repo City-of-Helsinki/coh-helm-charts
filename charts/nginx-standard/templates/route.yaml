@@ -9,6 +9,11 @@ metadata:
   namespace: {{ include "nginx-standard.namespace" $ }}
   labels:
     {{- include "nginx-standard.labels" $ | nindent 4 }}
+    {{- /* extra labels, e.g. router: application for a sharded IngressController; per-route wins */}}
+    {{- $routeLabels := mergeOverwrite (deepCopy (default dict $.Values.routes.labels)) (default dict $route.labels) }}
+    {{- with $routeLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
     {{- /* deepCopy: mergeOverwrite mutates its first argument, so item annotations would leak into later routes */}}
     {{- $globalAnnotations := deepCopy (default dict $.Values.routes.annotations) }}
