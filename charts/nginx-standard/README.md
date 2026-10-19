@@ -233,6 +233,40 @@ routes:
 3. Kubernetes Secret is auto-created with storage account credentials
 4. PV is created pointing to your existing file share
 5. PVC binds to the PV
+
+#### Static Provisioning with the CSI driver (recommended)
+
+Use `driver: "csi"` for new releases. The PV uses `file.csi.azure.com` and reads the
+credentials from the release namespace (`nodeStageSecretRef`). The legacy in-tree
+`azureFile` PV is migrated to CSI by OpenShift and, without `secretNamespace`, looks for the
+secret in the `default` namespace. Static PVs do not get StorageClass mount options, so set
+them on the PV. When namespace provisioning already created a SecretStore, reuse it.
+
+```yaml
+fileSharing:
+  enabled: true
+  storage:
+    mode: "static"
+    pvc:
+      size: "100Gi"
+      storageClassName: "azurefile-csi"
+      volumeName: "myapp-test-pv"          # PV name; PVs are cluster scoped, include the environment
+      azureFile:
+        enabled: true
+        driver: "csi"
+        shareName: "myapp-testing"
+        mountOptions: [dir_mode=0755, file_mode=0644, mfsymlinks, cache=strict, actimeo=30, nosharesock]
+externalSecrets:
+  enabled: true
+  apiVersion: "external-secrets.io/v1"     # ESO >= 0.17
+  secretStore:
+    create: false
+    name: "myapp-shared"                   # existing SecretStore in the namespace
+```
+
+The PV gets a `claimRef` to the chart's PVC, so no other claim can bind it. With
+`persistentVolumeReclaimPolicy: Retain`, deleting the release never deletes the share data.
+
 ---
 
 #### Configuration Reference
@@ -253,7 +287,7 @@ routes:
 | `fileSharing.storage.pvc.size` | PVC size | `10Gi` |
 | `fileSharing.storage.pvc.storageClassName` | Storage class name | `azurefile-csi` |
 | `fileSharing.storage.pvc.accessMode` | Access mode | `ReadWriteMany` |
-| `fileSharing.storage.pvc.volumeName` | Bind to specific PV (static mode only) | `""` |
+| `fileSharing.storage.pvc.volumeName` | Static mode: name of the PV the chart creates and the PVC binds to | `<fullname>-pv` |
 
 **Azure File Configuration (Static Mode Only):**
 
@@ -261,7 +295,11 @@ routes:
 |-----------|-------------|---------|
 | `fileSharing.storage.pvc.azureFile.enabled` | Enable Azure File static provisioning | `false` |
 | `fileSharing.storage.pvc.azureFile.shareName` | Existing Azure File share name | `fileshare` |
-| `fileSharing.storage.pvc.azureFile.secretName` | Secret name with credentials | Auto-generated |
+| `fileSharing.storage.pvc.azureFile.driver` | `in-tree` (azureFile) or `csi` (file.csi.azure.com) | `in-tree` |
+| `fileSharing.storage.pvc.azureFile.secretName` | Secret name with credentials | `<fullname>-secret` |
+| `fileSharing.storage.pvc.azureFile.secretNamespace` | In-tree only: secret namespace | driver default |
+| `fileSharing.storage.pvc.azureFile.volumeHandle` | CSI only: unique volume id | `<namespace>_<pv name>` |
+| `fileSharing.storage.pvc.azureFile.mountOptions` | CSI only: CIFS mount options | `[]` |
 | `fileSharing.storage.pvc.azureFile.capacity` | PV capacity override | Uses `pvc.size` |
 
 **Location Configuration:**
@@ -282,8 +320,13 @@ routes:
 |-----------|-------------|---------|
 | `externalSecrets.enabled` | Enable External Secrets integration | `false` |
 | `externalSecrets.refreshInterval` | Sync interval from Key Vault | `1h` |
-| `externalSecrets.azureKeyVault.vaultName` | Azure Key Vault name | Required |
-| `externalSecrets.azureKeyVault.tenantId` | Azure AD tenant ID | Required |
+| `externalSecrets.apiVersion` | API version of ExternalSecret / SecretStore | `external-secrets.io/v1beta1` |
+| `externalSecrets.secretStore.create` | Create a SecretStore (false = use an existing one) | `true` |
+| `externalSecrets.secretStore.name` | SecretStore name | `<fullname>-secretstore` |
+| `externalSecrets.azureKeyVault.vaultName` | Azure Key Vault name | Required when the chart creates the SecretStore |
+| `externalSecrets.azureKeyVault.tenantId` | Azure AD tenant ID | Required when the chart creates the SecretStore |
+| `externalSecrets.azureKeyVault.storageAccountNameKey` | Key Vault secret with the account name | `AZURE-STORAGE-ACCOUNT-NAME` |
+| `externalSecrets.azureKeyVault.storageAccountKeyKey` | Key Vault secret with the account key | `AZURE-STORAGE-ACCOUNT-KEY` |
 | `externalSecrets.servicePrincipal.secretName` | K8s secret with SP credentials | `azure-service-principal` |
 ---
 ### Elastic Proxy
@@ -831,6 +874,16 @@ routes:
       path: "/internal"
       tls:
         termination: "edge"
+      # httpHeaders: {}      # per-route, overrides routes.httpHeaders
+  # Optional httpHeaders for all routes, e.g. pass the Application Gateway trace id
+  httpHeaders:
+    actions:
+      request:
+        - name: X-Request-Id
+          action:
+            type: Set
+            set:
+              value: '%[req.hdr(X-AppGw-Trace-Id)]'
 ```
 
 #### Service Account
@@ -1050,6 +1103,21 @@ Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sw
 ---
 
 ## Changelog
+
+### 1.2.0
+* File sharing, static mode: `azureFile.driver: csi` creates a `file.csi.azure.com` PV with
+  `nodeStageSecretRef` in the release namespace, `claimRef` to the chart PVC and `mountOptions`.
+  Default stays `in-tree`, existing releases render unchanged.
+* `pvc.volumeName` now names the PV the chart creates (was always `<fullname>-pv`), and the PVC
+  binds to the chart PV by default in static mode. Releases that set `volumeName` to a PV created
+  outside the chart while `azureFile.enabled` is true must set `azureFile.enabled: false`.
+* `azureFile.secretName` is now honoured (was ignored); `azureFile.secretNamespace` for in-tree PVs.
+* External Secrets: `externalSecrets.apiVersion` (use `external-secrets.io/v1` on ESO >= 0.17),
+  `externalSecrets.secretStore.create/name` to reuse an existing SecretStore. The ExternalSecret
+  now fetches only the two storage keys with `data` (the previous `dataFrom.find.regexp` is not a
+  valid ESO field).
+* Routes: optional `httpHeaders` (global or per route). Per-route annotations no longer leak into
+  the following routes.
 
 ### 1.1.0
 * Images per use case under `nginx.images` (cache / file-sharing: Red Hat `rhel9/nginx-124`,

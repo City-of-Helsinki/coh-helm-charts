@@ -1,4 +1,9 @@
 {{- if and (eq .Values.nginx.useCase "file-sharing") .Values.fileSharing.enabled .Values.fileSharing.storage.pvc.enabled }}
+{{- $static := eq .Values.fileSharing.storage.mode "static" }}
+{{- $volumeName := .Values.fileSharing.storage.pvc.volumeName }}
+{{- if and $static (not $volumeName) (eq (include "nginx-standard.azureFileEnabled" .) "true") }}
+{{- $volumeName = include "nginx-standard.pvName" . }}
+{{- end }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -18,9 +23,9 @@ spec:
   {{- if .Values.fileSharing.storage.pvc.storageClassName }}
   storageClassName: {{ .Values.fileSharing.storage.pvc.storageClassName }}
   {{- end }}
-  {{- if and (eq .Values.fileSharing.storage.mode "static") .Values.fileSharing.storage.pvc.volumeName }}
-  # Static mode: Bind to pre-created PV
-  volumeName: {{ .Values.fileSharing.storage.pvc.volumeName }}
+  {{- if and $static $volumeName }}
+  # Static mode: bind to the pre-created PV
+  volumeName: {{ $volumeName }}
   {{- end }}
   # If volumeName is empty and storageClassName is set, dynamic provisioning will occur
 {{- end }}
