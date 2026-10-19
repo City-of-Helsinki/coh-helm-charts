@@ -107,6 +107,7 @@ tests:
             name: config-volume
             configMap:
               name: RELEASE-NAME-nginx-standard-config
+          any: true   # partial match: the volume also has items and defaultMode
       - contains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
@@ -520,22 +521,27 @@ tests:
             name: HOST_EN
             value: "en.example.com"
 
-  - it: should mount proxy_ips.conf for front-proxy with PROXY_IP
-    template: deployment.yaml
+  # proxy_ips.conf was replaced by geo blocks in frontProxy.globalConfig.httpDirectives
+  - it: should render front-proxy allow-list from httpDirectives
+    template: configmap.yaml
     set:
       nginx:
         useCase: "front-proxy"
       frontProxy:
         enabled: true
-        env:
-          PROXY_IP: "10.0.0.0/8 1;"
+        globalConfig:
+          httpDirectives: |
+            geo $remote_addr $allowed {
+              default 0;
+              10.0.0.0/8 1;
+            }
     asserts:
-      - contains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: config-volume
-            mountPath: /opt/app-root/etc/proxy_ips.conf
-            subPath: proxy_ips.conf
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'geo \$remote_addr \$allowed \{'
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: '10\.0\.0\.0/8 1;'
 
   - it: should use nginx command for front-proxy
     template: deployment.yaml

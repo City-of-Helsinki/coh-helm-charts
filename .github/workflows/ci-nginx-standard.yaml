@@ -37,7 +37,9 @@ jobs:
 
       - name: Unit tests
         if: matrix.use-case == 'filesharing'
-        run: helm unittest "$CHART"
+        run: |
+          compgen -G "$CHART/tests/*_test.yaml" >/dev/null || { echo "::error::no $CHART/tests/*_test.yaml found"; exit 1; }
+          helm unittest "$CHART"
 
       - name: Render, kubeconform, nginx syntax, gixy, use-case checks
         run: bash .github/scripts/test-nginx-standard-usecase.sh "${{ matrix.use-case }}"
