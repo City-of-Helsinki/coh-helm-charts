@@ -585,6 +585,9 @@ networkPolicy:
 routes:
   enabled: false
   
+  # e.g. router: application for the IngressController that serves *.dev-se / *.test-se.hel.ninja
+  labels: {}
+
   # Global route annotations
   annotations:
     haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains;preload"
@@ -603,6 +606,9 @@ routes:
       #   haproxy.router.openshift.io/rate-limit-connections: "true"
       # Route-specific httpHeaders (optional, overrides routes.httpHeaders)
       # httpHeaders: {}
+      # Route-specific labels (optional, merged over routes.labels)
+      # labels:
+      #   router: application
 
   # Route httpHeaders for all routes (optional), e.g. pass the Application Gateway trace id:
   # httpHeaders:
