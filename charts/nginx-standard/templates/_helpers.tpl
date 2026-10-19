@@ -251,12 +251,39 @@ EXTERNAL SECRETS & STORAGE
 {{- end }}
 {{- end }}
 
+{{/*
+Secret with the storage account credentials (keys azurestorageaccountname / azurestorageaccountkey).
+fileSharing.storage.pvc.azureFile.secretName overrides the generated name.
+*/}}
 {{- define "nginx-standard.secretName" -}}
-{{- include "nginx-standard.fullname" . }}-secret
+{{- $af := ((((.Values.fileSharing).storage).pvc).azureFile) | default dict -}}
+{{- $af.secretName | default (printf "%s-secret" (include "nginx-standard.fullname" .)) -}}
 {{- end }}
 
+{{/*
+SecretStore used by the ExternalSecret. externalSecrets.secretStore.name points to an
+existing SecretStore (e.g. one created by namespace provisioning) when secretStore.create is false.
+*/}}
 {{- define "nginx-standard.secretStoreName" -}}
-{{- include "nginx-standard.fullname" . }}-secretstore
+{{- $ss := .Values.externalSecrets.secretStore | default dict -}}
+{{- $ss.name | default (printf "%s-secretstore" (include "nginx-standard.fullname" .)) -}}
+{{- end }}
+
+{{- define "nginx-standard.secretStoreCreate" -}}
+{{- $ss := .Values.externalSecrets.secretStore | default dict -}}
+{{- if and .Values.externalSecrets.enabled (ne $ss.create false) }}
+{{- "true" }}
+{{- else }}
+{{- "false" }}
+{{- end }}
+{{- end }}
+
+{{/*
+External Secrets API version. external-secrets.io/v1 is required by ESO >= 0.17
+(OpenShift "External Secrets Operator" 1.x); v1beta1 kept as default for older clusters.
+*/}}
+{{- define "nginx-standard.externalSecretsApiVersion" -}}
+{{- .Values.externalSecrets.apiVersion | default "external-secrets.io/v1beta1" -}}
 {{- end }}
 
 {{- define "nginx-standard.externalSecretName" -}}
@@ -271,8 +298,19 @@ EXTERNAL SECRETS & STORAGE
 {{- include "nginx-standard.fullname" . }}-pvc
 {{- end }}
 
+{{/*
+PV name (static mode). pvc.volumeName names the PV, so PV and PVC always match;
+falls back to <fullname>-pv. PVs are cluster scoped: include the environment in volumeName.
+*/}}
 {{- define "nginx-standard.pvName" -}}
-{{- include "nginx-standard.fullname" . }}-pv
+{{- .Values.fileSharing.storage.pvc.volumeName | default (printf "%s-pv" (include "nginx-standard.fullname" .)) -}}
+{{- end }}
+
+{{/*
+Azure File driver for static PVs: "in-tree" (azureFile, legacy default) or "csi" (file.csi.azure.com).
+*/}}
+{{- define "nginx-standard.azureFileDriver" -}}
+{{- .Values.fileSharing.storage.pvc.azureFile.driver | default "in-tree" -}}
 {{- end }}
 
 {{- define "nginx-standard.azureFileShareName" -}}

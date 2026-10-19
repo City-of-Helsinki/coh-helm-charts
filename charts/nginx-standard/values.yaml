@@ -224,17 +224,38 @@ fileSharing:
       storageClassName: "azurefile-csi"
       # Volume name (used only in STATIC mode)
       # For DYNAMIC mode: Leave empty
-      # For STATIC mode: Set to bind to specific PV
+      # For STATIC mode: name of the PV the chart creates and the PVC binds to
+      #   (empty = <fullname>-pv). PVs are cluster scoped: include the environment, e.g. "myapp-test-pv"
       volumeName: ""
       # Azure File specific configuration (STATIC mode only)
       azureFile:
         # Enable only for STATIC mode with existing share
         enabled: false
+        # Volume driver for the static PV:
+        # - "in-tree": legacy azureFile volume source (default, kept for existing releases)
+        # - "csi":     file.csi.azure.com with nodeStageSecretRef in the release namespace (recommended)
+        #   In-tree azureFile PVs are migrated to CSI by OpenShift; without secretNamespace the
+        #   migrated volume looks for the secret in the "default" namespace.
+        driver: "in-tree"
         # Name of the existing Azure File share (STATIC mode)
         shareName: "fileshare"
-        # Secret name for Azure credentials (STATIC mode)
-        # Leave empty to auto-generate from External Secrets
+        # Secret name for Azure credentials (keys azurestorageaccountname / azurestorageaccountkey)
+        # Leave empty to use <fullname>-secret created by External Secrets
         secretName: ""
+        # in-tree only: namespace of the secret (empty = driver default)
+        secretNamespace: ""
+        # csi only: unique volume id in the cluster (empty = <namespace>_<pv name>)
+        volumeHandle: ""
+        # csi only: CIFS mount options (static PVs do not get StorageClass mount options)
+        mountOptions: []
+        # Example (read-only content for nginx):
+        # mountOptions:
+        #   - dir_mode=0755
+        #   - file_mode=0644
+        #   - mfsymlinks
+        #   - cache=strict
+        #   - actimeo=30
+        #   - nosharesock
         # PV capacity (STATIC mode)
         # Leave empty to use pvc.size
         capacity: ""
@@ -580,6 +601,19 @@ routes:
       # Route-specific annotations (optional)
       # annotations:
       #   haproxy.router.openshift.io/rate-limit-connections: "true"
+      # Route-specific httpHeaders (optional, overrides routes.httpHeaders)
+      # httpHeaders: {}
+
+  # Route httpHeaders for all routes (optional), e.g. pass the Application Gateway trace id:
+  # httpHeaders:
+  #   actions:
+  #     request:
+  #       - name: X-Request-Id
+  #         action:
+  #           type: Set
+  #           set:
+  #             value: '%[req.hdr(X-AppGw-Trace-Id)]'
+  httpHeaders: {}
 
 # ==============================================================================
 # EXTERNAL SECRETS (Azure Key Vault Integration)
@@ -587,10 +621,17 @@ routes:
 externalSecrets:
   enabled: false
   refreshInterval: "1h"  # How often to sync from Key Vault
+  # external-secrets.io/v1 for ESO >= 0.17 (OpenShift External Secrets Operator 1.x)
+  apiVersion: "external-secrets.io/v1beta1"
+
+  # SecretStore used by the ExternalSecret
+  secretStore:
+    create: true   # false = use an existing SecretStore (e.g. created by namespace provisioning)
+    name: ""       # empty = <fullname>-secretstore; set when create is false
   
   azureKeyVault:
-    vaultName: ""  # REQUIRED: Azure Key Vault name
-    tenantId: ""  # REQUIRED: Azure AD tenant ID
+    vaultName: ""  # REQUIRED when secretStore.create is true: Azure Key Vault name
+    tenantId: ""  # REQUIRED when secretStore.create is true: Azure AD tenant ID
     
     # Key names in Azure Key Vault
     storageAccountNameKey: "AZURE-STORAGE-ACCOUNT-NAME"

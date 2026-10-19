@@ -5,7 +5,9 @@ templates:
   - configmap.yaml
   - route.yaml
   - pvc.yaml
+  - pv.yaml
   - externalsecret.yaml
+  - secretstore.yaml
   - hpa.yaml
   - networkpolicy.yaml
   - pdb.yaml
@@ -99,12 +101,13 @@ tests:
   - it: should mount config volume correctly
     template: deployment.yaml
     asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: config-volume
-            configMap:
-              name: RELEASE-NAME-nginx-standard-config
+      # exact paths instead of `contains`: the volume also has items and defaultMode
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: config-volume
+      - equal:
+          path: spec.template.spec.volumes[0].configMap.name
+          value: RELEASE-NAME-nginx-standard-config
       - contains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
@@ -195,6 +198,182 @@ tests:
       - equal:
           path: spec.secretStoreRef.name
           value: RELEASE-NAME-nginx-standard-secretstore
+
+  - it: should create a CSI static PV bound to the chart PVC
+    set:
+      nginx:
+        useCase: "file-sharing"
+      fileSharing:
+        enabled: true
+        storage:
+          mode: "static"
+          pvc:
+            enabled: true
+            size: "100Gi"
+            storageClassName: "azurefile-csi"
+            volumeName: "app-test-pv"
+            azureFile:
+              enabled: true
+              driver: "csi"
+              shareName: "app-testing"
+              mountOptions: ["dir_mode=0755", "file_mode=0644"]
+    templates:
+      - pv.yaml
+      - pvc.yaml
+    release:
+      namespace: app-ns
+    asserts:
+      - template: pv.yaml
+        equal:
+          path: metadata.name
+          value: app-test-pv
+      - template: pv.yaml
+        equal:
+          path: spec.csi.driver
+          value: file.csi.azure.com
+      - template: pv.yaml
+        equal:
+          path: spec.csi.volumeAttributes.shareName
+          value: app-testing
+      - template: pv.yaml
+        equal:
+          path: spec.csi.nodeStageSecretRef
+          value:
+            name: RELEASE-NAME-nginx-standard-secret
+            namespace: app-ns
+      - template: pv.yaml
+        equal:
+          path: spec.claimRef
+          value:
+            namespace: app-ns
+            name: RELEASE-NAME-nginx-standard-pvc
+      - template: pv.yaml
+        equal:
+          path: spec.mountOptions
+          value: ["dir_mode=0755", "file_mode=0644"]
+      - template: pv.yaml
+        isNull:
+          path: spec.azureFile
+      - template: pvc.yaml
+        equal:
+          path: spec.volumeName
+          value: app-test-pv
+
+  - it: should default PVC volumeName to the chart PV name in static mode
+    set:
+      nginx:
+        useCase: "file-sharing"
+      fileSharing:
+        enabled: true
+        storage:
+          mode: "static"
+          pvc:
+            enabled: true
+            azureFile:
+              enabled: true
+    templates:
+      - pv.yaml
+      - pvc.yaml
+    asserts:
+      - template: pv.yaml
+        equal:
+          path: metadata.name
+          value: RELEASE-NAME-nginx-standard-pv
+      - template: pvc.yaml
+        equal:
+          path: spec.volumeName
+          value: RELEASE-NAME-nginx-standard-pv
+
+  - it: should fail on unknown Azure File driver
+    template: pv.yaml
+    set:
+      nginx:
+        useCase: "file-sharing"
+      fileSharing:
+        enabled: true
+        storage:
+          mode: "static"
+          pvc:
+            azureFile:
+              enabled: true
+              driver: "nfs"
+    asserts:
+      - failedTemplate:
+          errorMessage: "fileSharing.storage.pvc.azureFile.driver must be 'in-tree' or 'csi', got \"nfs\""
+
+  - it: should map storage keys and use an existing SecretStore with ESO v1
+    set:
+      nginx:
+        useCase: "file-sharing"
+      fileSharing:
+        enabled: true
+        storage:
+          mode: "static"
+          pvc:
+            azureFile:
+              enabled: true
+      externalSecrets:
+        enabled: true
+        apiVersion: "external-secrets.io/v1"
+        secretStore:
+          create: false
+          name: "app-shared"
+    templates:
+      - externalsecret.yaml
+      - secretstore.yaml
+    asserts:
+      - template: externalsecret.yaml
+        isAPIVersion:
+          of: external-secrets.io/v1
+      - template: externalsecret.yaml
+        equal:
+          path: spec.secretStoreRef.name
+          value: app-shared
+      - template: externalsecret.yaml
+        equal:
+          path: spec.data
+          value:
+            - secretKey: azurestorageaccountname
+              remoteRef:
+                key: AZURE-STORAGE-ACCOUNT-NAME
+            - secretKey: azurestorageaccountkey
+              remoteRef:
+                key: AZURE-STORAGE-ACCOUNT-KEY
+      - template: secretstore.yaml
+        hasDocuments:
+          count: 0
+
+  - it: should not leak per-route annotations into other routes and should set httpHeaders
+    template: route.yaml
+    set:
+      routes:
+        enabled: true
+        httpHeaders:
+          actions:
+            request:
+              - name: X-Request-Id
+                action:
+                  type: Set
+                  set:
+                    value: "%[req.hdr(X-AppGw-Trace-Id)]"
+        items:
+          - host: a.example.com
+            annotations:
+              only-on-a: "true"
+          - host: b.example.com
+            nameSuffix: "-b"
+    asserts:
+      - documentIndex: 1
+        notExists:
+          path: metadata.annotations.only-on-a
+      - documentIndex: 0
+        equal:
+          path: metadata.annotations.only-on-a
+          value: "true"
+      - documentIndex: 1
+        equal:
+          path: spec.httpHeaders.actions.request[0].name
+          value: X-Request-Id
 
   - it: should mount file-content-volume for file-sharing
     template: deployment.yaml
@@ -342,22 +521,27 @@ tests:
             name: HOST_EN
             value: "en.example.com"
 
-  - it: should mount proxy_ips.conf for front-proxy with PROXY_IP
-    template: deployment.yaml
+  # proxy_ips.conf was replaced by geo blocks in frontProxy.globalConfig.httpDirectives
+  - it: should render front-proxy allow-list from httpDirectives
+    template: configmap.yaml
     set:
       nginx:
         useCase: "front-proxy"
       frontProxy:
         enabled: true
-        env:
-          PROXY_IP: "10.0.0.0/8 1;"
+        globalConfig:
+          httpDirectives: |
+            geo $remote_addr $allowed {
+              default 0;
+              10.0.0.0/8 1;
+            }
     asserts:
-      - contains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: config-volume
-            mountPath: /opt/app-root/etc/proxy_ips.conf
-            subPath: proxy_ips.conf
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'geo \$remote_addr \$allowed \{'
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: '10\.0\.0\.0/8 1;'
 
   - it: should use nginx command for front-proxy
     template: deployment.yaml

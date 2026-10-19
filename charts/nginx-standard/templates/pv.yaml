@@ -1,8 +1,12 @@
 {{- if eq (include "nginx-standard.azureFileEnabled" .) "true" }}
+{{- $af := .Values.fileSharing.storage.pvc.azureFile }}
+{{- $driver := include "nginx-standard.azureFileDriver" . }}
+{{- $ns := include "nginx-standard.namespace" . }}
+{{- $pvName := include "nginx-standard.pvName" . }}
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: {{ include "nginx-standard.pvName" . }}
+  name: {{ $pvName }}
   labels:
     {{- include "nginx-standard.labels" . | nindent 4 }}
 spec:
@@ -13,9 +17,35 @@ spec:
   {{- if .Values.fileSharing.storage.pvc.storageClassName }}
   storageClassName: {{ .Values.fileSharing.storage.pvc.storageClassName }}
   {{- end }}
+  persistentVolumeReclaimPolicy: Retain
+  {{- if eq $driver "csi" }}
+  # Reserve this PV for the chart's PVC only
+  claimRef:
+    namespace: {{ $ns }}
+    name: {{ include "nginx-standard.pvcName" . }}
+  {{- with $af.mountOptions }}
+  mountOptions:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  csi:
+    driver: file.csi.azure.com
+    # Must be unique per share in the cluster
+    volumeHandle: {{ $af.volumeHandle | default (printf "%s_%s" $ns $pvName) }}
+    readOnly: false
+    volumeAttributes:
+      shareName: {{ include "nginx-standard.azureFileShareName" . }}
+    nodeStageSecretRef:
+      name: {{ include "nginx-standard.secretName" . }}
+      namespace: {{ $ns }}
+  {{- else if eq $driver "in-tree" }}
   azureFile:
     secretName: {{ include "nginx-standard.secretName" . }}
+    {{- with $af.secretNamespace }}
+    secretNamespace: {{ . }}
+    {{- end }}
     shareName: {{ include "nginx-standard.azureFileShareName" . }}
     readOnly: false
-  persistentVolumeReclaimPolicy: Retain
+  {{- else }}
+  {{- fail (printf "fileSharing.storage.pvc.azureFile.driver must be 'in-tree' or 'csi', got %q" $driver) }}
+  {{- end }}
 {{- end }}

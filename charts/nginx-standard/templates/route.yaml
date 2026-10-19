@@ -10,7 +10,8 @@ metadata:
   labels:
     {{- include "nginx-standard.labels" $ | nindent 4 }}
   annotations:
-    {{- $globalAnnotations := default dict $.Values.routes.annotations }}
+    {{- /* deepCopy: mergeOverwrite mutates its first argument, so item annotations would leak into later routes */}}
+    {{- $globalAnnotations := deepCopy (default dict $.Values.routes.annotations) }}
     {{- $itemAnnotations := default dict $route.annotations }}
     {{- $annotations := mergeOverwrite $globalAnnotations $itemAnnotations }}
     {{- toYaml $annotations | nindent 4 }}
@@ -33,5 +34,9 @@ spec:
     termination: "edge"
     insecureEdgeTerminationPolicy: "Redirect"
     {{- end }}
+  {{- with ($route.httpHeaders | default $.Values.routes.httpHeaders) }}
+  httpHeaders:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}
 {{- end }}
