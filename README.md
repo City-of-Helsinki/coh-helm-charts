@@ -41,7 +41,10 @@ SemVer check, changelog (commits under `charts/<chart>/` since the previous tag)
 publish to `coh-helm-repo` and GitHub release. A release only happens after the same tests
 a PR runs have passed.
 
-Charts: `helfi-proxy-nginx`, `mailpit-openshift`, `nginx-standard`, `redis-cluster`, `varnish-drupal`.
+Charts: `elasticsearch`, `helfi-proxy-nginx`, `mailpit-openshift`, `nginx-standard`, `redis-cluster`, `varnish-drupal`.
+
+`elasticsearch` is new: it has only `pr-`/`ci-elasticsearch.yaml` with lint, unit tests and
+schema checks so far (no integration job, no release workflow yet).
 
 Shared pieces: `.github/actions/setup-ci-tools` (pinned Helm v3.19.2, kubeconform, yq,
 helm-unittest, gixy, oc) and `.github/actions/openshift-login`.
