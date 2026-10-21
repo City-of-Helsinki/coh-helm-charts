@@ -1,0 +1,20 @@
+# Example elasticsearch-values.yaml for a 1-node dev instance.
+#   helm upgrade --install elasticsearch <chart> -n <namespace> -f elasticsearch-values.yaml
+#
+# Prerequisites in <namespace> (created by platform admins via GitOps, not by this chart):
+#   - ECK operator 3.x (OLM Subscription elasticsearch-eck-operator-certified)
+#   - ConfigMap platta-service-ca (annotation service.beta.openshift.io/inject-cabundle: "true")
+
+version: "9.5.5"
+
+nodeCount: 1
+
+storage:
+  size: 5Gi            # can be increased later, never decreased
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 2Gi
+  limits:
+    memory: 2Gi        # JVM heap = half of this (1 GiB), set automatically by Elasticsearch

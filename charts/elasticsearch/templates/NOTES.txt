@@ -1,0 +1,13 @@
+Elasticsearch {{ .Values.version }} ({{ .Values.nodeCount }} node{{ if gt (int .Values.nodeCount) 1 }}s{{ end }}) is being created by the ECK operator.
+
+1. Status (wait for HEALTH green and PHASE Ready):
+   oc get elasticsearch {{ include "elasticsearch.fullname" . }} -n {{ .Release.Namespace }}
+
+2. Endpoint inside the cluster (no Route; public access only through the elastic-proxy):
+   https://{{ include "elasticsearch.httpServiceName" . }}.{{ .Release.Namespace }}.svc:9200
+
+3. TLS: certificate from the OpenShift service CA (Secret {{ include "elasticsearch.httpTlsSecretName" . }}).
+   Clients mount ConfigMap {{ .Values.serviceCA.configMapName }} and trust its service-ca.crt.
+
+4. The elastic superuser ({{ include "elasticsearch.fullname" . }}-es-elastic-user) is for administrators only;
+   applications must never use it.

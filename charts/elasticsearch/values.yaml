@@ -1,0 +1,48 @@
+# Default values for the elasticsearch chart.
+# Every key is validated by values.schema.json; unknown keys are rejected, so settings
+# the chart fixes (storage class, TLS, no Route, no plugins) cannot be overridden.
+
+global:
+  # Registry (optionally with a path) that mirrors the official Elastic images.
+  # Empty = ECK default (docker.elastic.co). When set, the image becomes
+  # <imageRegistry>/elasticsearch/elasticsearch:<version>.
+  imageRegistry: ""
+
+# Elasticsearch version. Allowed: the two newest 9.x minors maintained by Elastic (9.4, 9.5).
+# Upgrades only: ECK refuses downgrades.
+version: "9.5.5"
+
+# Number of Elasticsearch nodes: 1 or 3. Every node is master + data + ingest.
+nodeCount: 1
+
+storage:
+  # Data volume per node (storage class platta-azure-ssd-lrs, fixed by the chart).
+  # Can only be increased later, never decreased.
+  size: 10Gi
+
+# Resources of the elasticsearch container. limits.memory is required: Elasticsearch
+# sizes its JVM heap automatically to half of it. Keep requests.memory = limits.memory.
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    memory: 2Gi
+
+# Platta managed Service TLS (OpenShift service CA)
+serviceCA:
+  # ConfigMap with the OpenShift service CA (key service-ca.crt). REQUIRED in the namespace,
+  # created by the platform (annotation service.beta.openshift.io/inject-cabundle: "true").
+  # The chart only references it; it never creates or deletes it.
+  configMapName: platta-service-ca
+  # Mount the service CA into the Elasticsearch pods and set
+  # xpack.security.http.ssl.certificate_authorities (Confluence example).
+  # To be verified in the sandbox whether Elasticsearch needs it.
+  mountInElasticsearch: true
+
+# Pod scheduling - same keys in every coh chart (empty = any node,
+# falls back to global.nodeSelector / global.tolerations / global.affinity).
+# With no affinity, ECK adds its own soft anti-affinity that spreads nodes over workers.
+nodeSelector: {}
+tolerations: []
+affinity: {}
