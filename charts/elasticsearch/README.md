@@ -98,16 +98,19 @@ storage class `platta-azure-ssd-lrs`, [values-dev-1node.yaml](values-dev-1node.y
 * The OLM-installed operator pod has the label `control-plane=elastic-operator` (for the
   NetworkPolicy in a later release).
 * Growing `storage.size` from 5Gi to 8Gi worked.
+* The sandbox pulled `docker.elastic.co/elasticsearch/elasticsearch:9.5.5` directly from
+  `docker.elastic.co` (imageID `docker.elastic.co/elasticsearch/elasticsearch@sha256:13b4a40b...`).
 
 ## To test in the sandbox
 
 1. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
    the CA from `ca.crt`, which the OpenShift-generated Secret lacks; if needed, mount
    `platta-service-ca` into Kibana and set `elasticsearch.ssl.certificateAuthorities`.
-2. Can the Sweden ARO clusters pull from `docker.elastic.co`, or do we need a mirror
-   (`global.imageRegistry`)?
-3. Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
-4. `vm.max_map_count` on the nodes: could `node.store.allow_mmap` be turned back on?
+2. dev-se/prod: pull from `docker.elastic.co` directly, or via Platta's Quay
+   (`global.imageRegistry`)? To confirm with the platform team.
+3. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
+4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
+   `node.store.allow_mmap` be turned back on?
 
 ## Changelog
 
