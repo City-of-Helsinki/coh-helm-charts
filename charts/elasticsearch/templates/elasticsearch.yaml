@@ -1,0 +1,56 @@
+{{- $tlsSecret := include "elasticsearch.httpTlsSecretName" . }}
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: {{ include "elasticsearch.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "elasticsearch.labels" . | nindent 4 }}
+spec:
+  version: {{ .Values.version | quote }}
+  {{- with include "elasticsearch.image" . }}
+  image: {{ . }}
+  {{- end }}
+  # helm uninstall / deleting the resource keeps the data volumes
+  volumeClaimDeletePolicy: DeleteOnScaledownOnly
+  http:
+    # Platta managed Service TLS: ECK copies the annotation onto <name>-es-http, the
+    # OpenShift service CA then creates the Secret that ECK serves HTTPS with.
+    # Elasticsearch itself needs no service CA (sandbox-tested 2026-10-28).
+    service:
+      metadata:
+        annotations:
+          service.beta.openshift.io/serving-cert-secret-name: {{ $tlsSecret }}
+    tls:
+      certificate:
+        secretName: {{ $tlsSecret }}
+  # Transport (node-to-node) TLS: ECK's own self-signed certificates (default, unchanged).
+  nodeSets:
+    - name: default
+      count: {{ .Values.nodeCount }}
+      config:
+        node.roles: ["master", "data", "ingest"]
+        # no vm.max_map_count sysctl (would need a privileged init container)
+        node.store.allow_mmap: false
+      podTemplate:
+        metadata:
+          labels:
+            {{- include "elasticsearch.selectorLabels" . | nindent 12 }}
+        spec:
+          containers:
+            - name: elasticsearch
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+          {{- with include "elasticsearch.scheduling" . }}
+          {{- . | nindent 10 }}
+          {{- end }}
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data   # name required by ECK
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            storageClassName: platta-azure-ssd-lrs
+            resources:
+              requests:
+                storage: {{ .Values.storage.size }}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "elasticsearch chart values",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "nodeCount", "storage", "resources"],
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "imageRegistry": {
+          "type": "string",
+          "description": "Mirror of the official Elastic images; empty = docker.elastic.co (ECK default)"
+        }
+      }
+    },
+    "version": {
+      "type": "string",
+      "description": "Elasticsearch version: the two newest maintained 9.x minors",
+      "pattern": "^9\\.(4|5)\\.(0|[1-9][0-9]*)$"
+    },
+    "nodeCount": {
+      "type": "integer",
+      "description": "Number of Elasticsearch nodes (all master + data + ingest)",
+      "enum": [1, 3]
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size"],
+      "properties": {
+        "size": {
+          "type": "string",
+          "description": "Data volume per node; can only grow",
+          "pattern": "^[1-9][0-9]*(Gi|Ti)$"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limits"],
+      "properties": {
+        "requests": { "$ref": "#/definitions/resourceList" },
+        "limits": {
+          "allOf": [
+            { "$ref": "#/definitions/resourceList" },
+            { "required": ["memory"] }
+          ]
+        }
+      }
+    },
+    "nodeSelector": { "type": "object" },
+    "tolerations": { "type": "array" },
+    "affinity": { "type": "object" }
+  },
+  "definitions": {
+    "quantity": {
+      "type": ["string", "integer", "number"]
+    },
+    "resourceList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu": { "$ref": "#/definitions/quantity" },
+        "memory": { "$ref": "#/definitions/quantity" }
+      }
+    }
+  }
+}

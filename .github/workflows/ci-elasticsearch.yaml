@@ -1,0 +1,61 @@
+name: "CI: elasticsearch"
+
+# Reusable: lint + unit tests for charts/elasticsearch.
+# Called by pr-elasticsearch.yaml. No integration job yet: the chart needs the ECK
+# operator (OLM) and the platta-service-ca ConfigMap, which come in a later PR.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CHART: charts/elasticsearch
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-tools
+        with:
+          kubeconform: "false"   # the chart renders only the Elasticsearch CRD, which kubeconform cannot validate
+
+      - name: helm lint (defaults and every values-*.yaml example)
+        run: |
+          helm lint --strict "$CHART"
+          for f in "$CHART"/values-*.yaml; do
+            [ -e "$f" ] || continue
+            echo "::group::helm lint -f $f"
+            helm lint --strict "$CHART" -f "$f"
+            echo "::endgroup::"
+          done
+
+      - name: Unit tests
+        run: |
+          compgen -G "$CHART/tests/*_test.yaml" >/dev/null || { echo "::error::no $CHART/tests/*_test.yaml found"; exit 1; }
+          helm unittest "$CHART"
+
+      - name: values.schema.json rejects forbidden values
+        # helm-unittest 0.4.1 cannot assert schema failures, so check them here
+        run: |
+          set -uo pipefail
+          rc=0
+          reject() {
+            local desc="$1"; shift
+            if out=$(helm template ci "$CHART" "$@" 2>&1); then
+              echo "::error::accepted, should be rejected: $desc ($*)"; rc=1
+            elif ! grep -q "values don't meet the specifications of the schema" <<<"$out"; then
+              echo "::error::failed for another reason than the schema: $desc"; echo "$out"; rc=1
+            else
+              echo "✓ rejected: $desc"
+            fi
+          }
+          reject "nodeCount 2"                 --set nodeCount=2
+          reject "Elasticsearch 7.x"           --set version=7.17.29
+          reject "Elasticsearch 8.19 (exception not implemented yet)" --set version=8.19.0
+          reject "Elasticsearch 9.3"           --set version=9.3.0
+          reject "storage class override"      --set storage.storageClassName=managed-csi
+          reject "unknown top-level value"     --set route.enabled=true
+          reject "missing memory limit"        --set resources.limits=null
+          exit $rc
