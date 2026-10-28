@@ -60,13 +60,6 @@ platta-{{ include "elasticsearch.fullname" . }}-es-http-tls
 {{- end }}
 
 {{/*
-Directory of the mounted service CA. Elasticsearch only reads SSL files below its config dir.
-*/}}
-{{- define "elasticsearch.serviceCADir" -}}
-/usr/share/elasticsearch/config/platta-service-ca
-{{- end }}
-
-{{/*
 Image: empty (ECK default docker.elastic.co/elasticsearch/elasticsearch:<version>) unless
 global.imageRegistry points to a mirror of the official image. Never a custom image.
 */}}

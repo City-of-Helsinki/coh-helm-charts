@@ -122,32 +122,7 @@ tests:
       - notExists:
           path: spec.transport
 
-  - it: should mount the platform service CA and trust it for HTTP
-    set:
-      serviceCA:
-        configMapName: my-service-ca
-    asserts:
-      - contains:
-          path: spec.nodeSets[0].podTemplate.spec.volumes
-          content:
-            name: platta-service-ca
-            configMap:
-              name: my-service-ca
-      - contains:
-          path: spec.nodeSets[0].podTemplate.spec.containers[0].volumeMounts
-          content:
-            name: platta-service-ca
-            mountPath: /usr/share/elasticsearch/config/platta-service-ca
-            readOnly: true
-      - equal:
-          path: spec.nodeSets[0].config["xpack.security.http.ssl.certificate_authorities"]
-          value:
-            - /usr/share/elasticsearch/config/platta-service-ca/service-ca.crt
-
-  - it: should not mount the service CA when mountInElasticsearch is false
-    set:
-      serviceCA:
-        mountInElasticsearch: false
+  - it: should not mount a CA or set certificate_authorities (not needed, sandbox-tested)
     asserts:
       - notExists:
           path: spec.nodeSets[0].podTemplate.spec.volumes

@@ -3,7 +3,7 @@
   "title": "elasticsearch chart values",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "nodeCount", "storage", "resources", "serviceCA"],
+  "required": ["version", "nodeCount", "storage", "resources"],
   "properties": {
     "global": {
       "type": "object",
@@ -48,19 +48,6 @@
             { "required": ["memory"] }
           ]
         }
-      }
-    },
-    "serviceCA": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["configMapName", "mountInElasticsearch"],
-      "properties": {
-        "configMapName": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Existing ConfigMap with the OpenShift service CA (never created by the chart)"
-        },
-        "mountInElasticsearch": { "type": "boolean" }
       }
     },
     "nodeSelector": { "type": "object" },

@@ -29,17 +29,6 @@ resources:
   limits:
     memory: 2Gi
 
-# Platta managed Service TLS (OpenShift service CA)
-serviceCA:
-  # ConfigMap with the OpenShift service CA (key service-ca.crt). REQUIRED in the namespace,
-  # created by the platform (annotation service.beta.openshift.io/inject-cabundle: "true").
-  # The chart only references it; it never creates or deletes it.
-  configMapName: platta-service-ca
-  # Mount the service CA into the Elasticsearch pods and set
-  # xpack.security.http.ssl.certificate_authorities (Confluence example).
-  # To be verified in the sandbox whether Elasticsearch needs it.
-  mountInElasticsearch: true
-
 # Pod scheduling - same keys in every coh chart (empty = any node,
 # falls back to global.nodeSelector / global.tolerations / global.affinity).
 # With no affinity, ECK adds its own soft anti-affinity that spreads nodes over workers.

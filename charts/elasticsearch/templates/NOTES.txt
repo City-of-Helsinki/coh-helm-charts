@@ -7,7 +7,7 @@ Elasticsearch {{ .Values.version }} ({{ .Values.nodeCount }} node{{ if gt (int .
    https://{{ include "elasticsearch.httpServiceName" . }}.{{ .Release.Namespace }}.svc:9200
 
 3. TLS: certificate from the OpenShift service CA (Secret {{ include "elasticsearch.httpTlsSecretName" . }}).
-   Clients mount ConfigMap {{ .Values.serviceCA.configMapName }} and trust its service-ca.crt.
+   Clients mount the ConfigMap platta-service-ca (created by the platform) and trust its service-ca.crt.
 
 4. The elastic superuser ({{ include "elasticsearch.fullname" . }}-es-elastic-user) is for administrators only;
    applications must never use it.

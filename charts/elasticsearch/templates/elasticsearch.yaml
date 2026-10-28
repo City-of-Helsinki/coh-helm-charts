@@ -1,5 +1,4 @@
 {{- $tlsSecret := include "elasticsearch.httpTlsSecretName" . }}
-{{- $caDir := include "elasticsearch.serviceCADir" . }}
 apiVersion: elasticsearch.k8s.elastic.co/v1
 kind: Elasticsearch
 metadata:
@@ -17,6 +16,7 @@ spec:
   http:
     # Platta managed Service TLS: ECK copies the annotation onto <name>-es-http, the
     # OpenShift service CA then creates the Secret that ECK serves HTTPS with.
+    # Elasticsearch itself needs no service CA (sandbox-tested 2026-10-28).
     service:
       metadata:
         annotations:
@@ -32,10 +32,6 @@ spec:
         node.roles: ["master", "data", "ingest"]
         # no vm.max_map_count sysctl (would need a privileged init container)
         node.store.allow_mmap: false
-        {{- if .Values.serviceCA.mountInElasticsearch }}
-        xpack.security.http.ssl.certificate_authorities:
-          - {{ $caDir }}/service-ca.crt
-        {{- end }}
       podTemplate:
         metadata:
           labels:
@@ -45,19 +41,6 @@ spec:
             - name: elasticsearch
               resources:
                 {{- toYaml .Values.resources | nindent 16 }}
-              {{- if .Values.serviceCA.mountInElasticsearch }}
-              volumeMounts:
-                - name: platta-service-ca
-                  mountPath: {{ $caDir }}
-                  readOnly: true
-              {{- end }}
-          {{- if .Values.serviceCA.mountInElasticsearch }}
-          volumes:
-            # Created by the platform, never by this chart
-            - name: platta-service-ca
-              configMap:
-                name: {{ .Values.serviceCA.configMapName }}
-          {{- end }}
           {{- with include "elasticsearch.scheduling" . }}
           {{- . | nindent 10 }}
           {{- end }}
