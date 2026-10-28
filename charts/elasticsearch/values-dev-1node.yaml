@@ -3,7 +3,8 @@
 #
 # Prerequisites in <namespace> (created by platform admins via GitOps, not by this chart):
 #   - ECK operator 3.x (OLM Subscription elasticsearch-eck-operator-certified)
-#   - ConfigMap platta-service-ca (annotation service.beta.openshift.io/inject-cabundle: "true")
+#   - ConfigMap platta-service-ca (annotation service.beta.openshift.io/inject-cabundle: "true"),
+#     mounted by the application clients to trust Elasticsearch; the chart does not use it
 
 version: "9.5.5"
 

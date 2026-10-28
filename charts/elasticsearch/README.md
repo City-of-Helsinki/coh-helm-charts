@@ -17,7 +17,7 @@ Created in the namespace by platform admins via GitOps, **never by this chart**:
 | Object | Details |
 |---|---|
 | ECK operator 3.x | OperatorGroup + Subscription `elasticsearch-eck-operator-certified` (OLM), one operator per namespace. The chart contains no operator and no CRDs. |
-| ConfigMap `platta-service-ca` | Annotation `service.beta.openshift.io/inject-cabundle: "true"` (OpenShift fills in `service-ca.crt`). The chart only references it; the name is `serviceCA.configMapName`. **Required**: the Elasticsearch pods do not start without it. |
+| ConfigMap `platta-service-ca` | Annotation `service.beta.openshift.io/inject-cabundle: "true"` (OpenShift fills in `service-ca.crt`). Not used by the chart or by Elasticsearch: **clients mount it themselves** to trust the Elasticsearch certificate (see [TLS for clients](#tls-for-clients)). The chart never creates or deletes it. |
 
 ## Install and upgrade
 
@@ -49,8 +49,6 @@ Every value is validated by [values.schema.json](values.schema.json). Unknown ke
 | `nodeCount` | `1` | `1` or `3`. Every node is master + data + ingest. |
 | `storage.size` | `10Gi` | `<n>Gi` or `<n>Ti`. **Can only grow**: Kubernetes and ECK cannot shrink a volume. To get smaller disks, create a new instance and reindex/restore. |
 | `resources` | requests `500m`/`2Gi`, limit `2Gi` | `limits.memory` is required. Elasticsearch sets the JVM heap to half of it. Keep `requests.memory` = `limits.memory`. |
-| `serviceCA.configMapName` | `platta-service-ca` | Existing ConfigMap with `service-ca.crt` |
-| `serviceCA.mountInElasticsearch` | `true` | Mount the service CA into the pods and set `xpack.security.http.ssl.certificate_authorities` (see *To test in the sandbox*) |
 | `global.imageRegistry` | `""` | Empty = `docker.elastic.co` (ECK default). Otherwise a mirror of the official image: `<registry>/elasticsearch/elasticsearch:<version>` |
 | `nodeSelector`, `tolerations`, `affinity` | empty | Same as every coh chart (fall back to `global.*`). Without `affinity`, ECK spreads the nodes over workers. |
 
@@ -64,10 +62,12 @@ volumes; delete the PVCs by hand to remove the data).
 ## TLS for clients
 
 The HTTP certificate is issued by the OpenShift service CA for
-`<name>-es-http.<namespace>.svc` (and `.svc.cluster.local`).
+`<name>-es-http.<namespace>.svc` (and `.svc.cluster.local`). Elasticsearch itself needs no CA
+for it; only clients do.
 
-* **Application backends** mount the ConfigMap `platta-service-ca` and point their
-  Elasticsearch client's CA setting at `service-ca.crt`. Connect with the service name,
+* **Application backends** mount the ConfigMap `platta-service-ca` themselves (the chart does
+  not do it for them) and point their Elasticsearch client's CA setting at `service-ca.crt`.
+  Connect with the service name,
   e.g. `https://elasticsearch-es-http.<namespace>.svc:9200`, never with a pod IP.
 * **elastic-proxy** (nginx-standard): currently uses `proxy_ssl_verify off`, so it needs no CA.
   Upstream URL: `https://<name>-es-http.<namespace>.svc:9200`.
@@ -83,18 +83,31 @@ Needed for the rights of the application team's pipeline service account in its 
 
 Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the ECK operator.
 
+## Tested
+
+**28 Oct 2026**, sandbox cluster, namespace `elastic-smoketest`, ECK operator 3.1.0 (OLM),
+storage class `platta-azure-ssd-lrs`, [values-dev-1node.yaml](values-dev-1node.yaml):
+
+* Elasticsearch 9.5.5 reached green / Ready.
+* It serves the Platta certificate (issuer `openshift-service-serving-signer`, subject
+  `es-elasticsearch-es-http.elastic-smoketest.svc`).
+* The ECK operator accepts the certificate without `ca.crt` in the Secret, and copes with the
+  Secret appearing after the Service.
+* Without the service CA mount and `xpack.security.http.ssl.certificate_authorities`,
+  Elasticsearch stayed green and served the same certificate, so the chart no longer sets them.
+* The OLM-installed operator pod has the label `control-plane=elastic-operator` (for the
+  NetworkPolicy in a later release).
+* Growing `storage.size` from 5Gi to 8Gi worked.
+
 ## To test in the sandbox
 
-1. Does the ECK operator trust the service-CA certificate (no `ca.crt` in the Secret)?
-2. Does ECK recover when `platta-<name>-es-http-tls` does not exist yet? The service CA only
-   creates it after ECK has created the `<name>-es-http` Service.
-3. Does Elasticsearch need the service CA mount and `certificate_authorities` at all? Test
-   with `serviceCA.mountInElasticsearch: false`, and check that ECK keeps our setting.
-4. Can the Sweden ARO clusters pull from `docker.elastic.co`, or do we need a mirror
+1. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
+   the CA from `ca.crt`, which the OpenShift-generated Secret lacks; if needed, mount
+   `platta-service-ca` into Kibana and set `elasticsearch.ssl.certificateAuthorities`.
+2. Can the Sweden ARO clusters pull from `docker.elastic.co`, or do we need a mirror
    (`global.imageRegistry`)?
-5. Does the storage class `platta-azure-ssd-lrs` have `allowVolumeExpansion: true` (needed to grow `storage.size`)?
-6. Does the ECK 3.x version on the clusters support Elasticsearch 9.4 and 9.5?
-7. `vm.max_map_count` on the nodes: could `node.store.allow_mmap` be turned back on?
+3. Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
+4. `vm.max_map_count` on the nodes: could `node.store.allow_mmap` be turned back on?
 
 ## Changelog
 
@@ -102,3 +115,4 @@ Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the EC
 
 * First version (PLATTA-7443): one nodeSet (1 or 3 nodes, master + data + ingest),
   storage class `platta-azure-ssd-lrs`, Platta managed Service TLS, values schema.
+  Tested on the sandbox cluster on 28 Oct 2026.
