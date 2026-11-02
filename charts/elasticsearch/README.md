@@ -57,7 +57,7 @@ from the OpenShift service CA, transport (node-to-node) TLS from ECK's own certi
 no Route (public access only through the nginx-standard elastic-proxy), ECK's default
 PodDisruptionBudget, `node.store.allow_mmap: false`, no plugins, init containers or custom
 images, and `volumeClaimDeletePolicy: DeleteOnScaledownOnly` (`helm uninstall` keeps the data
-volumes; delete the PVCs by hand to remove the data).
+volumes; see [Known limitations](#known-limitations) to delete them).
 
 ## TLS for clients
 
@@ -83,6 +83,37 @@ Needed for the rights of the application team's pipeline service account in its 
 
 Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the ECK operator.
 
+## Known limitations
+
+* **Single-node instances turn yellow once an app creates an index.** Elasticsearch's default of
+  1 replica per index cannot be placed on a single node. Effects:
+  * anything that waits for green (e.g. `_cluster/health?wait_for_status=green`) times out;
+  * ECK's default PodDisruptionBudget blocks pod eviction while the cluster is not green,
+    which holds up node maintenance.
+
+  Until the chart sets a default, applications on 1-node instances must create their indices
+  (or index templates) with `"number_of_replicas": 0`:
+
+  ```text
+  PUT my-index
+  { "settings": { "number_of_replicas": 0 } }
+  ```
+
+* **Do not pass `pipeline-templates/helm-shared/helm-values/region-se.yaml` to this chart.** It
+  sets `global.imageRegistry` to `image-registry.int.platta.hel.fi`, where the Elastic image is
+  not mirrored, so the pods cannot pull it. To be decided in
+  [PLATTA-7447](https://helsinkisolutionoffice.atlassian.net/browse/PLATTA-7447).
+* **Data volumes are kept on uninstall** (`volumeClaimDeletePolicy: DeleteOnScaledownOnly`).
+  `helm uninstall` removes Elasticsearch, but its PVCs (`elasticsearch-data-<name>-es-default-<n>`)
+  stay. If the data is not needed, delete them once the pods are gone (**irreversible**):
+
+  ```bash
+  NS=<namespace>; NAME=elasticsearch        # Elasticsearch name (= release name, see above)
+  oc get pvc -n "$NS" -o name | grep "^persistentvolumeclaim/elasticsearch-data-${NAME}-es-"
+  oc get pvc -n "$NS" -o name | grep "^persistentvolumeclaim/elasticsearch-data-${NAME}-es-" \
+    | xargs oc delete -n "$NS"
+  ```
+
 ## Tested
 
 **28 Oct 2026**, sandbox cluster, namespace `elastic-smoketest`, ECK operator 3.1.0 (OLM),
@@ -98,18 +129,16 @@ storage class `platta-azure-ssd-lrs`, [values-dev-1node.yaml](values-dev-1node.y
 * The OLM-installed operator pod has the label `control-plane=elastic-operator` (for the
   NetworkPolicy in a later release).
 * Growing `storage.size` from 5Gi to 8Gi worked.
-* The sandbox pulled `docker.elastic.co/elasticsearch/elasticsearch:9.5.5` directly from
-  `docker.elastic.co` (imageID `docker.elastic.co/elasticsearch/elasticsearch@sha256:13b4a40b...`).
+* Sandbox and dev-se pull directly from `docker.elastic.co` (sandbox imageID
+  `docker.elastic.co/elasticsearch/elasticsearch@sha256:13b4a40b...`).
 
 ## To test in the sandbox
 
 1. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
    the CA from `ca.crt`, which the OpenShift-generated Secret lacks; if needed, mount
    `platta-service-ca` into Kibana and set `elasticsearch.ssl.certificateAuthorities`.
-2. dev-se/prod: pull from `docker.elastic.co` directly, or via Platta's Quay
-   (`global.imageRegistry`)? To confirm with the platform team.
-3. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
-4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
+2. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
+3. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
 
 ## Changelog
