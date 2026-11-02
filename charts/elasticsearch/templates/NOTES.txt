@@ -5,6 +5,8 @@ Elasticsearch {{ .Values.version }} ({{ .Values.nodeCount }} node{{ if gt (int .
 
 2. Endpoint inside the cluster (no Route; public access only through the elastic-proxy):
    https://{{ include "elasticsearch.httpServiceName" . }}.{{ .Release.Namespace }}.svc:9200
+   The nginx-standard elastic-proxy needs the full name, because nginx resolves without search domains:
+   https://{{ include "elasticsearch.httpServiceName" . }}.{{ .Release.Namespace }}.svc.cluster.local:9200
 
 3. TLS: certificate from the OpenShift service CA (Secret {{ include "elasticsearch.httpTlsSecretName" . }}).
    Clients mount the ConfigMap platta-service-ca (created by the platform) and trust its service-ca.crt.

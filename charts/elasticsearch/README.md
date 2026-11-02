@@ -70,7 +70,8 @@ for it; only clients do.
   Connect with the service name,
   e.g. `https://elasticsearch-es-http.<namespace>.svc:9200`, never with a pod IP.
 * **elastic-proxy** (nginx-standard): currently uses `proxy_ssl_verify off`, so it needs no CA.
-  Upstream URL: `https://<name>-es-http.<namespace>.svc:9200`.
+  Upstream URL must be the full name `https://<name>-es-http.<namespace>.svc.cluster.local:9200`,
+  because nginx resolves without search domains.
 
 ## Objects the chart creates
 
