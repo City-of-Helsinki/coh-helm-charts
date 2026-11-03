@@ -49,7 +49,10 @@ Every value is validated by [values.schema.json](values.schema.json). Unknown ke
 | `nodeCount` | `1` | `1` or `3`. Every node is master + data + ingest. |
 | `storage.size` | `10Gi` | `<n>Gi` or `<n>Ti`. **Can only grow**: Kubernetes and ECK cannot shrink a volume. To get smaller disks, create a new instance and reindex/restore. |
 | `resources` | requests `500m`/`2Gi`, limit `2Gi` | `limits.memory` is required. Elasticsearch sets the JVM heap to half of it. Keep `requests.memory` = `limits.memory`. |
-| `global.imageRegistry` | `""` | Empty = `docker.elastic.co` (ECK default). Otherwise a mirror of the official image: `<registry>/elasticsearch/elasticsearch:<version>` |
+| `image.registry` | `image-registry.int.platta.hel.fi` | See [Image](#image): only the Platta mirror or `docker.elastic.co` |
+| `image.repository` | `mirrored-images/elasticsearch/elasticsearch` | `elasticsearch/elasticsearch` together with `docker.elastic.co` |
+| `global.imageRegistry` | `""` | Overrides `image.registry` when set (only with the mirror repository) |
+| `global.imagePullSecrets` | `[]` | Pull secrets for the Elasticsearch pods, `{name: x}` or plain names |
 | `nodeSelector`, `tolerations`, `affinity` | empty | Same as every coh chart (fall back to `global.*`). Without `affinity`, ECK spreads the nodes over workers. |
 
 **Fixed by the chart (not overridable):** storage class `platta-azure-ssd-lrs`, HTTP TLS
@@ -58,6 +61,28 @@ no Route (public access only through the nginx-standard elastic-proxy), ECK's de
 PodDisruptionBudget, `node.store.allow_mmap: false`, no plugins, init containers or custom
 images, and `volumeClaimDeletePolicy: DeleteOnScaledownOnly` (`helm uninstall` keeps the data
 volumes; see [Known limitations](#known-limitations) to delete them).
+
+## Image
+
+The chart always runs the **official Elastic image**, tagged with `version`:
+
+```text
+image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>   # default (Platta mirror)
+```
+
+* `global.imageRegistry`, if set, replaces the registry (`region-se.yaml` sets the same
+  registry for dev-se/prod).
+* **Every new Elasticsearch version must be added to the mirror's tags before it is used**,
+  otherwise the pods cannot pull the image.
+* The sandbox cannot reach the mirror and pulls directly from Elastic instead:
+
+  ```bash
+  helm upgrade --install elasticsearch <chart> -n <namespace> -f elasticsearch-values.yaml \
+    --set image.registry=docker.elastic.co --set image.repository=elasticsearch/elasticsearch
+  ```
+
+The schema accepts only these two registry/repository combinations (and `docker.elastic.co`
+only while `global.imageRegistry` is empty). There is no `image.tag` or `image.digest`.
 
 ## TLS for clients
 
@@ -101,14 +126,10 @@ Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the EC
   { "settings": { "number_of_replicas": 0 } }
   ```
 
-* **A mirror must have the Elasticsearch version's tag before it can be used.** With
-  `global.imageRegistry` set, the pods pull `<registry>/elasticsearch/elasticsearch:<version>`;
-  if that tag has not been mirrored yet, the pods cannot start. Mirror the tag first, then
-  install or upgrade.
-* **Do not pass `pipeline-templates/helm-shared/helm-values/region-se.yaml` to this chart.** It
-  sets `global.imageRegistry` to `image-registry.int.platta.hel.fi`, where the Elastic image is
-  not mirrored, so the pods cannot pull it. To be decided in
-  [PLATTA-7447](https://helsinkisolutionoffice.atlassian.net/browse/PLATTA-7447).
+* **The mirror must have the Elasticsearch version's tag before it can be used.** The pods pull
+  `image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>`
+  (or the same path under `global.imageRegistry`); if that tag has not been mirrored yet, they
+  cannot start. Add the tag to the mirror first, then install or upgrade.
 * **Data volumes are kept on uninstall** (`volumeClaimDeletePolicy: DeleteOnScaledownOnly`).
   `helm uninstall` removes Elasticsearch, but its PVCs (`elasticsearch-data-<name>-es-default-<n>`)
   stay, and so do the Azure disks behind them, which keep costing money. If the data is not
@@ -136,7 +157,7 @@ storage class `platta-azure-ssd-lrs`, [values-dev-1node.yaml](values-dev-1node.y
 * The OLM-installed operator pod has the label `control-plane=elastic-operator` (for the
   NetworkPolicy in a later release).
 * Growing `storage.size` from 5Gi to 8Gi worked.
-* Sandbox and dev-se pull directly from `docker.elastic.co` (sandbox imageID
+* Sandbox and dev-se can pull directly from `docker.elastic.co` (sandbox imageID
   `docker.elastic.co/elasticsearch/elasticsearch@sha256:13b4a40b...`).
 
 ## To test in the sandbox
@@ -153,5 +174,6 @@ storage class `platta-azure-ssd-lrs`, [values-dev-1node.yaml](values-dev-1node.y
 ### 0.1.0
 
 * First version (PLATTA-7443): one nodeSet (1 or 3 nodes, master + data + ingest),
-  storage class `platta-azure-ssd-lrs`, Platta managed Service TLS, values schema.
+  storage class `platta-azure-ssd-lrs`, Platta managed Service TLS, official Elastic image
+  from Platta's mirror by default, `global.imagePullSecrets`, values schema.
   Tested on the sandbox cluster on 28 Oct 2026.

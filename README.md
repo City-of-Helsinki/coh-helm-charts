@@ -23,6 +23,10 @@ Platform deployments get registry and tags from
 `pipeline-templates/common/helm-values/` (one file per chart, one file per region), so a
 component upgrade is a one-line change there.
 
+`elasticsearch` differs on purpose: `global.imageRegistry` overrides `image.registry`, and there
+is no `image.tag`/`.digest` (the tag is always the chart's `version` value, so only the official
+Elastic image can run).
+
 Backwards compatible: `nginx.image.full`, a string `redis.image`, and a varnish
 `image.repository` that still contains a registry host all keep working.
 
