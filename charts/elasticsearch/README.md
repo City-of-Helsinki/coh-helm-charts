@@ -49,9 +49,9 @@ Every value is validated by [values.schema.json](values.schema.json). Unknown ke
 | `nodeCount` | `1` | `1` or `3`. Every node is master + data + ingest. |
 | `storage.size` | `10Gi` | `<n>Gi` or `<n>Ti`. **Can only grow**: Kubernetes and ECK cannot shrink a volume. To get smaller disks, create a new instance and reindex/restore. |
 | `resources` | requests `500m`/`2Gi`, limit `2Gi` | `limits.memory` is required. Elasticsearch sets the JVM heap to half of it. Keep `requests.memory` = `limits.memory`. |
-| `image.registry` | `image-registry.int.platta.hel.fi` | See [Image](#image): only the Platta mirror or `docker.elastic.co` |
+| `image.registry` | `""` (= `global.imageRegistry`) | See [Image](#image): empty, the Platta mirror, or `docker.elastic.co`. Wins over `global.imageRegistry` when set. |
 | `image.repository` | `mirrored-images/elasticsearch/elasticsearch` | `elasticsearch/elasticsearch` together with `docker.elastic.co` |
-| `global.imageRegistry` | `""` | Overrides `image.registry` when set (only with the mirror repository) |
+| `global.imageRegistry` | `image-registry.int.platta.hel.fi` | Registry for images that do not set their own `image.registry` (same as the other coh charts) |
 | `global.imagePullSecrets` | `[]` | Pull secrets for the Elasticsearch pods, `{name: x}` or plain names |
 | `nodeSelector`, `tolerations`, `affinity` | empty | Same as every coh chart (fall back to `global.*`). Without `affinity`, ECK spreads the nodes over workers. |
 
@@ -70,19 +70,22 @@ The chart always runs the **official Elastic image**, tagged with `version`:
 image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>   # default (Platta mirror)
 ```
 
-* `global.imageRegistry`, if set, replaces the registry (`region-se.yaml` sets the same
-  registry for dev-se/prod).
+* The registry resolves like in nginx-standard: `image.registry` if set, otherwise
+  `global.imageRegistry` (default `image-registry.int.platta.hel.fi`; `region-se.yaml` sets the
+  same registry for dev-se/prod).
 * **Every new Elasticsearch version must be added to the mirror's tags before it is used**,
   otherwise the pods cannot pull the image.
-* The sandbox cannot reach the mirror and pulls directly from Elastic instead:
+* The sandbox cannot reach the mirror and pulls directly from Elastic instead. The explicit
+  `image.registry` wins, so this works even if `global.imageRegistry` is set:
 
   ```bash
   helm upgrade --install elasticsearch <chart> -n <namespace> -f elasticsearch-values.yaml \
     --set image.registry=docker.elastic.co --set image.repository=elasticsearch/elasticsearch
   ```
 
-The schema accepts only these two registry/repository combinations (and `docker.elastic.co`
-only while `global.imageRegistry` is empty). There is no `image.tag` or `image.digest`.
+The schema accepts only these two registry/repository combinations, and an empty
+`image.registry` only while `global.imageRegistry` is set. There is no `image.tag` or
+`image.digest`.
 
 ## TLS for clients
 
@@ -128,7 +131,7 @@ Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the EC
 
 * **The mirror must have the Elasticsearch version's tag before it can be used.** The pods pull
   `image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>`
-  (or the same path under `global.imageRegistry`); if that tag has not been mirrored yet, they
+  (or the same path under another `global.imageRegistry`); if that tag has not been mirrored yet, they
   cannot start. Add the tag to the mirror first, then install or upgrade.
 * **Data volumes are kept on uninstall** (`volumeClaimDeletePolicy: DeleteOnScaledownOnly`).
   `helm uninstall` removes Elasticsearch, but its PVCs (`elasticsearch-data-<name>-es-default-<n>`)
