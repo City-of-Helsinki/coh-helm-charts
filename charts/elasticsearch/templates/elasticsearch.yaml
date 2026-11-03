@@ -35,6 +35,9 @@ spec:
           labels:
             {{- include "elasticsearch.selectorLabels" . | nindent 12 }}
         spec:
+          {{- with include "elasticsearch.imagePullSecrets" . }}
+          {{- . | nindent 10 }}
+          {{- end }}
           containers:
             - name: elasticsearch
               resources:

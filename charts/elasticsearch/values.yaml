@@ -5,6 +5,8 @@
 global:
   # Overrides image.registry when set (region-se.yaml sets it for dev-se/prod).
   imageRegistry: ""
+  # Pull secrets for the Elasticsearch pods ({name: x} or plain names), empty by default.
+  imagePullSecrets: []
 
 # Official Elastic image from Platta's mirror. The tag is always `version`, so every new
 # Elasticsearch version must be in the mirror's tags before it is used.

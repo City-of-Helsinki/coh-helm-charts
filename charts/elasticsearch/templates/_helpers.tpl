@@ -70,6 +70,22 @@ official Elastic image (Platta mirror or docker.elastic.co), never a custom imag
 {{- end }}
 
 {{/*
+imagePullSecrets from global.imagePullSecrets (deduplicated), same as the other coh charts.
+Accepts entries as {name: x} maps or plain strings.
+*/}}
+{{- define "elasticsearch.imagePullSecrets" -}}
+{{- $out := list -}}
+{{- range ((.Values.global).imagePullSecrets | default list) -}}
+{{- $out = append $out (ternary (dict "name" .) . (kindIs "string" .)) -}}
+{{- end -}}
+{{- $out = uniq $out -}}
+{{- if $out -}}
+imagePullSecrets:
+{{ toYaml $out | indent 2 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Pod scheduling - the same contract in every coh chart:
   nodeSelector  map of node labels        (default {} = any node)
   tolerations   list of tolerations       (default [])

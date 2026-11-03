@@ -175,6 +175,25 @@ tests:
           path: spec.image
           value: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
 
+  - it: should not render imagePullSecrets by default
+    asserts:
+      - notExists:
+          path: spec.nodeSets[0].podTemplate.spec.imagePullSecrets
+
+  - it: should pass global.imagePullSecrets to the pod template (maps or names, deduplicated)
+    set:
+      global:
+        imagePullSecrets:
+          - name: platta-mirror-pull
+          - platta-mirror-pull
+          - other-pull
+    asserts:
+      - equal:
+          path: spec.nodeSets[0].podTemplate.spec.imagePullSecrets
+          value:
+            - name: platta-mirror-pull
+            - name: other-pull
+
   # ===========================================================================
   # RESOURCES AND SCHEDULING
   # ===========================================================================

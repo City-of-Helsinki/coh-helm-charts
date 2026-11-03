@@ -11,6 +11,20 @@
         "imageRegistry": {
           "type": "string",
           "description": "Overrides image.registry when set (Platta mirror of the region)"
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "description": "Pull secrets for the Elasticsearch pods: {name: x} or plain names",
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "object",
+                "required": ["name"],
+                "properties": { "name": { "type": "string", "minLength": 1 } }
+              }
+            ]
+          }
         }
       }
     },
