@@ -60,13 +60,19 @@ platta-{{ include "elasticsearch.fullname" . }}-es-http-tls
 {{- end }}
 
 {{/*
-Image: <registry>/<repository>:<version>. global.imageRegistry, when set, overrides
-image.registry. The tag is always .Values.version. values.schema.json only allows the
-official Elastic image (Platta mirror or docker.elastic.co), never a custom image.
+Image: <registry>/<repository>:<version>, resolved like nginx-standard.imageRef:
+  - image.registry  -> optional; falls back to global.imageRegistry
+  - image.repository -> required
+The tag is always .Values.version (no image.tag / image.digest). values.schema.json only
+allows the official Elastic image (Platta mirror or docker.elastic.co), never a custom image.
 */}}
 {{- define "elasticsearch.image" -}}
-{{- $registry := (.Values.global).imageRegistry | default .Values.image.registry | trimSuffix "/" -}}
-{{- printf "%s/%s:%s" $registry .Values.image.repository .Values.version -}}
+{{- $img := .Values.image -}}
+{{- $global := .Values.global | default dict -}}
+{{- $registry := $img.registry | default $global.imageRegistry | default "" | trimSuffix "/" -}}
+{{- $repo := required "image.repository is required" $img.repository -}}
+{{- $ref := ternary (printf "%s/%s" $registry $repo) $repo (ne $registry "") -}}
+{{- printf "%s:%s" $ref .Values.version -}}
 {{- end }}
 
 {{/*

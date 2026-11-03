@@ -156,7 +156,16 @@ tests:
           path: spec.image
           value: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:9.4.8
 
-  - it: should let global.imageRegistry override image.registry
+  - it: should use the mirror with the -se pipeline values (region-se.yaml)
+    set:
+      global:
+        imageRegistry: image-registry.int.platta.hel.fi
+    asserts:
+      - equal:
+          path: spec.image
+          value: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:9.5.5
+
+  - it: should use global.imageRegistry when image.registry is empty (as nginx-standard)
     set:
       global:
         imageRegistry: container-registry.platta-net.hel.fi/
@@ -165,8 +174,31 @@ tests:
           path: spec.image
           value: container-registry.platta-net.hel.fi/mirrored-images/elasticsearch/elasticsearch:9.5.5
 
+  - it: should let an explicit image.registry win over global.imageRegistry (as nginx-standard)
+    set:
+      global:
+        imageRegistry: container-registry.platta-net.hel.fi
+      image:
+        registry: image-registry.int.platta.hel.fi
+    asserts:
+      - equal:
+          path: spec.image
+          value: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:9.5.5
+
   - it: should pull from docker.elastic.co with the sandbox combination
     set:
+      image:
+        registry: docker.elastic.co
+        repository: elasticsearch/elasticsearch
+    asserts:
+      - equal:
+          path: spec.image
+          value: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+
+  - it: should keep the sandbox combination even when a pipeline sets global.imageRegistry
+    set:
+      global:
+        imageRegistry: image-registry.int.platta.hel.fi
       image:
         registry: docker.elastic.co
         repository: elasticsearch/elasticsearch

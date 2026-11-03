@@ -3,21 +3,23 @@
 # the chart fixes (storage class, TLS, no Route, no plugins) cannot be overridden.
 
 global:
-  # Overrides image.registry when set (region-se.yaml sets it for dev-se/prod).
-  imageRegistry: ""
+  # Registry prepended to any image that does not set its own `registry` (same as the other
+  # coh charts). The platform pipeline overrides this per region (region-se.yaml).
+  imageRegistry: "image-registry.int.platta.hel.fi"
   # Pull secrets for the Elasticsearch pods ({name: x} or plain names), empty by default.
   imagePullSecrets: []
 
 # Official Elastic image from Platta's mirror. The tag is always `version`, so every new
 # Elasticsearch version must be in the mirror's tags before it is used.
 # Default: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>
+# registry: empty = global.imageRegistry; when set, it wins over global.imageRegistry.
 # The schema allows only two combinations (always the official image):
-#   - registry image-registry.int.platta.hel.fi (or global.imageRegistry),
+#   - registry "" (= global.imageRegistry) or image-registry.int.platta.hel.fi,
 #     repository mirrored-images/elasticsearch/elasticsearch   (default)
 #   - registry docker.elastic.co, repository elasticsearch/elasticsearch
-#     (sandbox only, which cannot reach the mirror; global.imageRegistry must be empty)
+#     (sandbox only, which cannot reach the mirror)
 image:
-  registry: image-registry.int.platta.hel.fi
+  registry: ""
   repository: mirrored-images/elasticsearch/elasticsearch
 
 # Elasticsearch version. Allowed: the two newest 9.x minors maintained by Elastic (9.4, 9.5).

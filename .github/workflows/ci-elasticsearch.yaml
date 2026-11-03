@@ -61,9 +61,9 @@ jobs:
           reject "third registry"              --set image.registry=quay.io
           reject "third repository"            --set image.repository=someone/elasticsearch
           reject "docker.elastic.co with the mirror repository" --set image.registry=docker.elastic.co
-          reject "mirror registry with the docker.elastic.co repository" --set image.repository=elasticsearch/elasticsearch
-          reject "global.imageRegistry with the docker.elastic.co repository" \
-            --set global.imageRegistry=image-registry.int.platta.hel.fi \
-            --set image.registry=docker.elastic.co --set image.repository=elasticsearch/elasticsearch
+          reject "global.imageRegistry with the docker.elastic.co repository" --set image.repository=elasticsearch/elasticsearch
+          reject "mirror registry with the docker.elastic.co repository" \
+            --set image.registry=image-registry.int.platta.hel.fi --set image.repository=elasticsearch/elasticsearch
+          reject "no registry at all (image.registry and global.imageRegistry empty)" --set global.imageRegistry=
           reject "custom image tag"            --set image.tag=1.0
           exit $rc

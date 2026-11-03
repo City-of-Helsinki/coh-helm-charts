@@ -10,7 +10,7 @@
       "properties": {
         "imageRegistry": {
           "type": "string",
-          "description": "Overrides image.registry when set (Platta mirror of the region)"
+          "description": "Registry for images that do not set their own image.registry (Platta mirror of the region)"
         },
         "imagePullSecrets": {
           "type": "array",
@@ -30,7 +30,7 @@
     },
     "image": {
       "type": "object",
-      "description": "Official Elastic image only: Platta mirror (default) or docker.elastic.co (sandbox)",
+      "description": "Official Elastic image only: Platta mirror (default, registry empty = global.imageRegistry) or docker.elastic.co (sandbox)",
       "additionalProperties": false,
       "required": ["registry", "repository"],
       "properties": {
@@ -40,7 +40,7 @@
       "oneOf": [
         {
           "properties": {
-            "registry": { "const": "image-registry.int.platta.hel.fi" },
+            "registry": { "enum": ["", "image-registry.int.platta.hel.fi"] },
             "repository": { "const": "mirrored-images/elasticsearch/elasticsearch" }
           }
         },
@@ -93,14 +93,12 @@
     "affinity": { "type": "object" }
   },
   "if": {
+    "properties": { "image": { "properties": { "registry": { "const": "" } } } }
+  },
+  "then": {
     "required": ["global"],
     "properties": {
       "global": { "required": ["imageRegistry"], "properties": { "imageRegistry": { "minLength": 1 } } }
-    }
-  },
-  "then": {
-    "properties": {
-      "image": { "properties": { "repository": { "const": "mirrored-images/elasticsearch/elasticsearch" } } }
     }
   },
   "definitions": {
