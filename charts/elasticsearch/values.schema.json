@@ -3,16 +3,40 @@
   "title": "elasticsearch chart values",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "nodeCount", "storage", "resources"],
+  "required": ["version", "nodeCount", "storage", "resources", "image"],
   "properties": {
     "global": {
       "type": "object",
       "properties": {
         "imageRegistry": {
           "type": "string",
-          "description": "Mirror of the official Elastic images; empty = docker.elastic.co (ECK default)"
+          "description": "Overrides image.registry when set (Platta mirror of the region)"
         }
       }
+    },
+    "image": {
+      "type": "object",
+      "description": "Official Elastic image only: Platta mirror (default) or docker.elastic.co (sandbox)",
+      "additionalProperties": false,
+      "required": ["registry", "repository"],
+      "properties": {
+        "registry": { "type": "string" },
+        "repository": { "type": "string" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "registry": { "const": "image-registry.int.platta.hel.fi" },
+            "repository": { "const": "mirrored-images/elasticsearch/elasticsearch" }
+          }
+        },
+        {
+          "properties": {
+            "registry": { "const": "docker.elastic.co" },
+            "repository": { "const": "elasticsearch/elasticsearch" }
+          }
+        }
+      ]
     },
     "version": {
       "type": "string",
@@ -53,6 +77,17 @@
     "nodeSelector": { "type": "object" },
     "tolerations": { "type": "array" },
     "affinity": { "type": "object" }
+  },
+  "if": {
+    "required": ["global"],
+    "properties": {
+      "global": { "required": ["imageRegistry"], "properties": { "imageRegistry": { "minLength": 1 } } }
+    }
+  },
+  "then": {
+    "properties": {
+      "image": { "properties": { "repository": { "const": "mirrored-images/elasticsearch/elasticsearch" } } }
+    }
   },
   "definitions": {
     "quantity": {

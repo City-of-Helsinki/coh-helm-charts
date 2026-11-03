@@ -8,9 +8,7 @@ metadata:
     {{- include "elasticsearch.labels" . | nindent 4 }}
 spec:
   version: {{ .Values.version | quote }}
-  {{- with include "elasticsearch.image" . }}
-  image: {{ . }}
-  {{- end }}
+  image: {{ include "elasticsearch.image" . }}
   # helm uninstall / deleting the resource keeps the data volumes
   volumeClaimDeletePolicy: DeleteOnScaledownOnly
   http:

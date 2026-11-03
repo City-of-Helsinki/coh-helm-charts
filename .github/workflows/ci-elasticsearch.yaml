@@ -58,4 +58,12 @@ jobs:
           reject "storage class override"      --set storage.storageClassName=managed-csi
           reject "unknown top-level value"     --set route.enabled=true
           reject "missing memory limit"        --set resources.limits=null
+          reject "third registry"              --set image.registry=quay.io
+          reject "third repository"            --set image.repository=someone/elasticsearch
+          reject "docker.elastic.co with the mirror repository" --set image.registry=docker.elastic.co
+          reject "mirror registry with the docker.elastic.co repository" --set image.repository=elasticsearch/elasticsearch
+          reject "global.imageRegistry with the docker.elastic.co repository" \
+            --set global.imageRegistry=image-registry.int.platta.hel.fi \
+            --set image.registry=docker.elastic.co --set image.repository=elasticsearch/elasticsearch
+          reject "custom image tag"            --set image.tag=1.0
           exit $rc

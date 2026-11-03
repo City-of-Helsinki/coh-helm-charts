@@ -3,10 +3,20 @@
 # the chart fixes (storage class, TLS, no Route, no plugins) cannot be overridden.
 
 global:
-  # Registry (optionally with a path) that mirrors the official Elastic images.
-  # Empty = ECK default (docker.elastic.co). When set, the image becomes
-  # <imageRegistry>/elasticsearch/elasticsearch:<version>.
+  # Overrides image.registry when set (region-se.yaml sets it for dev-se/prod).
   imageRegistry: ""
+
+# Official Elastic image from Platta's mirror. The tag is always `version`, so every new
+# Elasticsearch version must be in the mirror's tags before it is used.
+# Default: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>
+# The schema allows only two combinations (always the official image):
+#   - registry image-registry.int.platta.hel.fi (or global.imageRegistry),
+#     repository mirrored-images/elasticsearch/elasticsearch   (default)
+#   - registry docker.elastic.co, repository elasticsearch/elasticsearch
+#     (sandbox only, which cannot reach the mirror; global.imageRegistry must be empty)
+image:
+  registry: image-registry.int.platta.hel.fi
+  repository: mirrored-images/elasticsearch/elasticsearch
 
 # Elasticsearch version. Allowed: the two newest 9.x minors maintained by Elastic (9.4, 9.5).
 # Upgrades only: ECK refuses downgrades.

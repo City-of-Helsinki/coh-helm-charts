@@ -60,14 +60,13 @@ platta-{{ include "elasticsearch.fullname" . }}-es-http-tls
 {{- end }}
 
 {{/*
-Image: empty (ECK default docker.elastic.co/elasticsearch/elasticsearch:<version>) unless
-global.imageRegistry points to a mirror of the official image. Never a custom image.
+Image: <registry>/<repository>:<version>. global.imageRegistry, when set, overrides
+image.registry. The tag is always .Values.version. values.schema.json only allows the
+official Elastic image (Platta mirror or docker.elastic.co), never a custom image.
 */}}
 {{- define "elasticsearch.image" -}}
-{{- $registry := ((.Values.global).imageRegistry | default "") | trimSuffix "/" -}}
-{{- if $registry -}}
-{{- printf "%s/elasticsearch/elasticsearch:%s" $registry .Values.version -}}
-{{- end -}}
+{{- $registry := (.Values.global).imageRegistry | default .Values.image.registry | trimSuffix "/" -}}
+{{- printf "%s/%s:%s" $registry .Values.image.repository .Values.version -}}
 {{- end }}
 
 {{/*
