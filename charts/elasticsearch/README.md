@@ -88,9 +88,10 @@ Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the EC
 
 * **Single-node instances turn yellow once an app creates an index.** Elasticsearch's default of
   1 replica per index cannot be placed on a single node. Effects:
-  * anything that waits for green (e.g. `_cluster/health?wait_for_status=green`) times out;
+  * anything that waits for green, e.g. a pipeline step calling
+    `_cluster/health?wait_for_status=green`, times out;
   * ECK's default PodDisruptionBudget blocks pod eviction while the cluster is not green,
-    which holds up node maintenance.
+    which can hold up node maintenance.
 
   Until the chart sets a default, applications on 1-node instances must create their indices
   (or index templates) with `"number_of_replicas": 0`:
@@ -100,13 +101,18 @@ Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the EC
   { "settings": { "number_of_replicas": 0 } }
   ```
 
+* **A mirror must have the Elasticsearch version's tag before it can be used.** With
+  `global.imageRegistry` set, the pods pull `<registry>/elasticsearch/elasticsearch:<version>`;
+  if that tag has not been mirrored yet, the pods cannot start. Mirror the tag first, then
+  install or upgrade.
 * **Do not pass `pipeline-templates/helm-shared/helm-values/region-se.yaml` to this chart.** It
   sets `global.imageRegistry` to `image-registry.int.platta.hel.fi`, where the Elastic image is
   not mirrored, so the pods cannot pull it. To be decided in
   [PLATTA-7447](https://helsinkisolutionoffice.atlassian.net/browse/PLATTA-7447).
 * **Data volumes are kept on uninstall** (`volumeClaimDeletePolicy: DeleteOnScaledownOnly`).
   `helm uninstall` removes Elasticsearch, but its PVCs (`elasticsearch-data-<name>-es-default-<n>`)
-  stay. If the data is not needed, delete them once the pods are gone (**irreversible**):
+  stay, and so do the Azure disks behind them, which keep costing money. If the data is not
+  needed, delete them once the pods are gone (**irreversible**):
 
   ```bash
   NS=<namespace>; NAME=elasticsearch        # Elasticsearch name (= release name, see above)
