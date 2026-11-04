@@ -156,6 +156,41 @@ For a release that uses `existingSecret: <Key Vault/ESO secret>`:
 4. Remove `migrateFromSecret` from the values. Leaving it in place does no harm, because it is
    only read when the chart Secret does not exist yet.
 
+### Rotating the password
+
+The chart never changes the password by itself: it is kept on upgrades and, with
+`keepOnUninstall: true`, on reinstall. The pods also read it only when they start (there is no
+checksum annotation), so a new value takes effect only after a restart. To rotate:
+
+```bash
+NS=<namespace>; REL=<release>; SEC=<secret name>   # e.g. helhist / helhist-redis-cluster-secret
+
+# 1. Write a new random password into the Secret (never printed). Patching keeps the Helm
+#    labels, so the next helm upgrade reads the new value and keeps it.
+NEWPW=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
+oc patch secret "$SEC" -n "$NS" --type merge \
+  -p "{\"data\":{\"REDIS_PASSWORD\":\"$(printf %s "$NEWPW" | base64 -w0)\"}}"
+unset NEWPW
+
+# 2. Restart ALL Redis and Sentinel pods at once - not a rolling restart
+oc delete pod -n "$NS" -l app.kubernetes.io/instance="$REL"
+oc rollout status sts/"$REL"-redis-cluster-redis    -n "$NS" --timeout=10m
+oc rollout status sts/"$REL"-redis-cluster-sentinel -n "$NS" --timeout=10m
+
+# 3. Restart the consumers so they read the new password
+oc rollout restart deploy/drupal deploy/drupal-cron -n "$NS"
+```
+
+* All pods at once: each pod sets `requirepass`, `masterauth` and Sentinel `auth-pass` when it
+  starts. During a rolling restart, pods on the new password cannot authenticate to pods still on
+  the old one, so replication and failover break until all of them have restarted.
+* Expect a short Redis outage (usually under a minute), with cache errors in the applications until
+  Redis and the consumers are back. Plan it outside busy hours in production.
+* Alternative: delete the Secret and run `helm upgrade`, and the chart generates a new password.
+  Remove `migrateFromSecret` first, otherwise the old password is copied back. Until the upgrade
+  has run, the Secret does not exist.
+* Do not put a real password in `redis.password.password` in a values file.
+
 ## Application Integration
 
 Applications connect to Redis through Sentinels for automatic master discovery. This ensures applications always connect to the current master, even after failovers.
