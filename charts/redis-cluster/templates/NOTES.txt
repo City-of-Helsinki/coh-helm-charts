@@ -15,11 +15,21 @@
 Redis Sentinel has been deployed!
 
 {{- if .Values.redis.password.existingSecret }}
-1. Using existing secret: {{ .Values.redis.password.existingSecret }}
+1. Using existing (externally managed) secret: {{ .Values.redis.password.existingSecret }}
    Password key: {{ .Values.redis.password.secretKey }}
+   NOTE: existingSecret is the legacy mode. Leave it empty to let this chart own the password Secret.
 {{- else }}
-1. Generated Redis password:
-   oc get secret {{ include "redis-sentinel.redis.passwordSecret" . }} -n {{ .Release.Namespace }} -o jsonpath="{.data.{{ include "redis-sentinel.redis.passwordKey" . }}}" | base64 --decode && echo
+1. Redis password Secret (owned by this release, kept across upgrades):
+   Secret: {{ include "redis-sentinel.redis.passwordSecret" . }}
+   Key:    {{ include "redis-sentinel.redis.passwordKey" . }}
+
+   Consume it in Drupal / drupal-cron (same namespace):
+     env:
+       - name: REDIS_PASSWORD
+         valueFrom:
+           secretKeyRef:
+             name: {{ include "redis-sentinel.redis.passwordSecret" . }}
+             key: {{ include "redis-sentinel.redis.passwordKey" . }}
 {{- end }}
 
 2. Connect to Redis:

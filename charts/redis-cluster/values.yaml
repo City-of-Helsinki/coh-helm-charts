@@ -65,15 +65,40 @@ redis:
     mountPath: "/data"
   
   # Password configuration
+  #
+  # Recommended (Sweden Central / ARO): leave existingSecret empty. The chart then
+  # OWNS the password Secret (<fullname>-secret, or secretName below) with key
+  # REDIS_PASSWORD. The password is generated once and kept on every upgrade.
+  # Applications (Drupal, drupal-cron, ...) read it with secretKeyRef - no Key Vault
+  # entry is needed.
   password:
-    # Auto-generate password if not specified
+    # Explicit password. Leave empty: a random one is generated on first install and
+    # then kept. Do not put real passwords in values files.
     password: ""
-    
-    # Use existing secret instead of creating new one
-    # If specified, password field above is ignored
+
+    # Name of the Secret this chart creates. Empty = "<fullname>-secret"
+    # (e.g. release "redis" -> "redis-redis-cluster-secret").
+    # Set a fixed name (e.g. "redis-password") so consumers do not depend on the
+    # release name.
+    secretName: ""
+
+    # One-time migration: copy the current password from this Secret in the same
+    # namespace when the chart-owned Secret does not exist yet (e.g. the Drupal
+    # Key Vault/ESO secret that used to hold REDIS_PASSWORD). The password does not
+    # change, so running clients keep working. Remove after the first deployment.
+    migrateFromSecret: ""
+    # Key to read from migrateFromSecret
+    migrateFromKey: "REDIS_PASSWORD"
+
+    # Keep the Secret on `helm uninstall` (helm.sh/resource-policy: keep), so a
+    # re-install keeps the password the applications use.
+    keepOnUninstall: true
+
+    # LEGACY: use a Secret managed outside this chart (e.g. synced from Key Vault).
+    # When set, the chart creates no Secret and the fields above are ignored.
     existingSecret: ""
-    
-    # Key name in the secret containing the password
+
+    # Key name in existingSecret containing the password
     secretKey: "REDIS_PASSWORD"
   
   # Pod Disruption Budget
@@ -344,8 +369,7 @@ fullnameOverride: ""
 #     enabled: true
 #     minAvailable: 2
 #   password:
-#     existingSecret: redis-prod-secret
-#     secretKey: password
+#     secretName: redis-password   # chart-owned Secret, consumers use key REDIS_PASSWORD
 # sentinel:
 #   replicaCount: 3
 #   pdb:
@@ -399,7 +423,7 @@ fullnameOverride: ""
 #       drop:
 #         - ALL
 #   password:
-#     existingSecret: vault-redis-secret
+#     secretName: redis-password
 #   extraConfig:
 #     protected-mode: "yes"
 #     rename-command-CONFIG: ""
