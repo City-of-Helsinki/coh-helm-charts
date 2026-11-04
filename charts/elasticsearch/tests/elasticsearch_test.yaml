@@ -1,0 +1,280 @@
+suite: elasticsearch unit tests
+# Schema rejections (nodeCount 2, other versions, storage class override, other images) cannot be asserted
+# with helm-unittest 0.4.1; ci-elasticsearch.yaml checks that helm template fails for them.
+templates:
+  - elasticsearch.yaml
+
+tests:
+  # ===========================================================================
+  # RESOURCE
+  # ===========================================================================
+  - it: should render exactly one Elasticsearch and nothing else (no ConfigMap, no Route)
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Elasticsearch
+      - isAPIVersion:
+          of: elasticsearch.k8s.elastic.co/v1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-elasticsearch
+      - equal:
+          path: spec.version
+          value: "9.5.5"
+
+  - it: should name the resource after the release when it contains the chart name
+    release:
+      name: elasticsearch
+    asserts:
+      - equal:
+          path: metadata.name
+          value: elasticsearch
+
+  - it: should fail when the name exceeds the ECK limit of 36 characters
+    release:
+      name: a-very-long-release-name-for-search
+    asserts:
+      - failedTemplate:
+          errorMessage: 'Elasticsearch name "a-very-long-release-name-for-search-elasticsearch" is longer than 36 characters (ECK limit): use a shorter release name'
+
+  - it: should keep data volumes on uninstall and use roles master, data, ingest
+    asserts:
+      - equal:
+          path: spec.volumeClaimDeletePolicy
+          value: DeleteOnScaledownOnly
+      - equal:
+          path: spec.nodeSets[0].name
+          value: default
+      - equal:
+          path: spec.nodeSets[0].config["node.roles"]
+          value: ["master", "data", "ingest"]
+      - equal:
+          path: spec.nodeSets[0].config["node.store.allow_mmap"]
+          value: false
+
+  # ===========================================================================
+  # NODE COUNT
+  # ===========================================================================
+  - it: should run 1 node by default
+    asserts:
+      - lengthEqual:
+          path: spec.nodeSets
+          count: 1
+      - equal:
+          path: spec.nodeSets[0].count
+          value: 1
+
+  - it: should run 3 nodes when nodeCount is 3
+    set:
+      nodeCount: 3
+    asserts:
+      - lengthEqual:
+          path: spec.nodeSets
+          count: 1
+      - equal:
+          path: spec.nodeSets[0].count
+          value: 3
+
+  # ===========================================================================
+  # STORAGE
+  # ===========================================================================
+  - it: should always use storage class platta-azure-ssd-lrs
+    set:
+      storage:
+        size: 50Gi
+    asserts:
+      - equal:
+          path: spec.nodeSets[0].volumeClaimTemplates[0].metadata.name
+          value: elasticsearch-data
+      - equal:
+          path: spec.nodeSets[0].volumeClaimTemplates[0].spec.storageClassName
+          value: platta-azure-ssd-lrs
+      - equal:
+          path: spec.nodeSets[0].volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 50Gi
+
+  # ===========================================================================
+  # TLS (Platta managed Service TLS)
+  # ===========================================================================
+  - it: should use the same Secret name in the serving-cert annotation and http.tls
+    asserts:
+      - equal:
+          path: spec.http.service.metadata.annotations["service.beta.openshift.io/serving-cert-secret-name"]
+          value: platta-RELEASE-NAME-elasticsearch-es-http-tls
+      - equal:
+          path: spec.http.tls.certificate.secretName
+          value: platta-RELEASE-NAME-elasticsearch-es-http-tls
+
+  - it: should keep both TLS names in sync for another release name
+    release:
+      name: search
+    asserts:
+      - equal:
+          path: spec.http.service.metadata.annotations["service.beta.openshift.io/serving-cert-secret-name"]
+          value: platta-search-elasticsearch-es-http-tls
+      - equal:
+          path: spec.http.tls.certificate.secretName
+          value: platta-search-elasticsearch-es-http-tls
+
+  - it: should leave transport TLS to ECK
+    asserts:
+      - notExists:
+          path: spec.transport
+
+  - it: should not mount a CA or set certificate_authorities (not needed, sandbox-tested)
+    asserts:
+      - notExists:
+          path: spec.nodeSets[0].podTemplate.spec.volumes
+      - notExists:
+          path: spec.nodeSets[0].podTemplate.spec.containers[0].volumeMounts
+      - notExists:
+          path: spec.nodeSets[0].config["xpack.security.http.ssl.certificate_authorities"]
+
+  # ===========================================================================
+  # VERSION AND IMAGE
+  # ===========================================================================
+  - it: should accept 9.4.x
+    set:
+      version: "9.4.8"
+    asserts:
+      - equal:
+          path: spec.version
+          value: "9.4.8"
+
+  - it: should use the official image from Platta's mirror by default
+    asserts:
+      - equal:
+          path: spec.image
+          value: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:9.5.5
+
+  - it: should always tag the image with the version value
+    set:
+      version: "9.4.8"
+    asserts:
+      - equal:
+          path: spec.image
+          value: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:9.4.8
+
+  - it: should use the mirror with the -se pipeline values (region-se.yaml)
+    set:
+      global:
+        imageRegistry: image-registry.int.platta.hel.fi
+    asserts:
+      - equal:
+          path: spec.image
+          value: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:9.5.5
+
+  - it: should use global.imageRegistry when image.registry is empty (as nginx-standard)
+    set:
+      global:
+        imageRegistry: container-registry.platta-net.hel.fi/
+    asserts:
+      - equal:
+          path: spec.image
+          value: container-registry.platta-net.hel.fi/mirrored-images/elasticsearch/elasticsearch:9.5.5
+
+  - it: should let an explicit image.registry win over global.imageRegistry (as nginx-standard)
+    set:
+      global:
+        imageRegistry: container-registry.platta-net.hel.fi
+      image:
+        registry: image-registry.int.platta.hel.fi
+    asserts:
+      - equal:
+          path: spec.image
+          value: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:9.5.5
+
+  - it: should pull from docker.elastic.co with the sandbox combination
+    set:
+      image:
+        registry: docker.elastic.co
+        repository: elasticsearch/elasticsearch
+    asserts:
+      - equal:
+          path: spec.image
+          value: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+
+  - it: should keep the sandbox combination even when a pipeline sets global.imageRegistry
+    set:
+      global:
+        imageRegistry: image-registry.int.platta.hel.fi
+      image:
+        registry: docker.elastic.co
+        repository: elasticsearch/elasticsearch
+    asserts:
+      - equal:
+          path: spec.image
+          value: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+
+  - it: should not render imagePullSecrets by default
+    asserts:
+      - notExists:
+          path: spec.nodeSets[0].podTemplate.spec.imagePullSecrets
+
+  - it: should pass global.imagePullSecrets to the pod template (maps or names, deduplicated)
+    set:
+      global:
+        imagePullSecrets:
+          - name: platta-mirror-pull
+          - platta-mirror-pull
+          - other-pull
+    asserts:
+      - equal:
+          path: spec.nodeSets[0].podTemplate.spec.imagePullSecrets
+          value:
+            - name: platta-mirror-pull
+            - name: other-pull
+
+  # ===========================================================================
+  # RESOURCES AND SCHEDULING
+  # ===========================================================================
+  - it: should set container resources
+    set:
+      resources:
+        requests:
+          cpu: "1"
+          memory: 4Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+    asserts:
+      - equal:
+          path: spec.nodeSets[0].podTemplate.spec.containers[0].name
+          value: elasticsearch
+      - equal:
+          path: spec.nodeSets[0].podTemplate.spec.containers[0].resources
+          value:
+            requests:
+              cpu: "1"
+              memory: 4Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+
+  - it: should not render scheduling by default (ECK default anti-affinity applies)
+    asserts:
+      - notExists:
+          path: spec.nodeSets[0].podTemplate.spec.nodeSelector
+      - notExists:
+          path: spec.nodeSets[0].podTemplate.spec.affinity
+      - notExists:
+          path: spec.nodeSets[0].podTemplate.spec.tolerations
+
+  - it: should fall back to global scheduling values
+    set:
+      global:
+        nodeSelector:
+          environment: test
+        tolerations:
+          - key: dedicated
+            operator: Exists
+            effect: NoSchedule
+    asserts:
+      - equal:
+          path: spec.nodeSets[0].podTemplate.spec.nodeSelector
+          value:
+            environment: test
+      - equal:
+          path: spec.nodeSets[0].podTemplate.spec.tolerations[0].key
+          value: dedicated

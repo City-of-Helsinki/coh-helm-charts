@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "elasticsearch chart values",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "nodeCount", "storage", "resources", "image"],
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "imageRegistry": {
+          "type": "string",
+          "description": "Registry for images that do not set their own image.registry (Platta mirror of the region)"
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "description": "Pull secrets for the Elasticsearch pods: {name: x} or plain names",
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "object",
+                "required": ["name"],
+                "properties": { "name": { "type": "string", "minLength": 1 } }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "description": "Official Elastic image only: Platta mirror (default, registry empty = global.imageRegistry) or docker.elastic.co (sandbox)",
+      "additionalProperties": false,
+      "required": ["registry", "repository"],
+      "properties": {
+        "registry": { "type": "string" },
+        "repository": { "type": "string" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "registry": { "enum": ["", "image-registry.int.platta.hel.fi"] },
+            "repository": { "const": "mirrored-images/elasticsearch/elasticsearch" }
+          }
+        },
+        {
+          "properties": {
+            "registry": { "const": "docker.elastic.co" },
+            "repository": { "const": "elasticsearch/elasticsearch" }
+          }
+        }
+      ]
+    },
+    "version": {
+      "type": "string",
+      "description": "Elasticsearch version: the two newest maintained 9.x minors",
+      "pattern": "^9\\.(4|5)\\.(0|[1-9][0-9]*)$"
+    },
+    "nodeCount": {
+      "type": "integer",
+      "description": "Number of Elasticsearch nodes (all master + data + ingest)",
+      "enum": [1, 3]
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size"],
+      "properties": {
+        "size": {
+          "type": "string",
+          "description": "Data volume per node; can only grow",
+          "pattern": "^[1-9][0-9]*(Gi|Ti)$"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limits"],
+      "properties": {
+        "requests": { "$ref": "#/definitions/resourceList" },
+        "limits": {
+          "allOf": [
+            { "$ref": "#/definitions/resourceList" },
+            { "required": ["memory"] }
+          ]
+        }
+      }
+    },
+    "nodeSelector": { "type": "object" },
+    "tolerations": { "type": "array" },
+    "affinity": { "type": "object" }
+  },
+  "if": {
+    "properties": { "image": { "properties": { "registry": { "const": "" } } } }
+  },
+  "then": {
+    "required": ["global"],
+    "properties": {
+      "global": { "required": ["imageRegistry"], "properties": { "imageRegistry": { "minLength": 1 } } }
+    }
+  },
+  "definitions": {
+    "quantity": {
+      "type": ["string", "integer", "number"]
+    },
+    "resourceList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu": { "$ref": "#/definitions/quantity" },
+        "memory": { "$ref": "#/definitions/quantity" }
+      }
+    }
+  }
+}

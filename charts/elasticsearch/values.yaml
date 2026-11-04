@@ -1,0 +1,51 @@
+# Default values for the elasticsearch chart.
+# Every key is validated by values.schema.json; unknown keys are rejected, so settings
+# the chart fixes (storage class, TLS, no Route, no plugins) cannot be overridden.
+
+global:
+  # Registry prepended to any image that does not set its own `registry` (same as the other
+  # coh charts). The platform pipeline overrides this per region (region-se.yaml).
+  imageRegistry: "image-registry.int.platta.hel.fi"
+  # Pull secrets for the Elasticsearch pods ({name: x} or plain names), empty by default.
+  imagePullSecrets: []
+
+# Official Elastic image from Platta's mirror. The tag is always `version`, so every new
+# Elasticsearch version must be in the mirror's tags before it is used.
+# Default: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>
+# registry: empty = global.imageRegistry; when set, it wins over global.imageRegistry.
+# The schema allows only two combinations (always the official image):
+#   - registry "" (= global.imageRegistry) or image-registry.int.platta.hel.fi,
+#     repository mirrored-images/elasticsearch/elasticsearch   (default)
+#   - registry docker.elastic.co, repository elasticsearch/elasticsearch
+#     (sandbox only, which cannot reach the mirror)
+image:
+  registry: ""
+  repository: mirrored-images/elasticsearch/elasticsearch
+
+# Elasticsearch version. Allowed: the two newest 9.x minors maintained by Elastic (9.4, 9.5).
+# Upgrades only: ECK refuses downgrades.
+version: "9.5.5"
+
+# Number of Elasticsearch nodes: 1 or 3. Every node is master + data + ingest.
+nodeCount: 1
+
+storage:
+  # Data volume per node (storage class platta-azure-ssd-lrs, fixed by the chart).
+  # Can only be increased later, never decreased.
+  size: 10Gi
+
+# Resources of the elasticsearch container. limits.memory is required: Elasticsearch
+# sizes its JVM heap automatically to half of it. Keep requests.memory = limits.memory.
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    memory: 2Gi
+
+# Pod scheduling - same keys in every coh chart (empty = any node,
+# falls back to global.nodeSelector / global.tolerations / global.affinity).
+# With no affinity, ECK adds its own soft anti-affinity that spreads nodes over workers.
+nodeSelector: {}
+tolerations: []
+affinity: {}
