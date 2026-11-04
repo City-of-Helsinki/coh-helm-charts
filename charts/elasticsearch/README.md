@@ -169,7 +169,7 @@ This test predates the mirror image default (the image then came from `docker.el
 To repeat it on the sandbox now, add [values-sandbox.yaml](values-sandbox.yaml):
 `-f values-dev-1node.yaml -f values-sandbox.yaml`.
 
-## To test in the sandbox
+## Still to test
 
 1. dev-se: the default (mirror) image pulls; the mirror has the 9.5.5 tag; no pull secret needed.
 2. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
