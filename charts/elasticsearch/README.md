@@ -163,6 +163,10 @@ storage class `platta-azure-ssd-lrs`, [values-dev-1node.yaml](values-dev-1node.y
 * Sandbox and dev-se can pull directly from `docker.elastic.co` (sandbox imageID
   `docker.elastic.co/elasticsearch/elasticsearch@sha256:13b4a40b...`).
 
+This test predates the mirror image default (the image then came from `docker.elastic.co`).
+To repeat it on the sandbox now, add [values-sandbox.yaml](values-sandbox.yaml):
+`-f values-dev-1node.yaml -f values-sandbox.yaml`.
+
 ## To test in the sandbox
 
 1. dev-se: the default (mirror) image pulls; the mirror has the 9.5.5 tag; no pull secret needed.
