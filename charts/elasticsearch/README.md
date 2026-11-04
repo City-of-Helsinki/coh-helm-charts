@@ -84,8 +84,10 @@ image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<ve
   ```
 
 The schema accepts only these two registry/repository combinations, and an empty
-`image.registry` only while `global.imageRegistry` is set. There is no `image.tag` or
-`image.digest`.
+`image.registry` only while `global.imageRegistry` is set.
+
+The tag is always `version` (no `image.tag` or `image.digest`), and only `global.imagePullSecrets`
+is used; this differs from the repo README's general image table on purpose.
 
 ## TLS for clients
 
