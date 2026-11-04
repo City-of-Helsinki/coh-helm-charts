@@ -195,6 +195,18 @@ tests:
           path: spec.image
           value: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
 
+  - it: should pull from docker.elastic.co with values-sandbox.yaml (on top of the dev values)
+    values:
+      - ../values-dev-1node.yaml
+      - ../values-sandbox.yaml
+    asserts:
+      - equal:
+          path: spec.image
+          value: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+      - equal:
+          path: spec.version
+          value: "9.5.5"
+
   - it: should keep the sandbox combination even when a pipeline sets global.imageRegistry
     set:
       global:

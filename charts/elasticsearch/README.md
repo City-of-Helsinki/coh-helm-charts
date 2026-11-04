@@ -84,8 +84,10 @@ image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<ve
   ```
 
 The schema accepts only these two registry/repository combinations, and an empty
-`image.registry` only while `global.imageRegistry` is set. There is no `image.tag` or
-`image.digest`.
+`image.registry` only while `global.imageRegistry` is set.
+
+The tag is always `version` (no `image.tag` or `image.digest`), and only `global.imagePullSecrets`
+is used; this differs from the repo README's general image table on purpose.
 
 ## TLS for clients
 
@@ -163,13 +165,18 @@ storage class `platta-azure-ssd-lrs`, [values-dev-1node.yaml](values-dev-1node.y
 * Sandbox and dev-se can pull directly from `docker.elastic.co` (sandbox imageID
   `docker.elastic.co/elasticsearch/elasticsearch@sha256:13b4a40b...`).
 
-## To test in the sandbox
+This test predates the mirror image default (the image then came from `docker.elastic.co`).
+To repeat it on the sandbox now, add [values-sandbox.yaml](values-sandbox.yaml):
+`-f values-dev-1node.yaml -f values-sandbox.yaml`.
 
-1. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
+## Still to test
+
+1. dev-se: the default (mirror) image pulls; the mirror has the 9.5.5 tag; no pull secret needed.
+2. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
    the CA from `ca.crt`, which the OpenShift-generated Secret lacks; if needed, mount
    `platta-service-ca` into Kibana and set `elasticsearch.ssl.certificateAuthorities`.
-2. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
-3. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
+3. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
+4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
 
 ## Maintenance

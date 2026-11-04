@@ -1,0 +1,8 @@
+# Sandbox only: the sandbox cluster can't reach Platta's mirror, so pull the official image
+# directly from Elastic. Use together with the instance's values, e.g.
+#   helm upgrade --install elasticsearch <chart> -n <namespace> \
+#     -f values-dev-1node.yaml -f values-sandbox.yaml
+
+image:
+  registry: docker.elastic.co
+  repository: elasticsearch/elasticsearch
