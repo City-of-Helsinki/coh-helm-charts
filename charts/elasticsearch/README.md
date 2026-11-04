@@ -165,11 +165,12 @@ storage class `platta-azure-ssd-lrs`, [values-dev-1node.yaml](values-dev-1node.y
 
 ## To test in the sandbox
 
-1. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
+1. dev-se: the default (mirror) image pulls; the mirror has the 9.5.5 tag; no pull secret needed.
+2. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
    the CA from `ca.crt`, which the OpenShift-generated Secret lacks; if needed, mount
    `platta-service-ca` into Kibana and set `elasticsearch.ssl.certificateAuthorities`.
-2. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
-3. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
+3. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
+4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
 
 ## Maintenance
