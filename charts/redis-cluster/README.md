@@ -139,6 +139,18 @@ needed only inside the namespace, so it is **not** kept in an application Key Va
 * Use a fixed `secretName` so consumers do not depend on the release name. `helm install` fails
   if a Secret with that name already exists and was not created by Helm. Delete it or pick another name.
 
+Created when redis.password.existingSecret is NOT set. The password is resolved in
+this order, so it never changes between upgrades:
+
+  1. redis.password.password            - explicit value (not recommended in values files)
+  2. the Secret this chart already created in the namespace (lookup) - keeps the
+     current password on every upgrade
+  3. redis.password.migrateFromSecret   - one-time copy of the password from another
+     Secret in the namespace (e.g. the old Key Vault / ESO secret), so moving the
+     ownership to this chart does not change the password
+  4. a random 32 character password     - first install
+
+
 ### Moving an existing release off Key Vault
 
 For a release that uses `existingSecret: <Key Vault/ESO secret>`:
