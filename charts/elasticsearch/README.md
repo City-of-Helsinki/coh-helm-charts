@@ -172,6 +172,17 @@ storage class `platta-azure-ssd-lrs`, [values-dev-1node.yaml](values-dev-1node.y
 3. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
 
+## Maintenance
+
+| When | Check | If something changed |
+|---|---|---|
+| New Elasticsearch version (patch or minor) | Is it newer than the chart's default `version`? Has an old minor lost Elastic's support? | (1) Add the tag to the Quay mirror (`mirrored-images/elasticsearch/elasticsearch`) first. (2) Update the allowed versions in `values.schema.json`, the default `version`, `appVersion` in `Chart.yaml`, and the tests. (3) Release the chart and test it on the sandbox and the dev-se smoke namespace. (4) Tell the teams on minors nearing end of life. |
+| New ECK version | Release notes: deprecated fields that our template uses; supported Elasticsearch and OpenShift versions. | Edit the template if needed. Rehearse the upgrade: sandbox → dev-se smoke namespace → teams. |
+| OpenShift upgrade on a cluster | Does the running ECK version support the new OpenShift version? | If not, upgrade ECK first. |
+| Now and then | Do the Quay mirror's sync logs still succeed? Any GitHub Actions deprecation warnings in CI (repo-wide)? | Fix the mirror sync; act on the warnings. |
+
+These checks are part of Platta's monthly upgrade/update evaluation (see the Elasticsearch support standard in Confluence).
+
 ## Changelog
 
 ### 0.1.0
