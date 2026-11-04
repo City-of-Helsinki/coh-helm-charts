@@ -93,7 +93,7 @@ graph TB
 * **Headless Services**: Enable DNS-based pod discovery
 * **ClusterIP Service**: Single endpoint for Sentinel queries
 * **ConfigMaps**: Redis and Sentinel configuration files
-* **Secret**: Redis password (auto-generated or existing)
+* **Secret**: Redis password, owned by the release (generated once and kept), or an existing Secret (legacy)
 * **PodDisruptionBudgets**: Prevent too many pods down simultaneously (optional)
 
 ---
@@ -110,6 +110,98 @@ graph TB
 ## Configuration Examples
 
 see values.yaml
+
+## Password ownership
+
+The chart owns the Redis password (Platta Key Vault policy, PLATTA-8196): the password is
+needed only inside the namespace, so it is **not** kept in an application Key Vault.
+
+* Leave `redis.password.existingSecret` empty. The chart creates the Secret
+  (`redis.password.secretName`, or `<fullname>-secret`) with key `REDIS_PASSWORD`.
+* The password is generated on first install and **kept on every upgrade** (the chart reads the
+  current Secret with `lookup`). The Secret also survives `helm uninstall` by default.
+* Applications in the same namespace read it directly:
+
+  ```yaml
+  env:
+    - name: REDIS_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: redis-password      # redis.password.secretName
+          key: REDIS_PASSWORD
+  ```
+
+  An explicit `env` entry wins over the same variable coming from `envFrom`, so this can be added
+  while the old Key Vault secret is still mounted with `envFrom`.
+
+* `helm template` and a client-side `helm diff` cannot `lookup`, so they show a new random value
+  for the Secret. `helm upgrade --install` against the cluster keeps the real password.
+* Use a fixed `secretName` so consumers do not depend on the release name. `helm install` fails
+  if a Secret with that name already exists and was not created by Helm. Delete it or pick another name.
+
+Created when redis.password.existingSecret is NOT set. The password is resolved in
+this order, so it never changes between upgrades:
+
+  1. redis.password.password            - explicit value (not recommended in values files)
+  2. the Secret this chart already created in the namespace (lookup) - keeps the
+     current password on every upgrade
+  3. redis.password.migrateFromSecret   - one-time copy of the password from another
+     Secret in the namespace (e.g. the old Key Vault / ESO secret), so moving the
+     ownership to this chart does not change the password
+  4. a random 32 character password     - first install
+
+
+### Moving an existing release off Key Vault
+
+For a release that uses `existingSecret: <Key Vault/ESO secret>`:
+
+1. Deploy with the chart-owned Secret and a one-time copy of the current password, so clients keep working:
+   ```yaml
+   redis:
+     password:
+       secretName: redis-password
+       migrateFromSecret: $(EXTERNAL_SECRET_NAME)   # replaced by the pipeline
+   ```
+   The Redis/Sentinel pods roll once (the Secret reference changes), with the same password.
+2. Point the consumers (`REDIS_PASSWORD` via `secretKeyRef`, above) at `redis-password` and deploy them.
+3. Remove `REDIS-PASSWORD` from the application Key Vault and re-sync the ExternalSecret.
+4. Remove `migrateFromSecret` from the values. Leaving it in place does no harm, because it is
+   only read when the chart Secret does not exist yet.
+
+### Rotating the password
+
+The chart never changes the password by itself: it is kept on upgrades and, with
+`keepOnUninstall: true`, on reinstall. The pods also read it only when they start (there is no
+checksum annotation), so a new value takes effect only after a restart. To rotate:
+
+```bash
+NS=<namespace>; REL=<release>; SEC=<secret name>   # e.g. helhist / helhist-redis-cluster-secret
+
+# 1. Write a new random password into the Secret (never printed). Patching keeps the Helm
+#    labels, so the next helm upgrade reads the new value and keeps it.
+NEWPW=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
+oc patch secret "$SEC" -n "$NS" --type merge \
+  -p "{\"data\":{\"REDIS_PASSWORD\":\"$(printf %s "$NEWPW" | base64 -w0)\"}}"
+unset NEWPW
+
+# 2. Restart ALL Redis and Sentinel pods at once - not a rolling restart
+oc delete pod -n "$NS" -l app.kubernetes.io/instance="$REL"
+oc rollout status sts/"$REL"-redis-cluster-redis    -n "$NS" --timeout=10m
+oc rollout status sts/"$REL"-redis-cluster-sentinel -n "$NS" --timeout=10m
+
+# 3. Restart the consumers so they read the new password
+oc rollout restart deploy/drupal deploy/drupal-cron -n "$NS"
+```
+
+* All pods at once: each pod sets `requirepass`, `masterauth` and Sentinel `auth-pass` when it
+  starts. During a rolling restart, pods on the new password cannot authenticate to pods still on
+  the old one, so replication and failover break until all of them have restarted.
+* Expect a short Redis outage (usually under a minute), with cache errors in the applications until
+  Redis and the consumers are back. Plan it outside busy hours in production.
+* Alternative: delete the Secret and run `helm upgrade`, and the chart generates a new password.
+  Remove `migrateFromSecret` first, otherwise the old password is copied back. Until the upgrade
+  has run, the Secret does not exist.
+* Do not put a real password in `redis.password.password` in a values file.
 
 ## Application Integration
 
@@ -202,9 +294,15 @@ helm upgrade my-redis coh/redis-cluster \
 
 | Parameter | Description | Default |
 |----------|-------------|---------|
-| `redis.password.password` | Redis password | `""` (auto-generated) |
-| `redis.password.existingSecret` | Secret name | `""` |
-| `redis.password.secretKey` | Secret key | `"REDIS_PASSWORD"` |
+| `redis.password.password` | Explicit password. Empty: generated once on first install, then kept | `""` |
+| `redis.password.secretName` | Name of the Secret the chart creates (key `REDIS_PASSWORD`). Empty: `<fullname>-secret` | `""` |
+| `redis.password.migrateFromSecret` | One-time copy of the password from another Secret in the namespace (e.g. the old Key Vault/ESO secret) when the chart Secret does not exist yet | `""` |
+| `redis.password.migrateFromKey` | Key to read from `migrateFromSecret` | `"REDIS_PASSWORD"` |
+| `redis.password.keepOnUninstall` | Keep the Secret on `helm uninstall` (`helm.sh/resource-policy: keep`) | `true` |
+| `redis.password.existingSecret` | **Legacy.** Use a Secret managed outside the chart; the chart creates no Secret | `""` |
+| `redis.password.secretKey` | Key in `existingSecret` | `"REDIS_PASSWORD"` |
+
+See [Password ownership](#password-ownership) for how applications consume the password.
 
 ---
 
@@ -554,6 +652,14 @@ Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sw
 
 ---
 ## Changelog
+
+### 1.2.0
+* The chart owns the Redis password Secret (PLATTA-8196). New `redis.password.secretName`,
+  `migrateFromSecret` / `migrateFromKey` and `keepOnUninstall`. See [Password ownership](#password-ownership).
+* Fix: a generated password is now kept on upgrade. In 1.1.0 every `helm upgrade` without
+  `existingSecret` generated a new password, while running pods kept the old one until restart.
+* The Secret is annotated `helm.sh/resource-policy: keep` by default.
+* `existingSecret` still works unchanged (legacy, rendered manifests identical to 1.1.0).
 
 ### 1.1.0
 * `affinity` is now a regular Kubernetes affinity map. The built-in soft anti-affinity is

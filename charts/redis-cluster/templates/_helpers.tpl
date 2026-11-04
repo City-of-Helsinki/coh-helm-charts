@@ -154,6 +154,8 @@ Get the redis password secret
 {{- define "redis-sentinel.redis.passwordSecret" -}}
 {{- if .Values.redis.password.existingSecret }}
 {{- .Values.redis.password.existingSecret }}
+{{- else if .Values.redis.password.secretName }}
+{{- .Values.redis.password.secretName | trunc 253 }}
 {{- else }}
 {{- include "redis-sentinel.fullname" . }}-secret
 {{- end }}
