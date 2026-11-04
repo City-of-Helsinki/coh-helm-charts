@@ -69,8 +69,6 @@ redis:
   # Recommended (Sweden Central / ARO): leave existingSecret empty. The chart then
   # OWNS the password Secret (<fullname>-secret, or secretName below) with key
   # REDIS_PASSWORD. The password is generated once and kept on every upgrade.
-  # Applications (Drupal, drupal-cron, ...) read it with secretKeyRef - no Key Vault
-  # entry is needed.
   password:
     # Explicit password. Leave empty: a random one is generated on first install and
     # then kept. Do not put real passwords in values files.
