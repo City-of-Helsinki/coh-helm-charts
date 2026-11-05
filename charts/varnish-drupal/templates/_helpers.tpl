@@ -38,6 +38,16 @@ Main service name — override via values.service.name, falls back to fullname.
 {{/*
 Main route name — override via values.route.name, falls back to fullname.
 */}}
+{{- define "varnish-drupal.secretName" -}}
+{{- if .Values.externalSecretName }}
+{{- .Values.externalSecretName }}
+{{- else if .Values.secret.name }}
+{{- .Values.secret.name | trunc 253 }}
+{{- else }}
+{{- include "varnish-drupal.fullname" . }}-secret
+{{- end }}
+{{- end }}
+
 {{- define "varnish-drupal.routeName" -}}
 {{- if .Values.route.name }}
 {{- .Values.route.name | trunc 63 | trimSuffix "-" }}
