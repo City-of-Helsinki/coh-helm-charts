@@ -20,7 +20,7 @@ spec:
       labels:
         {{- include "varnish-drupal.selectorLabels" . | nindent 8 }}
       annotations:
-        checksum/config: {{ include "varnish-drupal/templates/configmap.yaml" . | sha256sum }}
+        checksum/config: {{ (include "varnish-drupal/templates/configmap.yaml" . | fromYaml).data | toYaml | sha256sum }}
     spec:
       {{- with (include "varnish-drupal.scheduling" . | trim) }}
       {{- . | nindent 6 }}
@@ -43,7 +43,7 @@ spec:
             defaultMode: 420
         - name: secret
           secret:
-            secretName: {{ .Values.externalSecretName }}
+            secretName: {{ include "varnish-drupal.secretName" . }}
             defaultMode: 420
             items:
               - key: VARNISH_SECRET
@@ -66,12 +66,12 @@ spec:
             - name: VARNISH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.externalSecretName }}
+                  name: {{ include "varnish-drupal.secretName" . }}
                   key: VARNISH_SECRET
             - name: VARNISH_PURGE_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.externalSecretName }}
+                  name: {{ include "varnish-drupal.secretName" . }}
                   key: VARNISH_PURGE_KEY
             - name: BACKEND_HOST
               value: {{ .Values.backend.host | quote }}
@@ -85,12 +85,12 @@ spec:
             - name: BASIC_AUTH_PASS
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.externalSecretName }}
+                  name: {{ include "varnish-drupal.secretName" . }}
                   key: Basic_Auth_Pass
             - name: BASIC_AUTH_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.externalSecretName }}
+                  name: {{ include "varnish-drupal.secretName" . }}
                   key: Basic_Auth_User
             {{- end }}
           args:

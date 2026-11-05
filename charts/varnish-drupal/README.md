@@ -27,7 +27,8 @@ Each pod runs two containers:
 
 - OpenShift 4.x (or Kubernetes with the Route CRD available)
 - A `ServiceAccount` named `kube-httpcache` in the target namespace with permission to list/watch Endpoints
-- A `Secret` containing `VARNISH_SECRET` and `VARNISH_PURGE_KEY` and optionally 'Basic_Auth_User' and 'Basic_Auth_Pass' (referenced via `externalSecretName`)
+- Secrets: none needed. The chart creates `<fullname>-secret` (see [Secret](#secret)). Legacy: an existing
+  Secret with `VARNISH_SECRET`, `VARNISH_PURGE_KEY` (and `Basic_Auth_User` / `Basic_Auth_Pass`) via `externalSecretName`
 - Helm 3.x
 
 ## Installing
@@ -35,8 +36,7 @@ Each pod runs two containers:
 ```bash
 helm install my-varnish ./varnish-drupal \
   --namespace my-app \
-  --set route.host=varnish-myapp.apps.example.com \
-  --set externalSecretName=my-varnish-secret
+  --set route.host=varnish-myapp.apps.example.com
 ```
 
 Multiple independent instances can be deployed in the same namespace:
@@ -73,7 +73,10 @@ helm uninstall my-varnish --namespace my-app
 | `tolerations`          | `[]`    | Pod tolerations; empty falls back to `global.tolerations` |
 | `affinity`             | `{}`    | Kubernetes affinity; empty falls back to `global.affinity`, then the built-in anti-affinity |
 | `podAntiAffinity.enabled` | `true` | Soft anti-affinity spreading the replicas over nodes, used when `affinity` is empty |
-| `externalSecretName`   | `""`    | **Required.** Name of the Secret with `VARNISH_SECRET` and `VARNISH_PURGE_KEY` |
+| `secret.name`          | `""`    | Name of the chart-owned Secret; empty = `<fullname>-secret` |
+| `secret.migrateFromSecret` | `""` | One-time copy of the keys from this Secret (e.g. the old Key Vault/ESO secret) |
+| `secret.keepOnUninstall` | `true` | Keep the Secret on `helm uninstall` (`helm.sh/resource-policy: keep`) |
+| `externalSecretName`   | `""`    | **Legacy.** Use a Secret managed outside the chart; the chart creates no Secret |
 
 ### Routing
 
@@ -82,6 +85,7 @@ helm uninstall my-varnish --namespace my-app
 | `route.host`    | `""`     | **Required.** Hostname for the OpenShift Route |
 | `route.path`    | `""`     | Optional sub-path (e.g. `/fi`)                 |
 | `route.timeout` | `"300s"` | HAProxy router timeout                         |
+| `route.labels`  | `{router: application}` | Route labels (Sweden Central sharded router; harmless elsewhere) |
 
 ### Service Names
 
@@ -167,8 +171,6 @@ service:
 route:
   host: varnish-myapp.apps.platta.hel.fi
 
-externalSecretName: myapp-varnish-secret
-
 replicaCount: 2
 nodeSelector: prod
 
@@ -243,11 +245,34 @@ curl -X PURGE https://your-route.example.com/path/to/page \
 
 The purge method (regex / exact / page) is auto-detected from the URL or can be forced with the `X-VC-Purge-Method` header.
 
+## Secret
+
+The chart owns `<fullname>-secret` (e.g. `helhist-varnish-drupal-secret`) with `VARNISH_SECRET` and
+`VARNISH_PURGE_KEY`, plus `Basic_Auth_User` / `Basic_Auth_Pass` when `vcl.basicAuth.enabled`.
+Each value is generated once and kept on upgrades (`lookup`), so it is not needed in Key Vault (PLATTA-8196).
+
+Drupal sends `VARNISH_PURGE_KEY` when purging. Add the Secret as the **last** `envFrom` entry of the
+Drupal containers (last wins over the Key Vault secret; `optional` while Varnish still uses `externalSecretName`):
+
+```yaml
+- secretRef:
+    name: myapp-varnish-drupal-secret
+    optional: true
+```
+
+Moving an existing release off Key Vault: replace `externalSecretName: <secret>` with
+`secret.migrateFromSecret: <secret>` for one deployment. The values are copied, so nothing changes for
+Drupal. Then remove `migrateFromSecret`.
+
+Basic auth credentials: `oc get secret <fullname>-secret -o jsonpath='{.data.Basic_Auth_Pass}' | base64 -d`.
+
+`helm template` and a client-side `helm diff` cannot `lookup`, so they show new random values for the Secret.
+
 ## Troubleshooting
 
 **Pods stuck in `Pending`**
 - Check that the `kube-httpcache` ServiceAccount exists in the namespace.
-- Check that `externalSecretName` points to an existing Secret.
+- With `externalSecretName`: check that it points to an existing Secret.
 
 **Pods not becoming Ready**
 - `vcl.healthEndpoint.enabled` must be `true` (default) unless you are handling `/varnishstatus` yourself in a custom VCL.
@@ -281,6 +306,14 @@ Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sw
 ---
 
 ## Changelog
+
+### 1.2.0
+* The chart owns the Varnish Secret (PLATTA-8196): `secret.name`, `secret.migrateFromSecret`,
+  `secret.keepOnUninstall`. Values are generated once and kept on upgrades.
+  `externalSecretName` works as before (legacy).
+* Route label `router: application` by default (`route.labels`), needed by the Sweden Central router.
+* `checksum/config` hashes only the ConfigMap data. A chart version bump no longer restarts Varnish;
+  upgrading to 1.2.0 restarts it once.
 
 ### 1.1.0
 * **Behaviour change:** soft pod anti-affinity by default - replicas are spread over nodes

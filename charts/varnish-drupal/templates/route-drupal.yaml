@@ -5,6 +5,9 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "varnish-drupal.labels" . | nindent 4 }}
+    {{- with .Values.route.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
     haproxy.router.openshift.io/timeout: {{ .Values.route.timeout | quote }}
     haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains;preload"

@@ -343,6 +343,28 @@ jobs:
             redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning sentinel master mymaster | grep -q flags
           echo "✓ Sentinel master info returned"
 
+      - name: Switch to chart-owned Secret (copied from the CI secret) and verify again
+        run: |
+          set -euo pipefail
+          helm upgrade "$RUN" "$CHART" -n "$NS" --reuse-values \
+            --set redis.password.existingSecret="" \
+            --set redis.password.migrateFromSecret="${RUN}-secret" \
+            --wait --timeout 8m
+          SECRET="${FULL}-secret"
+          [ "$(oc get secret "$SECRET" -n "$NS" -o jsonpath='{.data.REDIS_PASSWORD}')" = \
+            "$(oc get secret "${RUN}-secret" -n "$NS" -o jsonpath='{.data.REDIS_PASSWORD}')" ] \
+            || { echo "::error::REDIS_PASSWORD was not copied to $SECRET"; exit 1; }
+          echo "✓ Password copied to $SECRET"
+          oc rollout status "statefulset/${FULL}-redis" -n "$NS" --timeout=5m
+          oc rollout status "statefulset/${FULL}-sentinel" -n "$NS" --timeout=5m
+          for i in 0 1 2; do
+            oc exec -n "$NS" "${FULL}-redis-${i}" -- redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+            oc exec -n "$NS" "${FULL}-sentinel-${i}" -- redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+          done
+          oc exec -n "$NS" "${FULL}-sentinel-0" -- \
+            redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning sentinel master mymaster | grep -q flags
+          echo "✓ Redis and Sentinel work with the chart-owned Secret"
+
       - name: Deployment summary
         if: always()
         run: oc get sts,pods,svc -n "$NS" -l "app.kubernetes.io/instance=${RUN}" -o wide || true

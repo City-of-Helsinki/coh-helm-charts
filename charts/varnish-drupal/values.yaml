@@ -19,6 +19,8 @@ route:
   host: ""                         # e.g. varnish-myapp.apps.platta.hel.fi
   path: ""                         # optional sub-path, leave empty for "/"
   timeout: "300s"                  # haproxy.router.openshift.io/timeout
+  labels:                         # Route labels; router: application = Sweden Central sharded router
+    router: application
 # ──────────────────────────────────────────────
 # Service
 # ──────────────────────────────────────────────
@@ -92,7 +94,16 @@ backend:
 # ──────────────────────────────────────────────
 # Secrets
 # ──────────────────────────────────────────────
-externalSecretName: ""             # name of the Secret containing VARNISH_SECRET and VARNISH_PURGE_KEY
+# Default: the chart owns the Secret (<fullname>-secret, or secret.name) with VARNISH_SECRET and
+# VARNISH_PURGE_KEY (+ Basic_Auth_User / Basic_Auth_Pass when vcl.basicAuth.enabled).
+# Values are generated once and kept on upgrades. Drupal reads the Secret with envFrom.
+secret:
+  name: ""                         # empty = <fullname>-secret
+  migrateFromSecret: ""            # one-time copy of the keys from this Secret (e.g. the old Key Vault/ESO secret)
+  keepOnUninstall: true            # helm.sh/resource-policy: keep
+
+# Legacy: a Secret managed outside the chart (e.g. Key Vault/ESO). When set, the chart creates no Secret.
+externalSecretName: ""
 
 # ──────────────────────────────────────────────
 # Varnish storage

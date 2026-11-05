@@ -107,6 +107,29 @@ jobs:
           oc logs "statefulset/${RUN}-varnish-drupal" -c varnish -n "$NS" --tail=50 || true
           exit 1
 
+      - name: Switch to chart-owned Secret (copied from the fixture) and verify again
+        run: |
+          set -euo pipefail
+          helm upgrade "$RUN" "$CHART" -n "$NS" --reuse-values \
+            --set externalSecretName="" \
+            --set secret.migrateFromSecret="ci-fixture-varnish-secret" \
+            --wait --timeout 5m
+          SECRET="${RUN}-varnish-drupal-secret"
+          for k in VARNISH_SECRET VARNISH_PURGE_KEY; do
+            [ "$(oc get secret "$SECRET" -n "$NS" -o jsonpath="{.data.$k}")" = \
+              "$(oc get secret ci-fixture-varnish-secret -n "$NS" -o jsonpath="{.data.$k}")" ] \
+              || { echo "::error::$k was not copied from the fixture"; exit 1; }
+          done
+          echo "Keys copied to $SECRET"
+          oc rollout status "statefulset/${RUN}-varnish-drupal" -n "$NS" --timeout=5m
+          for _ in $(seq 1 12); do
+            STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "https://${RUN}.${CI_DOMAIN}/varnishstatus" || true)
+            [ "$STATUS" = "200" ] && { echo "varnishstatus -> 200 with the chart-owned Secret"; exit 0; }
+            sleep 5
+          done
+          echo "::error::https://${RUN}.${CI_DOMAIN}/varnishstatus -> $STATUS"
+          exit 1
+
       - name: Clean up (all objects)
         if: always()
         run: bash .github/scripts/ci-cleanup.sh "$NS" "^${RUN}(-|$)"
