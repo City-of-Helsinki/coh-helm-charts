@@ -5,6 +5,9 @@ metadata:
   name: {{ include "helfi-proxy-nginx.fullname" . }}
   labels:
     {{- include "helfi-proxy-nginx.labels" . | nindent 4 }}
+    {{- with .Values.route.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
     {{- toYaml .Values.route.annotations | nindent 4 }}
 spec:
@@ -20,6 +23,10 @@ spec:
     termination: {{ .Values.route.tls.termination }}
     insecureEdgeTerminationPolicy: {{ .Values.route.tls.insecureEdgeTerminationPolicy }}
   {{- end }}
+  {{- with .Values.route.httpHeaders }}
+  httpHeaders:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   wildcardPolicy: None
 {{- end }}
 
@@ -32,6 +39,10 @@ metadata:
   name: {{ include "helfi-proxy-nginx.fullname" $ }}-{{ .host | replace "." "-" }}
   labels:
     {{- include "helfi-proxy-nginx.labels" $ | nindent 4 }}
+    {{- /* route.labels for all routes, per-route labels win */}}
+    {{- with mergeOverwrite (deepCopy (default dict $.Values.route.labels)) (default dict .labels) }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
     {{- toYaml .annotations | nindent 4 }}
 spec:
@@ -46,6 +57,11 @@ spec:
   tls:
     termination: {{ .tls.termination }}
     insecureEdgeTerminationPolicy: {{ .tls.insecureEdgeTerminationPolicy }}
+  {{- end }}
+  {{- /* per-route httpHeaders win; set httpHeaders: {} on a route to send none */}}
+  {{- with (hasKey . "httpHeaders" | ternary .httpHeaders $.Values.route.httpHeaders) }}
+  httpHeaders:
+    {{- toYaml . | nindent 4 }}
   {{- end }}
   wildcardPolicy: None
 {{- end }}

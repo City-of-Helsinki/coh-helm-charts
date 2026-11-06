@@ -94,6 +94,8 @@ This separation means:
 | `route.enabled` | Create OpenShift route | `true` |
 | `route.host` | Public hostname for the route | `""` |
 | `route.tls.enabled` | Enable TLS on route | `true` |
+| `route.labels` | Labels on every route (also `additionalRoutes`; an item's own `labels` win) | `router: application` |
+| `route.httpHeaders` | Route `spec.httpHeaders` for every route (an `additionalRoutes` item's own `httpHeaders` win, `{}` = none). Needs OpenShift 4.14+ | `X-Request-Id` set from `X-AppGw-Trace-Id` |
 
 ### Receiver-specific values
 
@@ -274,6 +276,13 @@ Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sw
 ---
 
 ## Changelog
+
+### 1.2.0
+* Routes get the label `router: application` (`route.labels`), so the sharded IngressController in
+  Sweden Central (`*.dev-se` / `*.test-se.hel.ninja`) admits them. Other routers ignore it (PLATTA-8619).
+* Routes set `X-Request-Id` from the Application Gateway trace id `X-AppGw-Trace-Id`
+  (`route.httpHeaders`, PLATTA-7384). Needs OpenShift 4.14+.
+* Both apply to `additionalRoutes` too; an item can set its own `labels` / `httpHeaders`.
 
 ### 1.1.0
 * **Behaviour change:** the default `nodeSelector: devtest` is gone - pods may run on any
