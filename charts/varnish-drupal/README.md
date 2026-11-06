@@ -307,6 +307,11 @@ Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sw
 
 ## Changelog
 
+### 1.3.0
+* `app.kubernetes.io/version` is the tag of the image actually deployed (was `appVersion` from
+  Chart.yaml, e.g. `stable-6.0` while the pipeline deploys `stable-7.0`). Falls back to `appVersion` for a digest-only image. Pod labels are unchanged,
+  so no restart.
+
 ### 1.2.0
 * The chart owns the Varnish Secret (PLATTA-8196): `secret.name`, `secret.migrateFromSecret`,
   `secret.keepOnUninstall`. Values are generated once and kept on upgrades.

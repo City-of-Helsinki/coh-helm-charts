@@ -283,6 +283,7 @@ Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sw
 * Routes set `X-Request-Id` from the Application Gateway trace id `X-AppGw-Trace-Id`
   (`route.httpHeaders`, PLATTA-7384). Needs OpenShift 4.14+.
 * Both apply to `additionalRoutes` too; an item can set its own `labels` / `httpHeaders`.
+* `app.kubernetes.io/version` is the tag of the image actually deployed (new label). Falls back to `appVersion` for a digest-only image. Pod labels are unchanged, so no restart.
 
 ### 1.1.0
 * **Behaviour change:** the default `nodeSelector: devtest` is gone - pods may run on any

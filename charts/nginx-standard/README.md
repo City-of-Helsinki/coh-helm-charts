@@ -1111,6 +1111,9 @@ Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sw
 * Routes get `router: application` by default (`routes.labels`), for the Sweden Central sharded
   IngressController (*.dev-se / *.test-se.hel.ninja). Other routers ignore it (PLATTA-8619).
   Change it with a per-route `labels.router`, or remove it with `routes.labels.router: null`.
+* `app.kubernetes.io/version` is the tag of the image actually deployed (was `appVersion` from
+  Chart.yaml, e.g. `1.24` while front-proxy runs `nginx-unprivileged:alpine-perl`). Falls back to `appVersion` for a digest-only image. Pod labels are unchanged,
+  so no restart.
 
 ### 1.3.0
 * Routes: `routes.labels` (all routes) and `routes.items[].labels` (per route, wins), e.g.
