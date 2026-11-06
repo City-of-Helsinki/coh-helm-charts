@@ -18,9 +18,9 @@ env:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-ci-tools
 
       - name: helm lint + unit tests + kubeconform
@@ -35,7 +35,7 @@ jobs:
     needs: lint
     # Fork PRs have no access to the cluster secrets
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
       group: ci-varnish-drupal-${{ inputs.run-id }}
@@ -45,7 +45,7 @@ jobs:
       CI_DOMAIN: ${{ vars.CI_ROUTE_DOMAIN || 'test-se.hel.ninja' }}
       RUN: ci-varnish-${{ inputs.run-id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-ci-tools
         with:
           kubeconform: "false"
