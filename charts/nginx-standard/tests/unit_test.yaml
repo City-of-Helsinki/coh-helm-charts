@@ -375,6 +375,18 @@ tests:
           path: spec.httpHeaders.actions.request[0].name
           value: X-Request-Id
 
+  - it: "should label routes router: application by default"
+    template: route.yaml
+    set:
+      routes:
+        enabled: true
+        items:
+          - host: a.example.com
+    asserts:
+      - equal:
+          path: metadata.labels.router
+          value: application
+
   - it: should add global and per-route labels to routes
     template: route.yaml
     set:
