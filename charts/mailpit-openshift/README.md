@@ -116,6 +116,7 @@ All UID/GID fields are deliberately set to `null` so OpenShift assigns them auto
 | `route.host` | Hostname for the Route. Leave empty to let OpenShift assign one. | `""` |
 | `route.tls.termination` | TLS termination strategy | `edge` |
 | `route.tls.insecureEdgeTerminationPolicy` | HTTP traffic handling | `Redirect` |
+| `route.labels` | Extra labels on the Route (`router: application` = Sweden Central sharded IngressController) | `router: application` |
 | `route.annotations` | Extra annotations to add to the Route | `{}` |
 
 ---
@@ -260,7 +261,9 @@ mailpit-openshift has no `pipeline-templates` deployment and does not use `globa
 
 ## Changelog
 
-### Next release
+### 1.1.0
+* Route label `router: application` by default (`route.labels`), for the Sweden Central sharded
+  IngressController (*.dev-se / *.test-se.hel.ninja). Other routers ignore it (PLATTA-8619).
 * Pod scheduling defaults visible in `values.yaml`: `mailpit.nodeSelector` / `mailpit.tolerations`
   / `mailpit.affinity` (empty = any worker node; under `mailpit:` because the upstream subchart
   renders them).
