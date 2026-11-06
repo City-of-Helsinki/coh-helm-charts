@@ -32,7 +32,9 @@ cache:
       cache:
         enabled: true
         zone: "default_cache"
-        key: "$scheme$proxy_host$request_uri"
+        # Authorization in the key: each credential gets its own cache entry, so an unauthenticated
+        # client never gets a cached authenticated response
+        key: "$http_authorization$scheme$proxy_host$request_uri"
         validTime:
           default: "30s"  # Short TTL for testing
         addHeader: true

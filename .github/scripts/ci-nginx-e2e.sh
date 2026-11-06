@@ -97,8 +97,7 @@ cache)
   req GET /ci-test/_doc/1                    # no credentials -> 401 from Elasticsearch, unless served from cache
   if [ "$CODE" = "401" ]; then pass "unauthenticated request -> 401 (not served from cache)"
   elif [ "$(header x-cache-status)" = "hit" ]; then
-    echo "::warning::[cache e2e] cache key in values-cache.yaml ignores Authorization: an unauthenticated client got a cached authenticated response (${CODE}). Fine for this test backend, but do not copy this cache key for authenticated upstreams."
-    pass "cache serves by URI only (see warning)"
+    fail "unauthenticated request got a cached authenticated response ($CODE) - the cache key must include \$http_authorization"
   else fail "unauthenticated request -> $CODE"; fi
   req GET /_nonexistent_index_ci -u "$AUTH"; c1="$(header x-cache-status)"
   req GET /_nonexistent_index_ci -u "$AUTH"; c2="$(header x-cache-status)"

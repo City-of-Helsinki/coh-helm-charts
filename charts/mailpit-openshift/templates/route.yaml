@@ -6,6 +6,9 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "mailpit-openshift.labels" . | nindent 4 }}
+    {{- with .Values.route.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   {{- if .Values.route.annotations }}
   annotations:
     {{- range $key, $val := .Values.route.annotations }}

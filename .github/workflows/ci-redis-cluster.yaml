@@ -18,9 +18,9 @@ env:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-ci-tools
 
       - name: Lint chart
@@ -282,7 +282,7 @@ jobs:
     needs: lint
     # Fork PRs have no access to the cluster secrets
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     concurrency:
       group: ci-redis-cluster-${{ inputs.run-id }}
@@ -294,7 +294,7 @@ jobs:
       FULL: ci-redis-${{ inputs.run-id }}-redis-cluster
       REDIS_PASSWORD: ci-redis-password
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-ci-tools
         with:
           kubeconform: "false"

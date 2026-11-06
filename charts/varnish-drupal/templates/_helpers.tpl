@@ -69,8 +69,8 @@ Common labels
 {{- define "varnish-drupal.labels" -}}
 helm.sh/chart: {{ include "varnish-drupal.chart" . }}
 {{ include "varnish-drupal.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- with include "varnish-drupal.appVersion" . }}
+app.kubernetes.io/version: {{ . | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
@@ -202,4 +202,17 @@ tolerations:
 affinity:
 {{ toYaml . | indent 2 }}
 {{- end }}
+{{- end -}}
+
+{{/*
+app.kubernetes.io/version = tag of the image actually deployed (falls back to appVersion,
+e.g. for a digest-only image). Sanitised to a valid label value.
+*/}}
+{{- define "varnish-drupal.appVersion" -}}
+{{- $ref := include "varnish-drupal.image" . -}}
+{{- $name := last (splitList "/" (first (splitList "@" $ref))) -}}
+{{- $tag := "" -}}
+{{- if contains ":" $name }}{{ $tag = last (splitList ":" $name) }}{{ end -}}
+{{- $tag = $tag | default .Chart.AppVersion | toString -}}
+{{- regexReplaceAll "[^A-Za-z0-9._-]" $tag "_" | trunc 63 | trimAll "-._" -}}
 {{- end -}}

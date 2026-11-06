@@ -653,6 +653,11 @@ Installing the chart directly (no pipeline) uses the chart defaults, i.e. the Sw
 ---
 ## Changelog
 
+### 1.3.0
+* `app.kubernetes.io/version` is the tag of the image actually deployed (was `appVersion` from
+  Chart.yaml). Falls back to `appVersion` for a digest-only image. Pod labels are unchanged,
+  so no restart.
+
 ### 1.2.0
 * The chart owns the Redis password Secret (PLATTA-8196). New `redis.password.secretName`,
   `migrateFromSecret` / `migrateFromKey` and `keepOnUninstall`. See [Password ownership](#password-ownership).

@@ -64,6 +64,20 @@ route:
   annotations:
     haproxy.router.openshift.io/timeout: 300s
     haproxy.router.openshift.io/disable_cookies: "true"
+  # Route labels (all routes, incl. additionalRoutes). router: application = the Sweden Central
+  # sharded IngressController (*.dev-se / *.test-se.hel.ninja); harmless for other routers.
+  labels:
+    router: application
+  # Route httpHeaders (all routes; an additionalRoutes item can set its own, {} = none).
+  # X-Request-Id from the Application Gateway trace id (PLATTA-7384). Needs OpenShift >= 4.14.
+  httpHeaders:
+    actions:
+      request:
+        - name: X-Request-Id
+          action:
+            type: Set
+            set:
+              value: '%[req.hdr(X-AppGw-Trace-Id)]'
 
 # -------------------------------------------------------
 # Health probes

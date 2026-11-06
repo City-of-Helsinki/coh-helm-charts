@@ -34,8 +34,8 @@ Common labels
 {{- define "nginx-standard.labels" -}}
 helm.sh/chart: {{ include "nginx-standard.chart" . }}
 {{ include "nginx-standard.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- with include "nginx-standard.appVersion" . }}
+app.kubernetes.io/version: {{ . | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
@@ -966,4 +966,17 @@ tolerations:
 affinity:
 {{ toYaml . | indent 2 }}
 {{- end }}
+{{- end -}}
+
+{{/*
+app.kubernetes.io/version = tag of the image actually deployed (falls back to appVersion,
+e.g. for a digest-only image). Sanitised to a valid label value.
+*/}}
+{{- define "nginx-standard.appVersion" -}}
+{{- $ref := include "nginx-standard.image" . -}}
+{{- $name := last (splitList "/" (first (splitList "@" $ref))) -}}
+{{- $tag := "" -}}
+{{- if contains ":" $name }}{{ $tag = last (splitList ":" $name) }}{{ end -}}
+{{- $tag = $tag | default .Chart.AppVersion | toString -}}
+{{- regexReplaceAll "[^A-Za-z0-9._-]" $tag "_" | trunc 63 | trimAll "-._" -}}
 {{- end -}}

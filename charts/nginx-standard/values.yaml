@@ -585,8 +585,10 @@ networkPolicy:
 routes:
   enabled: false
   
-  # e.g. router: application for the IngressController that serves *.dev-se / *.test-se.hel.ninja
-  labels: {}
+  # Labels on all routes (routes.items[].labels win). router: application = Sweden Central sharded
+  # IngressController (*.dev-se / *.test-se.hel.ninja); harmless for other routers (PLATTA-8619)
+  labels:
+    router: application
 
   # Global route annotations
   annotations:

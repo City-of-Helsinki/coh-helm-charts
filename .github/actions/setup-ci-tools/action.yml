@@ -17,7 +17,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: azure/setup-helm@v4
+    - uses: azure/setup-helm@v5
       with:
         version: ${{ inputs.helm-version }}
 
@@ -44,7 +44,7 @@ runs:
 
     - name: Python (gixy)
       if: inputs.gixy == 'true'
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v7
       with:
         python-version: "3.12"
 

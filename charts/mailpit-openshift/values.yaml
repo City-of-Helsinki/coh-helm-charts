@@ -123,6 +123,10 @@ route:
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
+  # Route labels; router: application = Sweden Central sharded IngressController (*.dev-se / *.test-se.hel.ninja),
+  # harmless for other routers (PLATTA-8619)
+  labels:
+    router: application
   annotations:
 
 # ---------------------------------------------------------------------------
