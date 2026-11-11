@@ -43,8 +43,8 @@ a PR runs have passed.
 
 Charts: `elasticsearch`, `helfi-proxy-nginx`, `mailpit-openshift`, `nginx-standard`, `redis-cluster`, `varnish-drupal`.
 
-`elasticsearch` is new: it has only `pr-`/`ci-elasticsearch.yaml` with lint, unit tests and
-schema checks so far (no integration job, no release workflow yet).
+`elasticsearch` has all three workflows, but `ci-elasticsearch` runs lint, unit tests and
+schema checks only (no integration job on OpenShift yet).
 
 Shared pieces: `.github/actions/setup-ci-tools` (pinned Helm v3.19.2, kubeconform, yq,
 helm-unittest, gixy, oc) and `.github/actions/openshift-login`.
