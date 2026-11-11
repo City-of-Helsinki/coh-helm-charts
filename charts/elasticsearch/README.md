@@ -195,7 +195,24 @@ These checks are part of Platta's monthly upgrade/update evaluation (see the Ela
 
 ### 0.1.0
 
-* First version (PLATTA-7443): one nodeSet (1 or 3 nodes, master + data + ingest),
-  storage class `platta-azure-ssd-lrs`, Platta managed Service TLS, official Elastic image
-  from Platta's mirror by default, `global.imagePullSecrets`, values schema.
-  Tested on the sandbox cluster on 28 Oct 2026.
+First release (PLATTA-7443): a skeleton that runs one Elasticsearch instance through ECK.
+
+* **Elasticsearch:** one nodeSet `default`, `nodeCount` 1 or 3, every node master + data + ingest;
+  `version` 9.4.x / 9.5.x (default 9.5.5); `node.store.allow_mmap: false`.
+* **Storage:** storage class `platta-azure-ssd-lrs` (fixed), `storage.size` grow-only,
+  `volumeClaimDeletePolicy: DeleteOnScaledownOnly` (data volumes kept on uninstall).
+* **TLS:** Platta managed Service TLS from the OpenShift service CA (`platta-<name>-es-http-tls`);
+  transport TLS from ECK. Clients mount `platta-service-ca` themselves.
+* **Image:** the official Elastic image from Platta's mirror by default
+  (`image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>`),
+  registry resolved like nginx-standard (`image.registry`, else `global.imageRegistry`);
+  `docker.elastic.co` for the sandbox via [values-sandbox.yaml](values-sandbox.yaml).
+  `global.imagePullSecrets` passed to the pods.
+* **Values schema:** rejects unknown keys and anything the chart fixes (storage class, other
+  images, image tags, 7.x/8.x versions, nodeCount other than 1 or 3).
+* **Examples:** [values-dev-1node.yaml](values-dev-1node.yaml), [values-sandbox.yaml](values-sandbox.yaml).
+* **Docs:** prerequisites, TLS for clients, objects created, known limitations, test results,
+  maintenance checklist. NOTES.txt shows the endpoints, including the full `.svc.cluster.local`
+  name the elastic-proxy needs.
+* **CI:** PR and release workflows with lint, unit tests and schema checks.
+* Tested on the sandbox (28 Oct 2026) and dev-se (Nov 2026).
