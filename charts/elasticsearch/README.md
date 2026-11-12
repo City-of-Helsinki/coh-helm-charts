@@ -1,14 +1,13 @@
 # Elasticsearch Helm Chart
 
-![Version: 0.1.0](https://img.shields.io/badge/version-0.1.0-blue)
+![Version: 0.2.0](https://img.shields.io/badge/version-0.2.0-blue)
 ![AppVersion: 9.5.5](https://img.shields.io/badge/appVersion-9.5.5-blue)
 
 Elasticsearch for **new instances on the Sweden OpenShift (ARO) clusters**, run by the ECK
 operator, with Platta managed Service TLS (OpenShift service CA). Basic licence only.
 
-> **Status 0.1.0: skeleton.** Proves that Elasticsearch starts with Platta service TLS.
-> Not included yet (later releases): application users and roles, NetworkPolicy, Kibana,
-> default index replicas, backups.
+> **Status 0.2.0:** Elasticsearch with Platta service TLS and application users.
+> Not included yet (later releases): NetworkPolicy, Kibana, default index replicas, backups.
 
 ## Prerequisites
 
@@ -312,6 +311,25 @@ To repeat it on the sandbox now, add [values-sandbox.yaml](values-sandbox.yaml):
 These checks are part of Platta's monthly upgrade/update evaluation (see the Elasticsearch support standard in Confluence).
 
 ## Changelog
+
+### 0.2.0
+
+Application users (PLATTA-7443):
+
+* **`users`:** a list of `name`, `role` (`search` or `write`) and `indices`. Each user gets an
+  Elasticsearch role `<name>-<role>` limited to its indices, in the Secret `<fullname>-roles`
+  (`roles.yml`), and is added to ECK's file realm.
+* **Passwords:** generated once by External Secrets (a `Password` generator and an
+  `ExternalSecret` per user, no SecretStore) into the Secret `elasticsearch-user-<name>`
+  (`kubernetes.io/basic-auth`: `username`, `password`, `roles`); never by Helm. A new password
+  with `force-sync`; chart and Elasticsearch upgrades keep the passwords.
+* **Values schema:** rejects other roles, missing indices, the index patterns `*` and `.*`,
+  and reserved user names.
+* **Examples and docs:** a write and a search user in
+  [values-dev-1node.yaml](values-dev-1node.yaml); NOTES lists the user Secrets; README section
+  [Application users](#application-users), including the elastic-proxy setup.
+* Requires the External Secrets Operator on the cluster when `users` is set.
+* Not yet tested on the clusters, see [Still to test](#still-to-test).
 
 ### 0.1.0
 
