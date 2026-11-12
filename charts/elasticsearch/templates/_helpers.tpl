@@ -128,10 +128,13 @@ elasticsearch-user-{{ . }}
 {{- end }}
 
 {{/*
-Elasticsearch role of a user: <name>-<role>. Argument: the user entry.
+Elasticsearch role of a user: named after the user only (elasticsearch-user-<name>), never
+after search/write. The role name is written into the user Secret (key roles) by the
+ExternalSecret, and any change there generates a new password; this way switching between
+search and write only changes roles.yml. Argument: the user entry.
 */}}
 {{- define "elasticsearch.userRoleName" -}}
-{{- printf "%s-%s" .name .role }}
+{{- include "elasticsearch.userSecretName" .name }}
 {{- end }}
 
 {{/*

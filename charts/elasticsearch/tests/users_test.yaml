@@ -90,7 +90,7 @@ tests:
           path: spec.target.creationPolicy
           value: Owner
 
-  - it: should write a basic-auth Secret with username, password and the write role
+  - it: should write a basic-auth Secret with username, password and the user's role
     set:
       users:
         - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
@@ -107,9 +107,9 @@ tests:
           value:
             username: myapp-indexer
             password: "{{ .password }}"
-            roles: myapp-indexer-write
+            roles: elasticsearch-user-myapp-indexer
 
-  - it: should give a search user the search role
+  - it: should name the role after the user only, not after search/write
     set:
       users:
         - { name: proxy-search, role: search, indices: ["myapp-*"] }
@@ -117,7 +117,7 @@ tests:
     asserts:
       - equal:
           path: spec.target.template.data.roles
-          value: proxy-search-search
+          value: elasticsearch-user-proxy-search
 
   - it: should keep the ExternalSecret free of version labels (a label change would rotate the password)
     set:
@@ -165,7 +165,59 @@ tests:
           pattern: other
       - equal:
           path: spec.target.template.data.roles
-          value: myapp-indexer-write
+          value: elasticsearch-user-myapp-indexer
+
+  # The next two tests render the same user as write and as search: the ExternalSecret must be
+  # identical, because any change to it makes External Secrets generate a new password.
+  - it: should render this ExternalSecret for a write user
+    set:
+      users:
+        - { name: myapp, role: write, indices: ["myapp-*"] }
+    documentIndex: 1
+    asserts: &unchangedOnRoleSwitch
+      - equal:
+          path: metadata
+          value:
+            name: elasticsearch-user-myapp
+            namespace: NAMESPACE
+            labels:
+              app.kubernetes.io/name: elasticsearch
+              app.kubernetes.io/instance: RELEASE-NAME
+              app.kubernetes.io/managed-by: Helm
+              app.kubernetes.io/component: user
+      - equal:
+          path: spec
+          value:
+            refreshInterval: "0"
+            target:
+              name: elasticsearch-user-myapp
+              creationPolicy: Owner
+              template:
+                type: kubernetes.io/basic-auth
+                engineVersion: v2
+                metadata:
+                  labels:
+                    app.kubernetes.io/name: elasticsearch
+                    app.kubernetes.io/instance: RELEASE-NAME
+                    app.kubernetes.io/managed-by: Helm
+                    app.kubernetes.io/component: user
+                data:
+                  username: myapp
+                  password: "{{ .password }}"
+                  roles: elasticsearch-user-myapp
+            dataFrom:
+              - sourceRef:
+                  generatorRef:
+                    apiVersion: generators.external-secrets.io/v1alpha1
+                    kind: Password
+                    name: elasticsearch-user-myapp
+
+  - it: should render the identical ExternalSecret after switching the user to search (password kept)
+    set:
+      users:
+        - { name: myapp, role: search, indices: ["myapp-*"] }
+    documentIndex: 1
+    asserts: *unchangedOnRoleSwitch
 
   - it: should fail on a duplicate user name
     set:

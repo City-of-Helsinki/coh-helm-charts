@@ -31,7 +31,7 @@ tests:
       - equal:
           path: stringData["roles.yml"]
           value: |
-            myapp-indexer-write:
+            elasticsearch-user-myapp-indexer:
               cluster:
               - monitor
               indices:
@@ -52,7 +52,7 @@ tests:
       - equal:
           path: stringData["roles.yml"]
           value: |
-            proxy-search-search:
+            elasticsearch-user-proxy-search:
               cluster:
               - monitor
               indices:
@@ -71,7 +71,25 @@ tests:
     asserts:
       - matchRegex:
           path: stringData["roles.yml"]
-          pattern: '(?m)^myapp-indexer-write:$'
+          pattern: '(?m)^elasticsearch-user-myapp-indexer:$'
       - matchRegex:
           path: stringData["roles.yml"]
-          pattern: '(?m)^proxy-search-search:$'
+          pattern: '(?m)^elasticsearch-user-proxy-search:$'
+
+  - it: should keep the role name and change only the privileges when a user switches from write to search
+    set:
+      users:
+        - { name: myapp, role: search, indices: ["myapp-*"] }
+    asserts:
+      - equal:
+          path: stringData["roles.yml"]
+          value: |
+            elasticsearch-user-myapp:
+              cluster:
+              - monitor
+              indices:
+              - names:
+                - myapp-*
+                privileges:
+                - read
+                - view_index_metadata
