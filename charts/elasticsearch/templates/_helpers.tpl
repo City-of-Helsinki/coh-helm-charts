@@ -115,3 +115,47 @@ affinity:
 {{ toYaml . | indent 2 }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Application users (ECK file realm).
+*/}}
+
+{{/*
+Secret (and Password / ExternalSecret) name of a user. Argument: the user's name.
+*/}}
+{{- define "elasticsearch.userSecretName" -}}
+elasticsearch-user-{{ . }}
+{{- end }}
+
+{{/*
+Elasticsearch role of a user: <name>-<role>. Argument: the user entry.
+*/}}
+{{- define "elasticsearch.userRoleName" -}}
+{{- printf "%s-%s" .name .role }}
+{{- end }}
+
+{{/*
+Labels of the Password and ExternalSecret objects and of the generated Secrets.
+Stable on purpose (no chart version, no Elasticsearch version): External Secrets re-syncs an
+ExternalSecret whenever its labels, annotations or spec change, and with a generator every
+re-sync is a new password. Version labels here would rotate every password on each upgrade.
+*/}}
+{{- define "elasticsearch.userLabels" -}}
+{{ include "elasticsearch.selectorLabels" . }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/component: user
+{{- end }}
+
+{{/*
+Validated users list: fails on duplicate names (the schema cannot check uniqueness of a field).
+*/}}
+{{- define "elasticsearch.users" -}}
+{{- $seen := dict -}}
+{{- range .Values.users -}}
+{{- if hasKey $seen .name -}}
+{{- fail (printf "users: name %q is listed more than once" .name) -}}
+{{- end -}}
+{{- $_ := set $seen .name true -}}
+{{- end -}}
+{{- toJson (.Values.users | default list) -}}
+{{- end }}

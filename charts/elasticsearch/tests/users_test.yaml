@@ -1,0 +1,177 @@
+suite: application users (Password + ExternalSecret per user)
+# Schema rejections (role, indices, reserved names) are checked in ci-elasticsearch.yaml.
+templates:
+  - users.yaml
+
+tests:
+  - it: should render nothing without users
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render a Password and an ExternalSecret named elasticsearch-user-<name> per user
+    set:
+      users:
+        - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
+        - { name: myapp-search, role: search, indices: ["myapp-*"] }
+    asserts:
+      - hasDocuments:
+          count: 4
+      - isKind:
+          of: Password
+        documentIndex: 0
+      - isAPIVersion:
+          of: generators.external-secrets.io/v1alpha1
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: elasticsearch-user-myapp-indexer
+        documentIndex: 0
+      - isKind:
+          of: ExternalSecret
+        documentIndex: 1
+      - isAPIVersion:
+          of: external-secrets.io/v1
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: elasticsearch-user-myapp-indexer
+        documentIndex: 1
+      - equal:
+          path: spec.target.name
+          value: elasticsearch-user-myapp-indexer
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: elasticsearch-user-myapp-search
+        documentIndex: 2
+      - equal:
+          path: spec.target.name
+          value: elasticsearch-user-myapp-search
+        documentIndex: 3
+
+  - it: should generate a 32-character alphanumeric password
+    set:
+      users:
+        - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec
+          value:
+            length: 32
+            digits: 8
+            symbols: 0
+            noUpper: false
+            allowRepeat: true
+
+  - it: should generate the password once, from the generator only (no SecretStore)
+    set:
+      users:
+        - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.refreshInterval
+          value: "0"
+      - notExists:
+          path: spec.secretStoreRef
+      - notExists:
+          path: spec.refreshPolicy
+      - equal:
+          path: spec.dataFrom
+          value:
+            - sourceRef:
+                generatorRef:
+                  apiVersion: generators.external-secrets.io/v1alpha1
+                  kind: Password
+                  name: elasticsearch-user-myapp-indexer
+      - equal:
+          path: spec.target.creationPolicy
+          value: Owner
+
+  - it: should write a basic-auth Secret with username, password and the write role
+    set:
+      users:
+        - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.target.template.type
+          value: kubernetes.io/basic-auth
+      - equal:
+          path: spec.target.template.engineVersion
+          value: v2
+      - equal:
+          path: spec.target.template.data
+          value:
+            username: myapp-indexer
+            password: "{{ .password }}"
+            roles: myapp-indexer-write
+
+  - it: should give a search user the search role
+    set:
+      users:
+        - { name: proxy-search, role: search, indices: ["myapp-*"] }
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.target.template.data.roles
+          value: proxy-search-search
+
+  - it: should keep the ExternalSecret free of version labels (a label change would rotate the password)
+    set:
+      users:
+        - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.labels
+          value:
+            app.kubernetes.io/name: elasticsearch
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/component: user
+      - equal:
+          path: spec.target.template.metadata.labels
+          value:
+            app.kubernetes.io/name: elasticsearch
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/component: user
+
+  - it: should render the same ExternalSecret after a chart or Elasticsearch upgrade
+    set:
+      version: "9.4.2"
+      users:
+        - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
+    chart:
+      version: 9.9.9
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: metadata.labels["helm.sh/chart"]
+      - notExists:
+          path: metadata.labels["app.kubernetes.io/version"]
+
+  - it: should keep the password when only the indices change (they live in the roles Secret)
+    set:
+      users:
+        - { name: myapp-indexer, role: write, indices: ["other-*", "more-*"] }
+    documentIndex: 1
+    asserts:
+      - notMatchRegex:
+          path: spec.target.template.data.roles
+          pattern: other
+      - equal:
+          path: spec.target.template.data.roles
+          value: myapp-indexer-write
+
+  - it: should fail on a duplicate user name
+    set:
+      users:
+        - { name: myapp, role: write, indices: ["myapp-*"] }
+        - { name: myapp, role: search, indices: ["myapp-*"] }
+    asserts:
+      - failedTemplate:
+          errorMessage: 'users: name "myapp" is listed more than once'

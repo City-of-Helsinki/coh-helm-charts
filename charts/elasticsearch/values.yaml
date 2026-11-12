@@ -49,3 +49,18 @@ resources:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Application users (ECK file realm). Per user the chart creates a Password generator and an
+# ExternalSecret; External Secrets generates the password once and writes the Secret
+# elasticsearch-user-<name> (type kubernetes.io/basic-auth: username, password, roles).
+# Helm never sees the password. One Elasticsearch role per user (<name>-<role>), limited to
+# its indices:
+#   search: read, view_index_metadata              + cluster monitor
+#   write:  search + write, create_index, manage   + cluster monitor
+# One write user is enough for an app that reads and writes; add a search user only for
+# read-only clients such as the elastic-proxy.
+#   users:
+#     - name: myapp-indexer
+#       role: write
+#       indices: ["myapp-*"]
+users: []
