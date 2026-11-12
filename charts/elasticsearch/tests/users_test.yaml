@@ -65,7 +65,7 @@ tests:
             noUpper: false
             allowRepeat: true
 
-  - it: should generate the password once, from the generator only (no SecretStore)
+  - it: should sync only on change (force-sync rotates), from the generator only (no SecretStore)
     set:
       users:
         - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
@@ -76,8 +76,9 @@ tests:
           value: "0"
       - notExists:
           path: spec.secretStoreRef
-      - notExists:
+      - equal:
           path: spec.refreshPolicy
+          value: OnChange
       - equal:
           path: spec.dataFrom
           value:
@@ -188,6 +189,7 @@ tests:
       - equal:
           path: spec
           value:
+            refreshPolicy: OnChange
             refreshInterval: "0"
             target:
               name: elasticsearch-user-myapp
