@@ -1,7 +1,8 @@
 name: "CI: elasticsearch"
 
 # Reusable: lint + unit tests for charts/elasticsearch.
-# Called by pr-elasticsearch.yaml. No integration job yet: the chart needs the ECK
+# Called by pr-elasticsearch.yaml and release-elasticsearch.yaml so a PR is tested exactly
+# like a release. No integration job yet: the chart needs the ECK
 # operator (OLM) and the platta-service-ca ConfigMap, which come in a later PR.
 on:
   workflow_call:

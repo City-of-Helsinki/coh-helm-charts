@@ -1,0 +1,38 @@
+name: "Release: elasticsearch"
+
+# Run manually with a version (1.2.3), or push a tag elasticsearch-v1.2.3.
+# The chart is released only after the same lint + unit tests as a PR pass
+# (no integration job yet, so ci-elasticsearch.yaml takes no run-id and no secrets).
+on:
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: "Chart version, plain SemVer (e.g. 1.2.3)"
+        required: true
+        type: string
+  push:
+    tags:
+      - 'elasticsearch-v*'
+
+# Never run two releases of the same chart at once
+concurrency:
+  group: release-elasticsearch
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci-elasticsearch.yaml
+
+  release:
+    needs: ci
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-chart.yaml
+    with:
+      chart: elasticsearch
+      chart_version: ${{ inputs.chart_version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
