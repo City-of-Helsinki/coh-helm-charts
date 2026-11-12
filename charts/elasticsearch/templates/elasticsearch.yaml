@@ -22,6 +22,17 @@ spec:
     tls:
       certificate:
         secretName: {{ $tlsSecret }}
+  {{- with include "elasticsearch.users" . | fromJsonArray }}
+  # Application users: ECK file realm (Secrets written by External Secrets, see users.yaml)
+  # and one role per user from roles.yml (roles-secret.yaml).
+  auth:
+    roles:
+      - secretName: {{ include "elasticsearch.rolesSecretName" $ }}
+    fileRealm:
+      {{- range . }}
+      - secretName: {{ include "elasticsearch.userSecretName" .name }}
+      {{- end }}
+  {{- end }}
   # Transport (node-to-node) TLS: ECK's own self-signed certificates (default, unchanged).
   nodeSets:
     - name: default

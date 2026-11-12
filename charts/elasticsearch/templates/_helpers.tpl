@@ -159,3 +159,20 @@ Validated users list: fails on duplicate names (the schema cannot check uniquene
 {{- end -}}
 {{- toJson (.Values.users | default list) -}}
 {{- end }}
+
+{{/*
+Secret with roles.yml (the key ECK requires) holding one role per user.
+*/}}
+{{- define "elasticsearch.rolesSecretName" -}}
+{{- include "elasticsearch.fullname" . }}-roles
+{{- end }}
+
+{{/*
+Index privileges per role value. Both roles also get the cluster privilege monitor.
+*/}}
+{{- define "elasticsearch.indexPrivileges" -}}
+{{- $p := dict
+  "search" (list "read" "view_index_metadata")
+  "write" (list "read" "view_index_metadata" "write" "create_index" "manage") -}}
+{{- toJson (get $p .) -}}
+{{- end }}
