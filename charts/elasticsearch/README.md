@@ -296,18 +296,26 @@ To repeat it on the sandbox now, add [values-sandbox.yaml](values-sandbox.yaml):
 
 **dev-se (Nov 2026):** the default mirror image 9.5.5 pulls without a pull secret; green/Ready.
 
+**Application users, 12 Nov 2026**, dev-se, namespace `hki-platta-elastic-smoketest-test`, chart
+0.2.0 (branch `feat/PLATTA-7443-elasticsearch-users`), a `write` and a `search` user:
+
+* ECK picks up the user Secrets that External Secrets creates after the Elasticsearch resource:
+  both users authenticate via the file realm with their own roles.
+* Privileges per role: the `write` user gets 201 on its own index and 403 on another index; the
+  `search` user gets 200 on its own index, 403 when writing and 403 on another index.
+* A normal upgrade (no changes) keeps the passwords.
+* `force-sync` with `refreshPolicy: OnChange` rotates the password: the old one gets 401, the new
+  one 200. (Before `OnChange`, `force-sync` was ignored and the old password kept working.)
+* Adding `refreshPolicy` to existing ExternalSecrets rotated each password once, as expected.
+
 ## Still to test
 
 1. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
    the CA from `ca.crt`, which the OpenShift-generated Secret lacks; if needed, mount
    `platta-service-ca` into Kibana and set `elasticsearch.ssl.certificateAuthorities`.
 2. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
-3. Application users on the sandbox and dev-se: ECK picks up user Secrets that External
-   Secrets creates after the Elasticsearch resource; a `write` and a `search` user can do
-   exactly what their role allows (and the `search` user cannot write); `force-sync` gives a new
-   password that works after an app restart; changing `indices` or switching `role` keeps the
-   password and ECK applies the new privileges; removing a user removes it from Elasticsearch;
-   the elastic-proxy works with a `search` user.
+3. Application users: removing a user from `users` removes it from Elasticsearch; the
+   elastic-proxy (nginx-standard) works with a `search` user.
 4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
 
@@ -342,7 +350,8 @@ Application users (PLATTA-7443):
   [values-dev-1node.yaml](values-dev-1node.yaml); NOTES lists the user Secrets; README section
   [Application users](#application-users), including the elastic-proxy setup.
 * Requires the External Secrets Operator on the cluster when `users` is set.
-* Not yet tested on the clusters, see [Still to test](#still-to-test).
+* Tested on dev-se (12 Nov 2026), see [Tested](#tested); removing a user and the elastic-proxy
+  with a `search` user are [still to test](#still-to-test).
 
 ### 0.1.0
 
