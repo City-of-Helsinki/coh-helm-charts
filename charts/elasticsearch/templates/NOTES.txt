@@ -13,3 +13,13 @@ Elasticsearch {{ .Values.version }} ({{ .Values.nodeCount }} node{{ if gt (int .
 
 4. The elastic superuser ({{ include "elasticsearch.fullname" . }}-es-elastic-user) is for administrators only;
    applications must never use it.
+{{- with include "elasticsearch.users" . | fromJsonArray }}
+
+5. Application users (passwords generated once by External Secrets, never by Helm):
+{{- range . }}
+   {{ .name }} ({{ .role }} on {{ join ", " .indices }}): Secret {{ include "elasticsearch.userSecretName" .name }}, keys username / password
+{{- end }}
+   Check: oc get externalsecret -n {{ $.Release.Namespace }}   (STATUS SecretSynced)
+   New password: oc annotate externalsecret elasticsearch-user-<name> force-sync=$(date +%s) --overwrite -n {{ $.Release.Namespace }}
+   then restart the applications that use it.
+{{- end }}

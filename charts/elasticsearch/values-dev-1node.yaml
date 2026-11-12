@@ -5,6 +5,7 @@
 #   - ECK operator 3.x (OLM Subscription elasticsearch-eck-operator-certified)
 #   - ConfigMap platta-service-ca (annotation service.beta.openshift.io/inject-cabundle: "true"),
 #     mounted by the application clients to trust Elasticsearch; the chart does not use it
+#   - External Secrets Operator on the cluster (generates the user passwords; no SecretStore needed)
 
 version: "9.5.5"
 
@@ -19,3 +20,14 @@ resources:
     memory: 2Gi
   limits:
     memory: 2Gi        # JVM heap = half of this (1 GiB), set automatically by Elasticsearch
+
+# Application users. Each gets the Secret elasticsearch-user-<name> (username, password, roles).
+users:
+  # The app's backend: reads and writes its own indices (one user is enough for both)
+  - name: myapp-indexer
+    role: write
+    indices: ["myapp-*"]
+  # Read-only user for the public elastic-proxy (nginx-standard upstreamAuth)
+  - name: myapp-search
+    role: search
+    indices: ["myapp-*"]
