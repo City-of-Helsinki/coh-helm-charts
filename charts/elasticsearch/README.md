@@ -146,7 +146,9 @@ Rules (checked by the values schema): `role` is `search` or `write`; `indices` m
   (type `kubernetes.io/basic-auth`) with the keys `username`, `password` and `roles`.
   The password never passes through Helm or the pipeline, and teams cannot set their own.
 * The Secret `<fullname>-roles` (key `roles.yml`) holds one Elasticsearch role per user,
-  `<name>-<role>` (e.g. `myapp-indexer-write`).
+  named after the user only: `elasticsearch-user-<name>` (e.g.
+  `elasticsearch-user-myapp-indexer`), never after `search`/`write`. So the role name in the
+  user Secret never changes, and switching the role cannot rotate the password.
 * The Elasticsearch resource lists the user Secrets under `spec.auth.fileRealm` and the roles
   Secret under `spec.auth.roles`; ECK loads them into Elasticsearch's file realm.
 
@@ -204,7 +206,7 @@ Other changes:
 | Change in values | Effect |
 |---|---|
 | `indices` | Only the roles Secret changes; **the password stays**. |
-| `role` | The role name in the user Secret changes, so External Secrets generates a **new password**: restart the applications. |
+| `role` (`search` ↔ `write`) | Only the privileges in the roles Secret change; **the password stays**. |
 | User removed | Its ExternalSecret, Password and Secret are deleted, and ECK removes the user. |
 | Chart or Elasticsearch upgrade | Passwords stay (the ExternalSecrets carry no version labels on purpose). |
 
@@ -294,8 +296,9 @@ To repeat it on the sandbox now, add [values-sandbox.yaml](values-sandbox.yaml):
 3. Application users on the sandbox and dev-se: ECK picks up user Secrets that External
    Secrets creates after the Elasticsearch resource; a `write` and a `search` user can do
    exactly what their role allows (and the `search` user cannot write); `force-sync` gives a new
-   password that works after an app restart; changing `indices` keeps the password; removing a
-   user removes it from Elasticsearch; the elastic-proxy works with a `search` user.
+   password that works after an app restart; changing `indices` or switching `role` keeps the
+   password and ECK applies the new privileges; removing a user removes it from Elasticsearch;
+   the elastic-proxy works with a `search` user.
 4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
 
@@ -317,12 +320,13 @@ These checks are part of Platta's monthly upgrade/update evaluation (see the Ela
 Application users (PLATTA-7443):
 
 * **`users`:** a list of `name`, `role` (`search` or `write`) and `indices`. Each user gets an
-  Elasticsearch role `<name>-<role>` limited to its indices, in the Secret `<fullname>-roles`
-  (`roles.yml`), and is added to ECK's file realm.
+  Elasticsearch role named after the user (`elasticsearch-user-<name>`) and limited to its
+  indices, in the Secret `<fullname>-roles` (`roles.yml`), and is added to ECK's file realm.
 * **Passwords:** generated once by External Secrets (a `Password` generator and an
   `ExternalSecret` per user, no SecretStore) into the Secret `elasticsearch-user-<name>`
   (`kubernetes.io/basic-auth`: `username`, `password`, `roles`); never by Helm. A new password
-  with `force-sync`; chart and Elasticsearch upgrades keep the passwords.
+  with `force-sync`; chart and Elasticsearch upgrades and role or index changes keep the
+  passwords.
 * **Values schema:** rejects other roles, missing indices, the index patterns `*` and `.*`,
   and reserved user names.
 * **Examples and docs:** a write and a search user in
