@@ -315,6 +315,15 @@ To repeat it on the sandbox now, add [values-sandbox.yaml](values-sandbox.yaml):
 **dev-se, 13 Nov 2026:** nginx-standard 1.4.0 elastic-proxy with `upstreamAuth` on a `search`
 user: health and searches pass; admin paths, writes and deletes are blocked by the proxy.
 
+**3 nodes, dev-se, 13 Nov 2026:**
+
+* Growing from 1 to 3 nodes (`helm upgrade … --set nodeCount=3`): the new nodes joined and the
+  cluster was green; ECK's PodDisruptionBudget had `minAvailable` 2 / allowed disruptions 1.
+  A new index with the default replica stayed green with 0 unassigned shards. Back to 1 node:
+  green, and the extra PVCs were deleted (`DeleteOnScaledownOnly`).
+* Fresh 3-node install (no existing data): all three nodes started together and formed a green
+  cluster within about 5 minutes.
+
 ## Still to test
 
 1. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
