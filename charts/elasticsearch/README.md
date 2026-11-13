@@ -312,14 +312,16 @@ To repeat it on the sandbox now, add [values-sandbox.yaml](values-sandbox.yaml):
 * Removing a user deleted its ExternalSecret and Secret, and Elasticsearch then rejected the
   user (401).
 
+**dev-se, 13 Nov 2026:** nginx-standard 1.4.0 elastic-proxy with `upstreamAuth` on a `search`
+user: health and searches pass; admin paths, writes and deletes are blocked by the proxy.
+
 ## Still to test
 
 1. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
    the CA from `ca.crt`, which the OpenShift-generated Secret lacks; if needed, mount
    `platta-service-ca` into Kibana and set `elasticsearch.ssl.certificateAuthorities`.
 2. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
-3. Application users: the elastic-proxy (nginx-standard) works with a `search` user.
-4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
+3. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
 
 ## Maintenance
