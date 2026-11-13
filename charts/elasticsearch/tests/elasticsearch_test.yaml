@@ -290,3 +290,26 @@ tests:
       - equal:
           path: spec.nodeSets[0].podTemplate.spec.tolerations[0].key
           value: dedicated
+
+  # ===========================================================================
+  # APPLICATION USERS (file realm + roles)
+  # ===========================================================================
+  - it: should render no auth section without users
+    asserts:
+      - notExists:
+          path: spec.auth
+
+  - it: should list every user Secret in the file realm and the roles Secret
+    set:
+      users:
+        - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
+        - { name: proxy-search, role: search, indices: ["myapp-*"] }
+    asserts:
+      - equal:
+          path: spec.auth
+          value:
+            roles:
+              - secretName: RELEASE-NAME-elasticsearch-roles
+            fileRealm:
+              - secretName: elasticsearch-user-myapp-indexer
+              - secretName: elasticsearch-user-proxy-search

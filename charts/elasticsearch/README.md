@@ -1,14 +1,13 @@
 # Elasticsearch Helm Chart
 
-![Version: 0.1.0](https://img.shields.io/badge/version-0.1.0-blue)
+![Version: 0.2.0](https://img.shields.io/badge/version-0.2.0-blue)
 ![AppVersion: 9.5.5](https://img.shields.io/badge/appVersion-9.5.5-blue)
 
 Elasticsearch for **new instances on the Sweden OpenShift (ARO) clusters**, run by the ECK
 operator, with Platta managed Service TLS (OpenShift service CA). Basic licence only.
 
-> **Status 0.1.0: skeleton.** Proves that Elasticsearch starts with Platta service TLS.
-> Not included yet (later releases): application users and roles, NetworkPolicy, Kibana,
-> default index replicas, backups.
+> **Status 0.2.0:** Elasticsearch with Platta service TLS and application users.
+> Not included yet (later releases): NetworkPolicy, Kibana, default index replicas, backups.
 
 ## Prerequisites
 
@@ -18,6 +17,10 @@ Created in the namespace by platform admins via GitOps, **never by this chart**:
 |---|---|
 | ECK operator 3.x | OperatorGroup + Subscription `elasticsearch-eck-operator-certified` (OLM), one operator per namespace. The chart contains no operator and no CRDs. |
 | ConfigMap `platta-service-ca` | Annotation `service.beta.openshift.io/inject-cabundle: "true"` (OpenShift fills in `service-ca.crt`). Not used by the chart or by Elasticsearch: **clients mount it themselves** to trust the Elasticsearch certificate (see [TLS for clients](#tls-for-clients)). The chart never creates or deletes it. |
+
+Only when `users` is set: the **External Secrets Operator** (cluster-wide, installed by the
+platform; on dev-se "External Secrets Operator for Red Hat OpenShift" 1.2.1). It generates the
+user passwords. No SecretStore or Key Vault is needed.
 
 ## Install and upgrade
 
@@ -38,6 +41,7 @@ other names get the suffix `-elasticsearch`, max 36 characters). ECK then create
 | Pods | `elasticsearch-es-default-0` … |
 | TLS secret (created by the OpenShift service CA) | `platta-elasticsearch-es-http-tls` |
 | `elastic` superuser secret (admins only, never for apps) | `elasticsearch-es-elastic-user` |
+| Application user secrets (see [Application users](#application-users)) | `elasticsearch-user-<name>` |
 
 ## Values
 
@@ -53,6 +57,7 @@ Every value is validated by [values.schema.json](values.schema.json). Unknown ke
 | `image.repository` | `mirrored-images/elasticsearch/elasticsearch` | `elasticsearch/elasticsearch` together with `docker.elastic.co` |
 | `global.imageRegistry` | `image-registry.int.platta.hel.fi` | Registry for images that do not set their own `image.registry` (same as the other coh charts) |
 | `global.imagePullSecrets` | `[]` | Pull secrets for the Elasticsearch pods, `{name: x}` or plain names |
+| `users` | `[]` | Application users, see [Application users](#application-users) |
 | `nodeSelector`, `tolerations`, `affinity` | empty | Same as every coh chart (fall back to `global.*`). Without `affinity`, ECK spreads the nodes over workers. |
 
 **Fixed by the chart (not overridable):** storage class `platta-azure-ssd-lrs`, HTTP TLS
@@ -103,6 +108,117 @@ for it; only clients do.
   Upstream URL must be the full name `https://<name>-es-http.<namespace>.svc.cluster.local:9200`,
   because nginx resolves without search domains.
 
+## Application users
+
+Applications never use the `elastic` superuser. Each application gets its own users, with
+a role limited to its own indices:
+
+```yaml
+users:
+  - name: myapp-indexer      # DNS label, max 44 characters
+    role: write              # write or search
+    indices: ["myapp-*"]     # required; index names or patterns
+  - name: myapp-search
+    role: search
+    indices: ["myapp-*"]
+```
+
+| `role` | Index privileges on `indices` | Cluster privileges |
+|---|---|---|
+| `search` | `read`, `view_index_metadata` | `monitor` |
+| `write` | `read`, `view_index_metadata`, `write`, `create_index`, `manage` | `monitor` |
+
+**Which users?** One `write` user is enough for an application that both reads and writes.
+Add a separate `search` user only for read-only clients, above all the **elastic-proxy**: it
+is public and must never be able to write.
+
+Rules (checked by the values schema): `role` is `search` or `write`; `indices` must not be `*`
+(or only wildcards), must not start with `.` (system indices) and must not contain commas;
+`name` must not be a built-in user (`elastic`, `kibana`, `kibana_system`, `logstash_system`,
+`beats_system`, `apm_system`, `remote_monitoring_user`) or start with `elastic-internal`
+(ECK's own users); every name only once.
+
+### How it works
+
+* Per user the chart creates a `Password` generator and an `ExternalSecret`, both named
+  `elasticsearch-user-<name>`. External Secrets generates a 32-character alphanumeric password
+  and writes the Secret `elasticsearch-user-<name>` (type `kubernetes.io/basic-auth`) with the
+  keys `username`, `password` and `roles`. The password never passes through Helm or the
+  pipeline, and teams cannot set their own.
+* **When the password changes:** the ExternalSecrets use `refreshPolicy: OnChange` with
+  `refreshInterval: "0"`. External Secrets syncs, and so generates a new password, only when
+  the ExternalSecret itself changes: its spec, labels or annotations. In practice that means a
+  `force-sync` (see [Changing a password](#changing-a-password)). Normal chart upgrades leave
+  the ExternalSecret unchanged: it carries no version labels, and roles are named after the
+  user, so a role or index change only touches `roles.yml`.
+  (Without `OnChange`, the default `Periodic` policy with interval 0 never syncs again and
+  ignores `force-sync`; verified on dev-se.)
+* The Secret `<fullname>-roles` (key `roles.yml`) holds one Elasticsearch role per user,
+  named after the user only: `elasticsearch-user-<name>` (e.g.
+  `elasticsearch-user-myapp-indexer`), never after `search`/`write`. So the role name in the
+  user Secret never changes, and switching the role cannot rotate the password.
+* The Elasticsearch resource lists the user Secrets under `spec.auth.fileRealm` and the roles
+  Secret under `spec.auth.roles`; ECK loads them into Elasticsearch's file realm.
+
+Check that the passwords exist: `oc get externalsecret -n <namespace>` (STATUS `SecretSynced`).
+
+### Using a user in an application
+
+Read the Secret into environment variables:
+
+```yaml
+env:
+  - name: ELASTICSEARCH_URL
+    value: https://elasticsearch-es-http.<namespace>.svc:9200
+  - name: ELASTICSEARCH_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-user-myapp-indexer
+        key: username
+  - name: ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-user-myapp-indexer
+        key: password
+```
+
+The client also needs the CA (see [TLS for clients](#tls-for-clients)).
+
+### elastic-proxy (nginx-standard)
+
+Point `upstreamAuth` at a `search` user:
+
+```yaml
+elasticProxy:
+  upstreamAuth:
+    enabled: true
+    secretName: elasticsearch-user-myapp-search
+    username: myapp-search          # the user's name (not read from the Secret)
+    passwordKey: password
+  upstream:
+    url: https://elasticsearch-es-http.<namespace>.svc.cluster.local:9200
+```
+
+### Changing a password
+
+```bash
+oc annotate externalsecret elasticsearch-user-<name> force-sync=$(date +%s) --overwrite -n <namespace>
+```
+
+The annotation changes the ExternalSecret, so External Secrets syncs (`refreshPolicy: OnChange`),
+generates a new password and updates the Secret, and ECK updates the user in Elasticsearch. Pods do not notice a changed Secret: **restart the applications** that use it
+(e.g. `oc rollout restart deployment/<app>`).
+
+Other changes:
+
+| Change in values | Effect |
+|---|---|
+| `indices` | Only the roles Secret changes; **the password stays**. |
+| `role` (`search` ↔ `write`) | Only the privileges in the roles Secret change; **the password stays**. |
+| User removed | Its ExternalSecret, Password and Secret are deleted, and ECK removes the user. |
+| Chart or Elasticsearch upgrade | Passwords stay (the ExternalSecrets carry no version labels on purpose). |
+| Anything else that edits the ExternalSecret (spec, labels, annotations) | **New password**, like `force-sync`. Do not edit the ExternalSecrets by hand. |
+
 ## Objects the chart creates
 
 Needed for the rights of the application team's pipeline service account in its namespace:
@@ -110,9 +226,15 @@ Needed for the rights of the application team's pipeline service account in its 
 | Kind | API group |
 |---|---|
 | `Elasticsearch` | `elasticsearch.k8s.elastic.co/v1` |
-| `Secret` (Helm release records `sh.helm.release.v1.*` only) | core |
+| `Secret` (`<fullname>-roles` when `users` is set, and the Helm release records `sh.helm.release.v1.*`) | core |
+| `ExternalSecret` (one per user) | `external-secrets.io/v1` |
+| `Password` (one per user) | `generators.external-secrets.io/v1alpha1` |
 
-Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the ECK operator.
+On dev-se, the namespace roles `admin` and `edit` already include all of these (checked
+Nov 2026).
+
+Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the ECK operator, and
+the user Secrets `elasticsearch-user-<name>` by External Secrets.
 
 ## Known limitations
 
@@ -135,6 +257,9 @@ Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the EC
   `image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>`
   (or the same path under another `global.imageRegistry`); if that tag has not been mirrored yet, they
   cannot start. Add the tag to the mirror first, then install or upgrade.
+* **One release with `users` per namespace.** The user Secrets are named
+  `elasticsearch-user-<name>` without the release name, so two releases in the same namespace
+  cannot both define users with the same name (Helm refuses the second one).
 * **Data volumes are kept on uninstall** (`volumeClaimDeletePolicy: DeleteOnScaledownOnly`).
   `helm uninstall` removes Elasticsearch, but its PVCs (`elasticsearch-data-<name>-es-default-<n>`)
   stay, and so do the Azure disks behind them, which keep costing money. If the data is not
@@ -171,13 +296,30 @@ To repeat it on the sandbox now, add [values-sandbox.yaml](values-sandbox.yaml):
 
 **dev-se (Nov 2026):** the default mirror image 9.5.5 pulls without a pull secret; green/Ready.
 
+**Application users, 12 Nov 2026**, dev-se, namespace `hki-platta-elastic-smoketest-test`, chart
+0.2.0 (branch `feat/PLATTA-7443-elasticsearch-users`), a `write` and a `search` user:
+
+* ECK picks up the user Secrets that External Secrets creates after the Elasticsearch resource:
+  both users authenticate via the file realm with their own roles.
+* Privileges per role: the `write` user gets 201 on its own index and 403 on another index; the
+  `search` user gets 200 on its own index, 403 when writing and 403 on another index.
+* A normal upgrade (no changes) keeps the passwords.
+* `force-sync` with `refreshPolicy: OnChange` rotates the password: the old one gets 401, the new
+  one 200. (Before `OnChange`, `force-sync` was ignored and the old password kept working.)
+* Adding `refreshPolicy` to existing ExternalSecrets rotated each password once, as expected.
+* Switching `myapp-search` from `search` to `write` kept its password, and the new privileges
+  applied at once: writing gave 201 (403 before the switch).
+* Removing a user deleted its ExternalSecret and Secret, and Elasticsearch then rejected the
+  user (401).
+
 ## Still to test
 
 1. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
    the CA from `ca.crt`, which the OpenShift-generated Secret lacks; if needed, mount
    `platta-service-ca` into Kibana and set `elasticsearch.ssl.certificateAuthorities`.
 2. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
-3. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
+3. Application users: the elastic-proxy (nginx-standard) works with a `search` user.
+4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
 
 ## Maintenance
@@ -192,6 +334,27 @@ To repeat it on the sandbox now, add [values-sandbox.yaml](values-sandbox.yaml):
 These checks are part of Platta's monthly upgrade/update evaluation (see the Elasticsearch support standard in Confluence).
 
 ## Changelog
+
+### 0.2.0
+
+Application users (PLATTA-7443):
+
+* **`users`:** a list of `name`, `role` (`search` or `write`) and `indices`. Each user gets an
+  Elasticsearch role named after the user (`elasticsearch-user-<name>`) and limited to its
+  indices, in the Secret `<fullname>-roles` (`roles.yml`), and is added to ECK's file realm.
+* **Passwords:** generated by External Secrets (a `Password` generator and an
+  `ExternalSecret` per user with `refreshPolicy: OnChange`, no SecretStore) into the Secret
+  `elasticsearch-user-<name>` (`kubernetes.io/basic-auth`: `username`, `password`, `roles`);
+  never by Helm. A new password only with `force-sync`; chart and Elasticsearch upgrades and
+  role or index changes keep the passwords.
+* **Values schema:** rejects other roles, missing indices, the index patterns `*` and `.*`,
+  and reserved user names.
+* **Examples and docs:** a write and a search user in
+  [values-dev-1node.yaml](values-dev-1node.yaml); NOTES lists the user Secrets; README section
+  [Application users](#application-users), including the elastic-proxy setup.
+* Requires the External Secrets Operator on the cluster when `users` is set.
+* Tested on dev-se (12 Nov 2026), see [Tested](#tested); the elastic-proxy with a `search`
+  user is [still to test](#still-to-test).
 
 ### 0.1.0
 

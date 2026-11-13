@@ -2,5 +2,5 @@ apiVersion: v2
 name: elasticsearch
 description: Elasticsearch on Platta OpenShift (ARO), managed by the ECK operator, with Platta service TLS
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "9.5.5"

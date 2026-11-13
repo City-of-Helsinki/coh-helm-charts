@@ -1,0 +1,95 @@
+suite: application user roles (roles.yml Secret)
+templates:
+  - roles-secret.yaml
+
+tests:
+  - it: should render no roles Secret without users
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should name the Secret <fullname>-roles and store it under the key ECK requires (roles.yml)
+    set:
+      users:
+        - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Secret
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-elasticsearch-roles
+      - exists:
+          path: stringData["roles.yml"]
+
+  - it: should give a write user read, view_index_metadata, write, create_index, manage + cluster monitor
+    set:
+      users:
+        - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
+    asserts:
+      - equal:
+          path: stringData["roles.yml"]
+          value: |
+            elasticsearch-user-myapp-indexer:
+              cluster:
+              - monitor
+              indices:
+              - names:
+                - myapp-*
+                privileges:
+                - read
+                - view_index_metadata
+                - write
+                - create_index
+                - manage
+
+  - it: should give a search user read, view_index_metadata + cluster monitor only
+    set:
+      users:
+        - { name: proxy-search, role: search, indices: ["myapp-*", "shared-docs"] }
+    asserts:
+      - equal:
+          path: stringData["roles.yml"]
+          value: |
+            elasticsearch-user-proxy-search:
+              cluster:
+              - monitor
+              indices:
+              - names:
+                - myapp-*
+                - shared-docs
+                privileges:
+                - read
+                - view_index_metadata
+
+  - it: should hold one role per user
+    set:
+      users:
+        - { name: myapp-indexer, role: write, indices: ["myapp-*"] }
+        - { name: proxy-search, role: search, indices: ["myapp-*"] }
+    asserts:
+      - matchRegex:
+          path: stringData["roles.yml"]
+          pattern: '(?m)^elasticsearch-user-myapp-indexer:$'
+      - matchRegex:
+          path: stringData["roles.yml"]
+          pattern: '(?m)^elasticsearch-user-proxy-search:$'
+
+  - it: should keep the role name and change only the privileges when a user switches from write to search
+    set:
+      users:
+        - { name: myapp, role: search, indices: ["myapp-*"] }
+    asserts:
+      - equal:
+          path: stringData["roles.yml"]
+          value: |
+            elasticsearch-user-myapp:
+              cluster:
+              - monitor
+              indices:
+              - names:
+                - myapp-*
+                privileges:
+                - read
+                - view_index_metadata

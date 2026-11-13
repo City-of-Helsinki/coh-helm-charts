@@ -115,3 +115,67 @@ affinity:
 {{ toYaml . | indent 2 }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Application users (ECK file realm).
+*/}}
+
+{{/*
+Secret (and Password / ExternalSecret) name of a user. Argument: the user's name.
+*/}}
+{{- define "elasticsearch.userSecretName" -}}
+elasticsearch-user-{{ . }}
+{{- end }}
+
+{{/*
+Elasticsearch role of a user: named after the user only (elasticsearch-user-<name>), never
+after search/write. The role name is written into the user Secret (key roles) by the
+ExternalSecret, and any change there generates a new password; this way switching between
+search and write only changes roles.yml. Argument: the user entry.
+*/}}
+{{- define "elasticsearch.userRoleName" -}}
+{{- include "elasticsearch.userSecretName" .name }}
+{{- end }}
+
+{{/*
+Labels of the Password and ExternalSecret objects and of the generated Secrets.
+Stable on purpose (no chart version, no Elasticsearch version): External Secrets re-syncs an
+ExternalSecret whenever its labels, annotations or spec change, and with a generator every
+re-sync is a new password. Version labels here would rotate every password on each upgrade.
+*/}}
+{{- define "elasticsearch.userLabels" -}}
+{{ include "elasticsearch.selectorLabels" . }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/component: user
+{{- end }}
+
+{{/*
+Validated users list: fails on duplicate names (the schema cannot check uniqueness of a field).
+*/}}
+{{- define "elasticsearch.users" -}}
+{{- $seen := dict -}}
+{{- range .Values.users -}}
+{{- if hasKey $seen .name -}}
+{{- fail (printf "users: name %q is listed more than once" .name) -}}
+{{- end -}}
+{{- $_ := set $seen .name true -}}
+{{- end -}}
+{{- toJson (.Values.users | default list) -}}
+{{- end }}
+
+{{/*
+Secret with roles.yml (the key ECK requires) holding one role per user.
+*/}}
+{{- define "elasticsearch.rolesSecretName" -}}
+{{- include "elasticsearch.fullname" . }}-roles
+{{- end }}
+
+{{/*
+Index privileges per role value. Both roles also get the cluster privilege monitor.
+*/}}
+{{- define "elasticsearch.indexPrivileges" -}}
+{{- $p := dict
+  "search" (list "read" "view_index_metadata")
+  "write" (list "read" "view_index_metadata" "write" "create_index" "manage") -}}
+{{- toJson (get $p .) -}}
+{{- end }}

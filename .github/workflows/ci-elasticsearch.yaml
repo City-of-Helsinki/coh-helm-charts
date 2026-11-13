@@ -67,4 +67,33 @@ jobs:
             --set image.registry=image-registry.int.platta.hel.fi --set image.repository=elasticsearch/elasticsearch
           reject "no registry at all (image.registry and global.imageRegistry empty)" --set global.imageRegistry=
           reject "custom image tag"            --set image.tag=1.0
+          # users: u <name> <role> <indices JSON array> builds a one-user list
+          u() { echo "users=[{\"name\":\"$1\",\"role\":\"$2\",\"indices\":$3}]"; }
+          reject "user role admin"             --set-json "$(u myapp admin '["myapp-*"]')"
+          reject "user role superuser"         --set-json "$(u myapp superuser '["myapp-*"]')"
+          reject "user without indices"        --set-json 'users=[{"name":"myapp","role":"write"}]'
+          reject "user with empty indices"     --set-json "$(u myapp write '[]')"
+          reject "user without role"           --set-json 'users=[{"name":"myapp","indices":["myapp-*"]}]'
+          reject "user with an unknown key"    --set-json 'users=[{"name":"myapp","role":"write","indices":["myapp-*"],"password":"x"}]'
+          reject "index pattern *"             --set-json "$(u myapp search '["*"]')"
+          reject "index pattern of wildcards only" --set-json "$(u myapp search '["*?*"]')"
+          reject "system index pattern .*"     --set-json "$(u myapp search '[".*"]')"
+          reject "system index .security"      --set-json "$(u myapp search '["myapp-*",".security"]')"
+          reject "index list in one string"    --set-json "$(u myapp search '["a,b"]')"
+          reject "reserved user elastic"       --set-json "$(u elastic write '["myapp-*"]')"
+          reject "reserved user kibana"        --set-json "$(u kibana write '["myapp-*"]')"
+          reject "reserved user kibana_system" --set-json "$(u kibana_system write '["myapp-*"]')"
+          reject "ECK internal user"           --set-json "$(u elastic-internal-probe search '["myapp-*"]')"
+          reject "user name not a DNS label"   --set-json "$(u MyApp write '["myapp-*"]')"
+          reject "user name over 44 characters" --set-json "$(u a234567890123456789012345678901234567890-xyzw write '["myapp-*"]')"
+          # Valid neighbours of the cases above must still pass (the schema is not just rejecting everything)
+          accept() {
+            local desc="$1"; shift
+            if out=$(helm template ci "$CHART" "$@" 2>&1); then echo "✓ accepted: $desc"
+            else echo "::error::rejected, should be accepted: $desc"; echo "$out"; rc=1; fi
+          }
+          accept "write and search users"      --set-json 'users=[{"name":"myapp-indexer","role":"write","indices":["myapp-*"]},{"name":"myapp-search","role":"search","indices":["myapp-*","shared-docs"]}]'
+          accept "names that only start like reserved ones" \
+            --set-json 'users=[{"name":"elastic-app","role":"search","indices":["a-*"]},{"name":"kibana-reader","role":"search","indices":["b?c*"]}]'
+          accept "user name of 44 characters"  --set-json "$(u a234567890123456789012345678901234567890-xyz write '["myapp-*"]')"
           exit $rc
