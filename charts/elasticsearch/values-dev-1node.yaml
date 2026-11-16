@@ -4,8 +4,10 @@
 # Prerequisites in <namespace> (created by platform admins via GitOps, not by this chart):
 #   - ECK operator 3.x (OLM Subscription elasticsearch-eck-operator-certified)
 #   - ConfigMap platta-service-ca (annotation service.beta.openshift.io/inject-cabundle: "true"),
-#     mounted by the application clients to trust Elasticsearch; the chart does not use it
+#     mounted by the chart's index-defaults Job and by the application clients to trust Elasticsearch
 #   - External Secrets Operator on the cluster (generates the user passwords; no SecretStore needed)
+#
+# Install with --timeout 15m: Helm waits for the index-defaults Job, which needs Elasticsearch running.
 
 version: "9.5.5"
 
