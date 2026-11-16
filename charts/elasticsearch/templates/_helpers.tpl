@@ -222,3 +222,19 @@ Index privileges per role value. Both roles also get the cluster privilege monit
   "write" (list "read" "view_index_metadata" "write" "create_index" "manage") -}}
 {{- toJson (get $p .) -}}
 {{- end }}
+
+{{/*
+Default index replicas (index-defaults Job). Names in Elasticsearch, fixed: teams reference the
+component template in their own index templates (composed_of: ["platta-defaults"]).
+*/}}
+{{- define "elasticsearch.defaultsComponentTemplate" -}}
+platta-defaults
+{{- end }}
+
+{{- define "elasticsearch.defaultsIndexTemplate" -}}
+platta-default-replicas
+{{- end }}
+
+{{- define "elasticsearch.indexDefaultsName" -}}
+{{- include "elasticsearch.fullname" . }}-index-defaults
+{{- end }}
