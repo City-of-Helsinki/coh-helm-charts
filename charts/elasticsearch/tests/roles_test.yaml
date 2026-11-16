@@ -3,10 +3,22 @@ templates:
   - roles-secret.yaml
 
 tests:
-  - it: should render no roles Secret without users
+  - it: should always render the roles Secret, with only the technical user's role without team users
     asserts:
       - hasDocuments:
-          count: 0
+          count: 1
+      - equal:
+          path: stringData["roles.yml"]
+          value: |
+            elasticsearch-user-platta-defaults:
+              cluster:
+              - manage_index_templates
+
+  - it: should give the technical user manage_index_templates only, no index privileges
+    asserts:
+      - notMatchRegex:
+          path: stringData["roles.yml"]
+          pattern: 'indices|monitor|privileges'
 
   - it: should name the Secret <fullname>-roles and store it under the key ECK requires (roles.yml)
     set:
@@ -43,6 +55,9 @@ tests:
                 - write
                 - create_index
                 - manage
+            elasticsearch-user-platta-defaults:
+              cluster:
+              - manage_index_templates
 
   - it: should give a search user read, view_index_metadata + cluster monitor only
     set:
@@ -52,6 +67,9 @@ tests:
       - equal:
           path: stringData["roles.yml"]
           value: |
+            elasticsearch-user-platta-defaults:
+              cluster:
+              - manage_index_templates
             elasticsearch-user-proxy-search:
               cluster:
               - monitor
@@ -93,3 +111,6 @@ tests:
                 privileges:
                 - read
                 - view_index_metadata
+            elasticsearch-user-platta-defaults:
+              cluster:
+              - manage_index_templates

@@ -98,13 +98,14 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "Username; the Secret is elasticsearch-user-<name>",
+            "description": "Username; the Secret is elasticsearch-user-<name>. Names starting with platta- are reserved for the chart's technical users",
             "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
             "maxLength": 44,
             "not": {
               "anyOf": [
                 { "enum": ["elastic", "kibana", "kibana_system", "logstash_system", "beats_system", "apm_system", "remote_monitoring_user"] },
-                { "pattern": "^elastic-internal" }
+                { "pattern": "^elastic-internal" },
+                { "pattern": "^platta-" }
               ]
             }
           },
