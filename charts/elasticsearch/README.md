@@ -1,13 +1,13 @@
 # Elasticsearch Helm Chart
 
-![Version: 0.2.0](https://img.shields.io/badge/version-0.2.0-blue)
+![Version: 0.3.0](https://img.shields.io/badge/version-0.3.0-blue)
 ![AppVersion: 9.5.5](https://img.shields.io/badge/appVersion-9.5.5-blue)
 
 Elasticsearch for **new instances on the Sweden OpenShift (ARO) clusters**, run by the ECK
 operator, with Platta managed Service TLS (OpenShift service CA). Basic licence only.
 
-> **Status 0.2.0:** Elasticsearch with Platta service TLS and application users.
-> Not included yet (later releases): NetworkPolicy, Kibana, default index replicas, backups.
+> **Status 0.3.0:** Elasticsearch with Platta service TLS, application users and default index
+> replicas. Not included yet (later releases): NetworkPolicy, Kibana, backups.
 
 ## Prerequisites
 
@@ -427,6 +427,26 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
 These checks are part of Platta's monthly upgrade/update evaluation (see the Elasticsearch support standard in Confluence).
 
 ## Changelog
+
+### 0.3.0
+
+Default index replicas (PLATTA-8657):
+
+* **Default:** new indices get `index.auto_expand_replicas: "0-1"` (0 replicas on 1 node, 1 on
+  3 nodes) from the component template `platta-defaults`, applied to every index by the index
+  template `platta-default-replicas` (`index_patterns: ["*"]`, priority 0).
+* **Job:** `<fullname>-index-defaults` stores both templates after every install and upgrade
+  (Helm hook), on the chart's Elasticsearch image, trusting `platta-service-ca`. A priority
+  conflict with a team template fails it with an explanation.
+* **Technical user:** `platta-defaults` (Secret `<fullname>-platta-defaults`, generated like the
+  application users), role with only `manage_index_templates`. `spec.auth` and the roles Secret
+  are now always rendered; upgrading from 0.2.0 adds the technical user to `spec.auth`.
+* **Values schema:** user names starting with `platta-` are reserved.
+* **Breaking for pipelines:** Helm waits for the Job, so installs need `--timeout 15m`; team
+  index templates need `"priority": 1` or higher (and should add `"composed_of":
+  ["platta-defaults"]`). `platta-service-ca` and the External Secrets Operator are now always
+  required.
+* Not yet tested on the clusters, see [Still to test](#still-to-test).
 
 ### 0.2.0
 
