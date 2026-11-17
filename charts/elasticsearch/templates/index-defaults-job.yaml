@@ -62,14 +62,18 @@ spec:
               umask 077
               # credentials in a netrc file, never on the command line
               printf 'machine %s login %s password %s\n' "$ES_HOST" "$ES_USERNAME" "$ES_PASSWORD" > /tmp/netrc
+              # es METHOD PATH [curl args]: prints the HTTP status, body in /tmp/response
+              es() {
+                local method="$1" path="$2"; shift 2
+                curl -sS -o /tmp/response -w '%{http_code}' \
+                  --cacert /etc/platta-service-ca/service-ca.crt --netrc-file /tmp/netrc \
+                  --connect-timeout 5 --max-time 30 \
+                  -X "$method" "$@" "https://$ES_HOST:9200/$path"
+              }
               put() {
                 local path="$1" body="$2" code
                 while true; do
-                  code=$(curl -sS -o /tmp/response -w '%{http_code}' \
-                    --cacert /etc/platta-service-ca/service-ca.crt --netrc-file /tmp/netrc \
-                    --connect-timeout 5 --max-time 30 \
-                    -X PUT -H 'Content-Type: application/json' --data-binary "@$body" \
-                    "https://$ES_HOST:9200/$path") || code=000
+                  code=$(es PUT "$path" -H 'Content-Type: application/json' --data-binary "@$body") || code=000
                   case "$code" in
                     200)
                       echo "PUT $path: OK"
@@ -89,8 +93,34 @@ spec:
                   esac
                 done
               }
+              # with no users there is no index template; delete a stale one (404 is fine)
+              del() {
+                local path="$1" code
+                while true; do
+                  code=$(es DELETE "$path") || code=000
+                  case "$code" in
+                    200)
+                      echo "DELETE $path: OK"
+                      return 0 ;;
+                    404)
+                      echo "DELETE $path: not found, nothing to delete"
+                      return 0 ;;
+                    400)
+                      echo "DELETE $path: rejected by Elasticsearch (HTTP 400):"
+                      cat /tmp/response; echo
+                      return 1 ;;
+                    *)
+                      echo "DELETE $path: HTTP $code (Elasticsearch not ready or user not loaded yet), retrying in 10s"
+                      sleep 10 ;;
+                  esac
+                done
+              }
               put _component_template/{{ include "elasticsearch.defaultsComponentTemplate" . }} /etc/index-defaults/component-template.json
+              {{- if include "elasticsearch.defaultIndexPatterns" . | fromJsonArray }}
               put _index_template/{{ include "elasticsearch.defaultsIndexTemplate" . }} /etc/index-defaults/index-template.json
+              {{- else }}
+              del _index_template/{{ include "elasticsearch.defaultsIndexTemplate" . }}
+              {{- end }}
           env:
             - name: ES_HOST
               value: {{ $host }}

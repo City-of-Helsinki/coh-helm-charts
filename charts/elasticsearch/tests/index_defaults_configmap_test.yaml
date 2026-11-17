@@ -32,24 +32,78 @@ tests:
               }
             }
 
-  - it: should match every index with priority 0 and compose platta-defaults in the index template
+  - it: should match the users' index patterns with priority 0 and compose platta-defaults in the index template
+    set:
+      users:
+        - name: myapp-indexer
+          role: write
+          indices: ["myapp-*"]
     asserts:
       - equal:
           path: data["index-template.json"]
           value: |
             {
               "_meta": {
-                "description": "Applies platta-defaults to indices no other index template matches. Own templates need priority 1 or higher.",
+                "description": "Applies platta-defaults to the index patterns of the chart's users that no other index template matches. Own templates need priority 1 or higher.",
                 "managed_by": "coh-helm-charts/elasticsearch"
               },
               "composed_of": [
                 "platta-defaults"
               ],
               "index_patterns": [
-                "*"
+                "myapp-*"
               ],
               "priority": 0
             }
+
+  - it: should use the union of all users' patterns (search and write), deduplicated and sorted
+    set:
+      users:
+        - name: myapp-indexer
+          role: write
+          indices: ["myapp-*", "shared-*"]
+        - name: myapp-search
+          role: search
+          indices: ["myapp-*"]
+        - name: other-indexer
+          role: write
+          indices: ["shared-*", "audit-2026", "myapp-*"]
+    asserts:
+      - matchRegex:
+          path: data["index-template.json"]
+          pattern: '"index_patterns": \[\s*"audit-2026",\s*"myapp-\*",\s*"shared-\*"\s*\]'
+
+  - it: should follow a change of a user's indices
+    set:
+      users:
+        - name: myapp-indexer
+          role: write
+          indices: ["myapp-v2-*"]
+    asserts:
+      - matchRegex:
+          path: data["index-template.json"]
+          pattern: '"index_patterns": \[\s*"myapp-v2-\*"\s*\]'
+      - notMatchRegex:
+          path: data["index-template.json"]
+          pattern: '"myapp-\*"'
+
+  - it: should never add patterns for the technical user, and never "*" or dot-patterns
+    set:
+      users:
+        - name: myapp-indexer
+          role: write
+          indices: ["myapp-*"]
+    asserts:
+      - notMatchRegex:
+          path: data["index-template.json"]
+          pattern: '"index_patterns": \[[^\]]*"(\*|\.[^"]*|platta-[^"]*)"'
+
+  - it: should render no index template body without users (the Job deletes the template)
+    asserts:
+      - notExists:
+          path: data["index-template.json"]
+      - exists:
+          path: data["component-template.json"]
 
   - it: should render the same bodies for 3 nodes (auto_expand adjusts in Elasticsearch, not in the chart)
     set:

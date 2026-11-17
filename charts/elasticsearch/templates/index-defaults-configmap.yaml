@@ -2,11 +2,14 @@
 Bodies of the two requests the index-defaults Job sends (a normal resource, so it exists
 before the post-install/post-upgrade hook runs):
   PUT _component_template/platta-defaults         index.auto_expand_replicas "0-1"
-  PUT _index_template/platta-default-replicas     every index ("*"), priority 0 (the lowest),
-                                                  so any team template with priority >= 1 wins
+  PUT _index_template/platta-default-replicas     the users' index patterns, priority 0 (the
+                                                  lowest), so any team template with priority
+                                                  >= 1 wins
+With no users there is no index-template.json, and the Job deletes platta-default-replicas.
 "0-1": 0 replicas on 1 node, 1 replica on 3 nodes; adjusts when nodeCount changes.
 */}}
 {{- $component := include "elasticsearch.defaultsComponentTemplate" . }}
+{{- $patterns := include "elasticsearch.defaultIndexPatterns" . | fromJsonArray }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -23,12 +26,14 @@ data:
             "managed_by" "coh-helm-charts/elasticsearch"
             "description" "Platta default replicas: 0 on 1 node, 1 on 3 nodes. Add to your own index templates with composed_of.")
         | toPrettyJson | nindent 4 }}
+  {{- if $patterns }}
   index-template.json: |
     {{- dict
-          "index_patterns" (list "*")
+          "index_patterns" $patterns
           "composed_of" (list $component)
           "priority" 0
           "_meta" (dict
             "managed_by" "coh-helm-charts/elasticsearch"
-            "description" "Applies platta-defaults to indices no other index template matches. Own templates need priority 1 or higher.")
+            "description" "Applies platta-defaults to the index patterns of the chart's users that no other index template matches. Own templates need priority 1 or higher.")
         | toPrettyJson | nindent 4 }}
+  {{- end }}

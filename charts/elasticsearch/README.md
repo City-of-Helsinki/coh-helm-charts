@@ -229,8 +229,9 @@ Other changes:
 
 ## Default index replicas
 
-Every new index gets **`index.auto_expand_replicas: "0-1"`** unless the application sets its
-own replicas: 0 replicas on a 1-node instance (so it stays green), 1 replica on 3 nodes.
+Every new index in **the index patterns declared for the chart's users** (`users[].indices`)
+gets **`index.auto_expand_replicas: "0-1"`** unless the application sets its own replicas:
+0 replicas on a 1-node instance (so it stays green), 1 replica on 3 nodes.
 Elasticsearch adjusts existing indices with this setting automatically when `nodeCount`
 changes.
 
@@ -241,7 +242,18 @@ The chart stores two templates in Elasticsearch:
 | Template | Content |
 |---|---|
 | Component template `platta-defaults` | Only `settings.index.auto_expand_replicas: "0-1"` |
-| Index template `platta-default-replicas` | `index_patterns: ["*"]`, `composed_of: ["platta-defaults"]`, `priority: 0` (the lowest) |
+| Index template `platta-default-replicas` | `index_patterns`: the users' patterns (all `users[].indices`, search and write, deduplicated and sorted), `composed_of: ["platta-defaults"]`, `priority: 0` (the lowest) |
+
+Applications can create indices only inside their users' patterns, so the template covers
+exactly the indices they can create. Indices created outside them, for example by an
+administrator as `elastic`, do not get the default. The patterns are never `"*"`: the
+schema forbids `"*"` and dot-patterns, and a `"*"` would overlap Elasticsearch's built-in
+templates for dot (system and hidden) indices, such as `.monitoring-*-mb`. Those also have
+priority 0, and Elasticsearch refuses overlapping templates with the same priority.
+
+**Without users** there is no index template: the Job stores only `platta-defaults` and
+deletes `platta-default-replicas` if it exists, so removing all users leaves no stale
+template behind. Changing a user's `indices` changes the patterns on the next upgrade.
 
 * The Job `<fullname>-index-defaults` stores them after every `helm install` and `helm upgrade`
   (Helm hook; bodies in the ConfigMap `<fullname>-index-defaults`). It overwrites them each
@@ -264,8 +276,8 @@ Elasticsearch applies **only one index template** to a new index: the matching o
 highest priority. So:
 
 * **Use `"priority": 1` or higher.** Elasticsearch refuses two index templates with
-  overlapping patterns and the same priority, and `platta-default-replicas` matches every
-  index with priority 0. (A template without `priority` has priority 0.) If such a template
+  overlapping patterns and the same priority, and `platta-default-replicas` matches your
+  users' patterns with priority 0. (A template without `priority` has priority 0.) If such a template
   already exists, the Job fails with a message saying so; raise its priority and run the
   upgrade again.
 * **Add `"composed_of": ["platta-defaults"]`** to keep the default replicas in indices your
@@ -323,9 +335,18 @@ Secrets.
 * **A 1-node instance turns yellow if an index asks for replicas.** Since 0.3.0 new indices
   get 0 replicas on one node (see [Default index replicas](#default-index-replicas)), but not
   if an application sets `number_of_replicas` itself, uses an index template without
-  `composed_of: ["platta-defaults"]`, or created the index before 0.3.0. A yellow cluster makes
+  `composed_of: ["platta-defaults"]`, creates the index outside its users' patterns, or
+  created it before 0.3.0. A yellow cluster makes
   waits for green (e.g. `_cluster/health?wait_for_status=green`) time out, and ECK's
   PodDisruptionBudget then blocks pod eviction, which can hold up node maintenance.
+
+* **Index names that match Elasticsearch's built-in templates do not get the default
+  replicas.** Elasticsearch 9 has built-in index templates with priority 100 for names like
+  `logs-*-*`, `metrics-*-*`, `traces-*-*` and `synthetics-*-*`. They win over
+  `platta-default-replicas` (priority 0), so such indices (data streams) use Elastic's settings
+  instead. **Avoid those name shapes** for your indices. Only if a name cannot be changed, add
+  your own index template for it with a priority above 100 and
+  `composed_of: ["platta-defaults"]`.
 
 * **The mirror must have the Elasticsearch version's tag before it can be used.** The pods pull
   `image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>`
@@ -406,6 +427,8 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
 2. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
 3. Default index replicas (0.3.0):
    * the index-defaults Job on a fresh install (1 and 3 nodes) and on an upgrade from 0.2.0;
+   * the index template's patterns match the users' `indices`, change when they change, and
+     the template is deleted when all users are removed (and a 404 is fine without one);
    * a new index on 1 node stays green with `auto_expand_replicas` (0 replicas);
    * growing 1 → 3 nodes gives it 1 replica, shrinking back to 1 node 0 replicas, green both
      times;
@@ -433,8 +456,10 @@ These checks are part of Platta's monthly upgrade/update evaluation (see the Ela
 Default index replicas (PLATTA-8657):
 
 * **Default:** new indices get `index.auto_expand_replicas: "0-1"` (0 replicas on 1 node, 1 on
-  3 nodes) from the component template `platta-defaults`, applied to every index by the index
-  template `platta-default-replicas` (`index_patterns: ["*"]`, priority 0).
+  3 nodes) from the component template `platta-defaults`, applied to the index patterns
+  declared for the chart's users (`users[].indices`, deduplicated and sorted) by the index
+  template `platta-default-replicas` (priority 0). Indices created outside these patterns do
+  not get it. Without users there is no index template, and the Job deletes a stale one.
 * **Job:** `<fullname>-index-defaults` stores both templates after every install and upgrade
   (Helm hook), on the chart's Elasticsearch image, trusting `platta-service-ca`. A priority
   conflict with a team template fails it with an explanation.
