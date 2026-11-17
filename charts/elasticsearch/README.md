@@ -420,6 +420,13 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
 * Fresh 3-node install (no existing data): all three nodes started together and formed a green
   cluster within about 5 minutes.
 
+**Default index replicas, dev-se, 17 Nov 2026**, chart 0.3.0 (branch
+`fix/PLATTA-8657-index-template-patterns`, index patterns from the users):
+
+* Upgrade from 0.2.0: passed; the index-defaults Job stored the templates and the release
+  succeeded.
+* Fresh install: passed; `helm install` with the Job took 1 min 46 s.
+
 ## Still to test
 
 1. Kibana (when it is added): does Kibana trust the Elasticsearch certificate? ECK gives Kibana
@@ -427,7 +434,8 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
    `platta-service-ca` into Kibana and set `elasticsearch.ssl.certificateAuthorities`.
 2. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
 3. Default index replicas (0.3.0):
-   * the index-defaults Job on a fresh install (1 and 3 nodes) and on an upgrade from 0.2.0;
+   * the index-defaults Job on a fresh 3-node install (the upgrade from 0.2.0 and a fresh
+     install are [tested](#tested));
    * the index template's patterns match the users' `indices`, change when they change, and
      the template is deleted when all users are removed (and a 404 is fine without one);
    * a new index on 1 node stays green with `auto_expand_replicas` (0 replicas);
@@ -472,7 +480,8 @@ Default index replicas (PLATTA-8657):
   index templates need `"priority": 1` or higher (and should add `"composed_of":
   ["platta-defaults"]`). `platta-service-ca` and the External Secrets Operator are now always
   required.
-* Not yet tested on the clusters, see [Still to test](#still-to-test).
+* Tested on dev-se (17 Nov 2026): upgrade from 0.2.0 and a fresh install, see
+  [Tested](#tested); the rest is in [Still to test](#still-to-test).
 
 ### 0.2.0
 
