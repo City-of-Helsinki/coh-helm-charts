@@ -278,8 +278,9 @@ highest priority. So:
 * **Use `"priority": 1` or higher.** Elasticsearch refuses two index templates with
   overlapping patterns and the same priority, and `platta-default-replicas` matches your
   users' patterns with priority 0. (A template without `priority` has priority 0.) If such a template
-  already exists, the Job fails with a message saying so; raise its priority and run the
-  upgrade again.
+  already exists, the Job fails and prints the names of the conflicting templates, as
+  Elasticsearch reports them. If one is yours, raise its priority and run the upgrade again;
+  if none is, tell Platta.
 * **Add `"composed_of": ["platta-defaults"]`** to keep the default replicas in indices your
   template matches. Everything else in your template is yours.
 
@@ -433,7 +434,7 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
    * growing 1 → 3 nodes gives it 1 replica, shrinking back to 1 node 0 replicas, green both
      times;
    * a team template with `priority: 1` and `composed_of: ["platta-defaults"]` keeps the
-     default, and one with priority 0 makes the Job fail with the priority message;
+     default, and one with priority 0 makes the Job fail and name that template;
    * the technical user can manage templates only (403 on reading or writing an index).
 4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
@@ -462,7 +463,7 @@ Default index replicas (PLATTA-8657):
   not get it. Without users there is no index template, and the Job deletes a stale one.
 * **Job:** `<fullname>-index-defaults` stores both templates after every install and upgrade
   (Helm hook), on the chart's Elasticsearch image, trusting `platta-service-ca`. A priority
-  conflict with a team template fails it with an explanation.
+  conflict fails it and prints the conflicting template names from Elasticsearch's response.
 * **Technical user:** `platta-defaults` (Secret `<fullname>-platta-defaults`, generated like the
   application users), role with only `manage_index_templates`. `spec.auth` and the roles Secret
   are now always rendered; upgrading from 0.2.0 adds the technical user to `spec.auth`.

@@ -143,6 +143,21 @@ tests:
           path: spec.template.spec.containers[0].args[0]
           pattern: '(?s)400\).*same priority.*priority\\": 1 or higher.*return 1'
 
+  - it: should print the conflicting template names from the response, not assume they are the team's
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: "grep -o 'existing templates .*' /tmp/response \\| head -n 1"
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: 'overlaps existing index templates with the same priority:"\n\s+echo "  \$\{conflicts:-\(see the response above\)\}"'
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: 'If none of them is yours, report this to Platta'
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: 'an index template of your own has priority 0'
+
   - it: should run restricted (non-root, no privilege escalation, no capabilities, RuntimeDefault seccomp)
     asserts:
       - equal:

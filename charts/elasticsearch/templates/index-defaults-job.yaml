@@ -82,9 +82,15 @@ spec:
                       echo "PUT $path: rejected by Elasticsearch (HTTP 400):"
                       cat /tmp/response; echo
                       if grep -q 'same priority' /tmp/response; then
-                        echo "ERROR: an index template of your own has priority 0, the priority of the Platta default"
-                        echo "template platta-default-replicas. Set \"priority\": 1 or higher in your own index templates"
-                        echo "(and add \"composed_of\": [\"platta-defaults\"]), then run the helm upgrade again."
+                        # Elasticsearch names them: "... matching patterns from existing templates [a,b] ..."
+                        local conflicts
+                        conflicts=$(grep -o 'existing templates \[[^]]*\]' /tmp/response | head -n 1 \
+                          | sed -e 's/^existing templates \[//' -e 's/\]$//' || true)
+                        echo "ERROR: $path overlaps existing index templates with the same priority:"
+                        echo "  ${conflicts:-(see the response above)}"
+                        echo "If one of them is your own, set \"priority\": 1 or higher in it (and add"
+                        echo "\"composed_of\": [\"platta-defaults\"]), then run the helm upgrade again."
+                        echo "If none of them is yours, report this to Platta."
                       fi
                       return 1 ;;
                     *)
