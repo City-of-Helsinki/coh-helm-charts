@@ -103,7 +103,15 @@ tests:
           pattern: '(\s-u\s|--user\s)'
 
   - it: should PUT the component template first, then the index template, from the ConfigMap
+    set:
+      users:
+        - name: myapp-indexer
+          role: write
+          indices: ["myapp-*"]
     asserts:
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(?m)^\s*del _index_template'
       - matchRegex:
           path: spec.template.spec.containers[0].args[0]
           pattern: '(?s)put _component_template/platta-defaults /etc/index-defaults/component-template.json\s+put _index_template/platta-default-replicas /etc/index-defaults/index-template.json'
@@ -114,11 +122,41 @@ tests:
             configMap:
               name: RELEASE-NAME-elasticsearch-index-defaults
 
+  - it: without users, should PUT only the component template and DELETE a stale index template
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: 'put _component_template/platta-defaults /etc/index-defaults/component-template.json\s+del _index_template/platta-default-replicas\s*$'
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(?m)^\s*put _index_template'
+
+  - it: should accept 404 on the DELETE (no template to remove) and fail on 400
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(?s)del\(\) \{.*404\)\s+echo "DELETE \$path: not found, nothing to delete"\s+return 0 ;;\s+400\).*return 1 ;;'
+
   - it: should fail with a clear message on a priority conflict (HTTP 400), never skip it
     asserts:
       - matchRegex:
           path: spec.template.spec.containers[0].args[0]
           pattern: '(?s)400\).*same priority.*priority\\": 1 or higher.*return 1'
+
+  - it: should print the conflicting template names from the response, not assume they are the team's
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: "grep -o 'existing templates .*' /tmp/response \\| head -n 1"
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: 'overlaps existing index templates with the same priority:"\n\s+echo "  \$\{conflicts:-\(see the response above\)\}"'
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: 'If none of them is yours, report this to Platta'
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: 'an index template of your own has priority 0'
 
   - it: should run restricted (non-root, no privilege escalation, no capabilities, RuntimeDefault seccomp)
     asserts:

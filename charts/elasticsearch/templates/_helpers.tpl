@@ -184,6 +184,19 @@ Every file realm user, team users first, then the technical user, as a JSON list
   roleName    Elasticsearch role (elasticsearch-user-<name>)
   role        roles.yml entry (cluster + indices)
 */}}
+{{- /*
+Index patterns of the default index template platta-default-replicas: the union of all users'
+indices, deduplicated and sorted (stable JSON). Apps can only create indices inside these, and
+the schema forbids "*" and dot-patterns, so they never overlap Elasticsearch's built-in dot
+templates. The technical user platta-defaults has no indices. Empty with no users.
+*/}}
+{{- define "elasticsearch.defaultIndexPatterns" -}}
+{{- $patterns := list -}}
+{{- range (include "elasticsearch.users" . | fromJsonArray) -}}
+{{- $patterns = concat $patterns .indices -}}
+{{- end -}}
+{{- toJson ($patterns | uniq | sortAlpha) -}}
+{{- end }}
 {{- define "elasticsearch.realmUsers" -}}
 {{- $out := list -}}
 {{- range (include "elasticsearch.users" . | fromJsonArray) -}}
