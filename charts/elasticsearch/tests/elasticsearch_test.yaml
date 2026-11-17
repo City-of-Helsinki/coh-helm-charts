@@ -294,10 +294,15 @@ tests:
   # ===========================================================================
   # APPLICATION USERS (file realm + roles)
   # ===========================================================================
-  - it: should render no auth section without users
+  - it: should always list the technical user and the roles Secret (also without team users)
     asserts:
-      - notExists:
+      - equal:
           path: spec.auth
+          value:
+            roles:
+              - secretName: RELEASE-NAME-elasticsearch-roles
+            fileRealm:
+              - secretName: RELEASE-NAME-elasticsearch-platta-defaults
 
   - it: should list every user Secret in the file realm and the roles Secret
     set:
@@ -313,3 +318,4 @@ tests:
             fileRealm:
               - secretName: elasticsearch-user-myapp-indexer
               - secretName: elasticsearch-user-proxy-search
+              - secretName: RELEASE-NAME-elasticsearch-platta-defaults

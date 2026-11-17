@@ -1,13 +1,13 @@
 # Elasticsearch Helm Chart
 
-![Version: 0.2.0](https://img.shields.io/badge/version-0.2.0-blue)
+![Version: 0.3.0](https://img.shields.io/badge/version-0.3.0-blue)
 ![AppVersion: 9.5.5](https://img.shields.io/badge/appVersion-9.5.5-blue)
 
 Elasticsearch for **new instances on the Sweden OpenShift (ARO) clusters**, run by the ECK
 operator, with Platta managed Service TLS (OpenShift service CA). Basic licence only.
 
-> **Status 0.2.0:** Elasticsearch with Platta service TLS and application users.
-> Not included yet (later releases): NetworkPolicy, Kibana, default index replicas, backups.
+> **Status 0.3.0:** Elasticsearch with Platta service TLS, application users and default index
+> replicas. Not included yet (later releases): NetworkPolicy, Kibana, backups.
 
 ## Prerequisites
 
@@ -16,19 +16,26 @@ Created in the namespace by platform admins via GitOps, **never by this chart**:
 | Object | Details |
 |---|---|
 | ECK operator 3.x | OperatorGroup + Subscription `elasticsearch-eck-operator-certified` (OLM), one operator per namespace. The chart contains no operator and no CRDs. |
-| ConfigMap `platta-service-ca` | Annotation `service.beta.openshift.io/inject-cabundle: "true"` (OpenShift fills in `service-ca.crt`). Not used by the chart or by Elasticsearch: **clients mount it themselves** to trust the Elasticsearch certificate (see [TLS for clients](#tls-for-clients)). The chart never creates or deletes it. |
+| ConfigMap `platta-service-ca` | Annotation `service.beta.openshift.io/inject-cabundle: "true"` (OpenShift fills in `service-ca.crt`). Elasticsearch itself does not need it. The chart's [index-defaults Job](#default-index-replicas) mounts it, and **application clients mount it themselves** to trust the Elasticsearch certificate (see [TLS for clients](#tls-for-clients)). The chart never creates or deletes it. Without it, the Job cannot start and the install fails. |
 
-Only when `users` is set: the **External Secrets Operator** (cluster-wide, installed by the
-platform; on dev-se "External Secrets Operator for Red Hat OpenShift" 1.2.1). It generates the
-user passwords. No SecretStore or Key Vault is needed.
+The **External Secrets Operator** (cluster-wide, installed by the platform; on dev-se "External
+Secrets Operator for Red Hat OpenShift" 1.2.1). It generates the user passwords, including the
+chart's own technical user (since 0.3.0, so it is needed even without `users`). No SecretStore
+or Key Vault is needed.
 
 ## Install and upgrade
 
 From the application team's Azure DevOps pipeline:
 
 ```bash
-helm upgrade --install elasticsearch <chart> -n <namespace> -f elasticsearch-values.yaml
+helm upgrade --install elasticsearch <chart> -n <namespace> -f elasticsearch-values.yaml --timeout 15m
 ```
+
+**Helm waits for the [index-defaults Job](#default-index-replicas)** after every install and
+upgrade. On a first install the Job can only finish once Elasticsearch has started (about
+5 minutes for 3 nodes), so Helm's default `--timeout` of 5 minutes is too short: use
+`--timeout 15m`, and make sure the pipeline step's own timeout allows it too. Upgrades of a
+running instance usually take seconds.
 
 Example values for a 1-node dev instance: [values-dev-1node.yaml](values-dev-1node.yaml).
 
@@ -42,6 +49,7 @@ other names get the suffix `-elasticsearch`, max 36 characters). ECK then create
 | TLS secret (created by the OpenShift service CA) | `platta-elasticsearch-es-http-tls` |
 | `elastic` superuser secret (admins only, never for apps) | `elasticsearch-es-elastic-user` |
 | Application user secrets (see [Application users](#application-users)) | `elasticsearch-user-<name>` |
+| Technical user secret (index-defaults Job only, see [Default index replicas](#default-index-replicas)) | `elasticsearch-platta-defaults` |
 
 ## Values
 
@@ -136,7 +144,7 @@ Rules (checked by the values schema): `role` is `search` or `write`; `indices` m
 (or only wildcards), must not start with `.` (system indices) and must not contain commas;
 `name` must not be a built-in user (`elastic`, `kibana`, `kibana_system`, `logstash_system`,
 `beats_system`, `apm_system`, `remote_monitoring_user`) or start with `elastic-internal`
-(ECK's own users); every name only once.
+(ECK's own users) or `platta-` (the chart's technical users); every name only once.
 
 ### How it works
 
@@ -219,6 +227,77 @@ Other changes:
 | Chart or Elasticsearch upgrade | Passwords stay (the ExternalSecrets carry no version labels on purpose). |
 | Anything else that edits the ExternalSecret (spec, labels, annotations) | **New password**, like `force-sync`. Do not edit the ExternalSecrets by hand. |
 
+## Default index replicas
+
+Every new index gets **`index.auto_expand_replicas: "0-1"`** unless the application sets its
+own replicas: 0 replicas on a 1-node instance (so it stays green), 1 replica on 3 nodes.
+Elasticsearch adjusts existing indices with this setting automatically when `nodeCount`
+changes.
+
+### How it works
+
+The chart stores two templates in Elasticsearch:
+
+| Template | Content |
+|---|---|
+| Component template `platta-defaults` | Only `settings.index.auto_expand_replicas: "0-1"` |
+| Index template `platta-default-replicas` | `index_patterns: ["*"]`, `composed_of: ["platta-defaults"]`, `priority: 0` (the lowest) |
+
+* The Job `<fullname>-index-defaults` stores them after every `helm install` and `helm upgrade`
+  (Helm hook; bodies in the ConfigMap `<fullname>-index-defaults`). It overwrites them each
+  time, so manual edits do not last.
+* It runs on the chart's Elasticsearch image, trusts the certificate through `platta-service-ca`,
+  and logs in as the technical user `platta-defaults`. That user's role has only the cluster
+  privilege `manage_index_templates` and no access to any index. Its password is generated
+  like the application users' (Secret `<fullname>-platta-defaults`).
+* It retries until Elasticsearch answers and ECK has loaded the user, and gives up after
+  15 minutes. A failed Job fails the Helm release and stays in the namespace until the next
+  run, for its logs:
+
+  ```bash
+  oc logs job/<fullname>-index-defaults -n <namespace>
+  ```
+
+### Your own index templates
+
+Elasticsearch applies **only one index template** to a new index: the matching one with the
+highest priority. So:
+
+* **Use `"priority": 1` or higher.** Elasticsearch refuses two index templates with
+  overlapping patterns and the same priority, and `platta-default-replicas` matches every
+  index with priority 0. (A template without `priority` has priority 0.) If such a template
+  already exists, the Job fails with a message saying so; raise its priority and run the
+  upgrade again.
+* **Add `"composed_of": ["platta-defaults"]`** to keep the default replicas in indices your
+  template matches. Everything else in your template is yours.
+
+```text
+PUT _index_template/myapp
+{
+  "index_patterns": ["myapp-*"],
+  "priority": 1,
+  "composed_of": ["platta-defaults"],
+  "template": { "mappings": { ... } }
+}
+```
+
+* An explicit `number_of_replicas` (or `auto_expand_replicas`) in your template or in the
+  create-index request **overrides** the default. On a 1-node instance, any replicas above 0
+  turn the cluster yellow again.
+* Templates apply to **new indices only**. Indices that already exist keep their settings; on a
+  1-node instance, fix an old yellow index with:
+
+  ```text
+  PUT my-index/_settings
+  { "index": { "auto_expand_replicas": "0-1" } }
+  ```
+
+### Upgrading from 0.2.0
+
+The upgrade adds the technical user `platta-defaults` to `spec.auth` (its Secret is added to
+`fileRealm`, its role to the roles Secret, which is now always rendered). ECK applies this to
+the running nodes. Existing application users and their passwords are unchanged.
+
 ## Objects the chart creates
 
 Needed for the rights of the application team's pipeline service account in its namespace:
@@ -226,32 +305,27 @@ Needed for the rights of the application team's pipeline service account in its 
 | Kind | API group |
 |---|---|
 | `Elasticsearch` | `elasticsearch.k8s.elastic.co/v1` |
-| `Secret` (`<fullname>-roles` when `users` is set, and the Helm release records `sh.helm.release.v1.*`) | core |
-| `ExternalSecret` (one per user) | `external-secrets.io/v1` |
-| `Password` (one per user) | `generators.external-secrets.io/v1alpha1` |
+| `Secret` (`<fullname>-roles`, and the Helm release records `sh.helm.release.v1.*`) | core |
+| `ConfigMap` (`<fullname>-index-defaults`) | core |
+| `Job` (`<fullname>-index-defaults`, Helm hook) | `batch/v1` |
+| `ExternalSecret` (one per user, plus the technical user) | `external-secrets.io/v1` |
+| `Password` (one per user, plus the technical user) | `generators.external-secrets.io/v1alpha1` |
 
-On dev-se, the namespace roles `admin` and `edit` already include all of these (checked
-Nov 2026).
+On dev-se, the namespace roles `admin` and `edit` include the Elasticsearch and External
+Secrets kinds (checked Nov 2026); `Job` and `ConfigMap` are in them by default in Kubernetes.
 
 Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the ECK operator, and
-the user Secrets `elasticsearch-user-<name>` by External Secrets.
+the user Secrets (`elasticsearch-user-<name>`, `<fullname>-platta-defaults`) by External
+Secrets.
 
 ## Known limitations
 
-* **Single-node instances turn yellow once an app creates an index.** Elasticsearch's default of
-  1 replica per index cannot be placed on a single node. Effects:
-  * anything that waits for green, e.g. a pipeline step calling
-    `_cluster/health?wait_for_status=green`, times out;
-  * ECK's default PodDisruptionBudget blocks pod eviction while the cluster is not green,
-    which can hold up node maintenance.
-
-  Until the chart sets a default, applications on 1-node instances must create their indices
-  (or index templates) with `"number_of_replicas": 0`:
-
-  ```text
-  PUT my-index
-  { "settings": { "number_of_replicas": 0 } }
-  ```
+* **A 1-node instance turns yellow if an index asks for replicas.** Since 0.3.0 new indices
+  get 0 replicas on one node (see [Default index replicas](#default-index-replicas)), but not
+  if an application sets `number_of_replicas` itself, uses an index template without
+  `composed_of: ["platta-defaults"]`, or created the index before 0.3.0. A yellow cluster makes
+  waits for green (e.g. `_cluster/health?wait_for_status=green`) time out, and ECK's
+  PodDisruptionBudget then blocks pod eviction, which can hold up node maintenance.
 
 * **The mirror must have the Elasticsearch version's tag before it can be used.** The pods pull
   `image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:<version>`
@@ -330,7 +404,15 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
    the CA from `ca.crt`, which the OpenShift-generated Secret lacks; if needed, mount
    `platta-service-ca` into Kibana and set `elasticsearch.ssl.certificateAuthorities`.
 2. *Low priority:* Elasticsearch 9.4.x with the clusters' ECK version (9.5.5 is tested).
-3. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
+3. Default index replicas (0.3.0):
+   * the index-defaults Job on a fresh install (1 and 3 nodes) and on an upgrade from 0.2.0;
+   * a new index on 1 node stays green with `auto_expand_replicas` (0 replicas);
+   * growing 1 → 3 nodes gives it 1 replica, shrinking back to 1 node 0 replicas, green both
+     times;
+   * a team template with `priority: 1` and `composed_of: ["platta-defaults"]` keeps the
+     default, and one with priority 0 makes the Job fail with the priority message;
+   * the technical user can manage templates only (403 on reading or writing an index).
+4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
 
 ## Maintenance
@@ -345,6 +427,26 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
 These checks are part of Platta's monthly upgrade/update evaluation (see the Elasticsearch support standard in Confluence).
 
 ## Changelog
+
+### 0.3.0
+
+Default index replicas (PLATTA-8657):
+
+* **Default:** new indices get `index.auto_expand_replicas: "0-1"` (0 replicas on 1 node, 1 on
+  3 nodes) from the component template `platta-defaults`, applied to every index by the index
+  template `platta-default-replicas` (`index_patterns: ["*"]`, priority 0).
+* **Job:** `<fullname>-index-defaults` stores both templates after every install and upgrade
+  (Helm hook), on the chart's Elasticsearch image, trusting `platta-service-ca`. A priority
+  conflict with a team template fails it with an explanation.
+* **Technical user:** `platta-defaults` (Secret `<fullname>-platta-defaults`, generated like the
+  application users), role with only `manage_index_templates`. `spec.auth` and the roles Secret
+  are now always rendered; upgrading from 0.2.0 adds the technical user to `spec.auth`.
+* **Values schema:** user names starting with `platta-` are reserved.
+* **Breaking for pipelines:** Helm waits for the Job, so installs need `--timeout 15m`; team
+  index templates need `"priority": 1` or higher (and should add `"composed_of":
+  ["platta-defaults"]`). `platta-service-ca` and the External Secrets Operator are now always
+  required.
+* Not yet tested on the clusters, see [Still to test](#still-to-test).
 
 ### 0.2.0
 

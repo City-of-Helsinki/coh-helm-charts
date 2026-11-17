@@ -1,0 +1,60 @@
+suite: default index replicas (template bodies)
+templates:
+  - index-defaults-configmap.yaml
+
+tests:
+  - it: should always render the ConfigMap <fullname>-index-defaults
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-elasticsearch-index-defaults
+
+  - it: should set only index.auto_expand_replicas "0-1" in the component template platta-defaults
+    asserts:
+      - equal:
+          path: data["component-template.json"]
+          value: |
+            {
+              "_meta": {
+                "description": "Platta default replicas: 0 on 1 node, 1 on 3 nodes. Add to your own index templates with composed_of.",
+                "managed_by": "coh-helm-charts/elasticsearch"
+              },
+              "template": {
+                "settings": {
+                  "index": {
+                    "auto_expand_replicas": "0-1"
+                  }
+                }
+              }
+            }
+
+  - it: should match every index with priority 0 and compose platta-defaults in the index template
+    asserts:
+      - equal:
+          path: data["index-template.json"]
+          value: |
+            {
+              "_meta": {
+                "description": "Applies platta-defaults to indices no other index template matches. Own templates need priority 1 or higher.",
+                "managed_by": "coh-helm-charts/elasticsearch"
+              },
+              "composed_of": [
+                "platta-defaults"
+              ],
+              "index_patterns": [
+                "*"
+              ],
+              "priority": 0
+            }
+
+  - it: should render the same bodies for 3 nodes (auto_expand adjusts in Elasticsearch, not in the chart)
+    set:
+      nodeCount: 3
+    asserts:
+      - matchRegex:
+          path: data["component-template.json"]
+          pattern: '"auto_expand_replicas": "0-1"'

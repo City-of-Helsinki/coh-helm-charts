@@ -164,6 +164,49 @@ Validated users list: fails on duplicate names (the schema cannot check uniquene
 {{- end }}
 
 {{/*
+Technical user platta-defaults: stores the default index templates (index-defaults Job).
+Cluster privilege manage_index_templates only, no index privileges. Its objects carry the
+release name (<fullname>-platta-defaults), so several releases can share a namespace; team
+user names starting with platta- are rejected by the schema.
+*/}}
+{{- define "elasticsearch.defaultsUserName" -}}
+platta-defaults
+{{- end }}
+
+{{- define "elasticsearch.defaultsUserSecretName" -}}
+{{- include "elasticsearch.fullname" . }}-platta-defaults
+{{- end }}
+
+{{/*
+Every file realm user, team users first, then the technical user, as a JSON list of
+  name        username in Elasticsearch
+  secretName  Password, ExternalSecret and Secret name
+  roleName    Elasticsearch role (elasticsearch-user-<name>)
+  role        roles.yml entry (cluster + indices)
+*/}}
+{{- define "elasticsearch.realmUsers" -}}
+{{- $out := list -}}
+{{- range (include "elasticsearch.users" . | fromJsonArray) -}}
+{{- $out = append $out (dict
+      "name" .name
+      "secretName" (include "elasticsearch.userSecretName" .name)
+      "roleName" (include "elasticsearch.userRoleName" .)
+      "role" (dict
+        "cluster" (list "monitor")
+        "indices" (list (dict
+          "names" .indices
+          "privileges" (include "elasticsearch.indexPrivileges" .role | fromJsonArray))))) -}}
+{{- end -}}
+{{- $tech := include "elasticsearch.defaultsUserName" . -}}
+{{- $out = append $out (dict
+      "name" $tech
+      "secretName" (include "elasticsearch.defaultsUserSecretName" .)
+      "roleName" (include "elasticsearch.userRoleName" (dict "name" $tech))
+      "role" (dict "cluster" (list "manage_index_templates"))) -}}
+{{- toJson $out -}}
+{{- end }}
+
+{{/*
 Secret with roles.yml (the key ECK requires) holding one role per user.
 */}}
 {{- define "elasticsearch.rolesSecretName" -}}
@@ -178,4 +221,20 @@ Index privileges per role value. Both roles also get the cluster privilege monit
   "search" (list "read" "view_index_metadata")
   "write" (list "read" "view_index_metadata" "write" "create_index" "manage") -}}
 {{- toJson (get $p .) -}}
+{{- end }}
+
+{{/*
+Default index replicas (index-defaults Job). Names in Elasticsearch, fixed: teams reference the
+component template in their own index templates (composed_of: ["platta-defaults"]).
+*/}}
+{{- define "elasticsearch.defaultsComponentTemplate" -}}
+platta-defaults
+{{- end }}
+
+{{- define "elasticsearch.defaultsIndexTemplate" -}}
+platta-default-replicas
+{{- end }}
+
+{{- define "elasticsearch.indexDefaultsName" -}}
+{{- include "elasticsearch.fullname" . }}-index-defaults
 {{- end }}

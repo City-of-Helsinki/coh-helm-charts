@@ -1,0 +1,187 @@
+suite: default index replicas (Job)
+templates:
+  - index-defaults-job.yaml
+
+tests:
+  - it: should always render the Job <fullname>-index-defaults
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Job
+      - isAPIVersion:
+          of: batch/v1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-elasticsearch-index-defaults
+
+  - it: should run as a post-install and post-upgrade hook, deleted before the next run and on success
+    asserts:
+      - equal:
+          path: metadata.annotations
+          value:
+            helm.sh/hook: post-install,post-upgrade
+            helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+
+  - it: should limit retries and run time
+    asserts:
+      - equal:
+          path: spec.backoffLimit
+          value: 2
+      - equal:
+          path: spec.activeDeadlineSeconds
+          value: 900
+      - equal:
+          path: spec.template.spec.restartPolicy
+          value: Never
+
+  - it: should run on the Elasticsearch image the chart uses
+    set:
+      version: "9.4.2"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: image-registry.int.platta.hel.fi/mirrored-images/elasticsearch/elasticsearch:9.4.2
+
+  - it: should follow the sandbox image too
+    values:
+      - ../values-sandbox.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+
+  - it: should log in as the technical user from its Secret
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: ES_HOST
+              value: RELEASE-NAME-elasticsearch-es-http.NAMESPACE.svc
+            - name: ES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: RELEASE-NAME-elasticsearch-platta-defaults
+                  key: username
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: RELEASE-NAME-elasticsearch-platta-defaults
+                  key: password
+
+  - it: should trust the service CA from platta-service-ca and never skip TLS verification
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: service-ca
+            configMap:
+              name: platta-service-ca
+              items:
+                - key: service-ca.crt
+                  path: service-ca.crt
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: service-ca
+            mountPath: /etc/platta-service-ca
+            readOnly: true
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '--cacert /etc/platta-service-ca/service-ca.crt'
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(\s-k\s|--insecure)'
+
+  - it: should keep the password off the curl command line (netrc file)
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '--netrc-file /tmp/netrc'
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(\s-u\s|--user\s)'
+
+  - it: should PUT the component template first, then the index template, from the ConfigMap
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(?s)put _component_template/platta-defaults /etc/index-defaults/component-template.json\s+put _index_template/platta-default-replicas /etc/index-defaults/index-template.json'
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: templates
+            configMap:
+              name: RELEASE-NAME-elasticsearch-index-defaults
+
+  - it: should fail with a clear message on a priority conflict (HTTP 400), never skip it
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(?s)400\).*same priority.*priority\\": 1 or higher.*return 1'
+
+  - it: should run restricted (non-root, no privilege escalation, no capabilities, RuntimeDefault seccomp)
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+
+  - it: should not render pull secrets or scheduling by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+      - notExists:
+          path: spec.template.spec.nodeSelector
+      - notExists:
+          path: spec.template.spec.tolerations
+      - notExists:
+          path: spec.template.spec.affinity
+
+  - it: should use the pull secrets and node placement of Elasticsearch (falling back to global), but not its affinity
+    set:
+      global:
+        imagePullSecrets: [mirror-pull]
+        tolerations:
+          - { key: dedicated, operator: Equal, value: search, effect: NoSchedule }
+      nodeSelector:
+        environment: test
+      affinity:
+        podAntiAffinity: {}
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: mirror-pull
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value:
+            environment: test
+      - equal:
+          path: spec.template.spec.tolerations
+          value:
+            - { key: dedicated, operator: Equal, value: search, effect: NoSchedule }
+      - notExists:
+          path: spec.template.spec.affinity

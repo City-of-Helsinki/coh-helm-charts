@@ -84,6 +84,8 @@ jobs:
           reject "reserved user kibana"        --set-json "$(u kibana write '["myapp-*"]')"
           reject "reserved user kibana_system" --set-json "$(u kibana_system write '["myapp-*"]')"
           reject "ECK internal user"           --set-json "$(u elastic-internal-probe search '["myapp-*"]')"
+          reject "technical user platta-defaults" --set-json "$(u platta-defaults write '["myapp-*"]')"
+          reject "reserved prefix platta-"     --set-json "$(u platta-backup search '["myapp-*"]')"
           reject "user name not a DNS label"   --set-json "$(u MyApp write '["myapp-*"]')"
           reject "user name over 44 characters" --set-json "$(u a234567890123456789012345678901234567890-xyzw write '["myapp-*"]')"
           # Valid neighbours of the cases above must still pass (the schema is not just rejecting everything)
@@ -95,5 +97,7 @@ jobs:
           accept "write and search users"      --set-json 'users=[{"name":"myapp-indexer","role":"write","indices":["myapp-*"]},{"name":"myapp-search","role":"search","indices":["myapp-*","shared-docs"]}]'
           accept "names that only start like reserved ones" \
             --set-json 'users=[{"name":"elastic-app","role":"search","indices":["a-*"]},{"name":"kibana-reader","role":"search","indices":["b?c*"]}]'
+          accept "names that only resemble the reserved prefix" \
+            --set-json 'users=[{"name":"plattaapp","role":"search","indices":["a-*"]},{"name":"myapp-platta-defaults","role":"search","indices":["b-*"]}]'
           accept "user name of 44 characters"  --set-json "$(u a234567890123456789012345678901234567890-xyz write '["myapp-*"]')"
           exit $rc

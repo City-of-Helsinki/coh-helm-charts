@@ -4,10 +4,10 @@ templates:
   - users.yaml
 
 tests:
-  - it: should render nothing without users
+  - it: should render only the technical user without team users
     asserts:
       - hasDocuments:
-          count: 0
+          count: 2
 
   - it: should render a Password and an ExternalSecret named elasticsearch-user-<name> per user
     set:
@@ -16,7 +16,7 @@ tests:
         - { name: myapp-search, role: search, indices: ["myapp-*"] }
     asserts:
       - hasDocuments:
-          count: 4
+          count: 6
       - isKind:
           of: Password
         documentIndex: 0
@@ -229,3 +229,59 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: 'users: name "myapp" is listed more than once'
+
+  # ===========================================================================
+  # TECHNICAL USER platta-defaults (stores the default index templates)
+  # ===========================================================================
+  - it: should render the technical user last, named after the release, with username platta-defaults
+    set:
+      users:
+        - { name: myapp, role: write, indices: ["myapp-*"] }
+    asserts:
+      - isKind:
+          of: Password
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-elasticsearch-platta-defaults
+        documentIndex: 2
+      - isKind:
+          of: ExternalSecret
+        documentIndex: 3
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-elasticsearch-platta-defaults
+        documentIndex: 3
+      - equal:
+          path: spec.target.name
+          value: RELEASE-NAME-elasticsearch-platta-defaults
+        documentIndex: 3
+      - equal:
+          path: spec.target.template.data
+          value:
+            username: platta-defaults
+            password: "{{ .password }}"
+            roles: elasticsearch-user-platta-defaults
+        documentIndex: 3
+
+  - it: should generate the technical user's password like a team user's (once, rotated by force-sync)
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.refreshPolicy
+          value: OnChange
+      - equal:
+          path: spec.refreshInterval
+          value: "0"
+      - equal:
+          path: spec.dataFrom[0].sourceRef.generatorRef.name
+          value: RELEASE-NAME-elasticsearch-platta-defaults
+
+  - it: should give two releases different technical user objects (one namespace, two instances)
+    release:
+      name: search
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.target.name
+          value: search-elasticsearch-platta-defaults

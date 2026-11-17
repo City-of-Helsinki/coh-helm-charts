@@ -5,9 +5,10 @@ ECK's file realm reads. External Secrets generates the password when the Externa
 created and again only when the ExternalSecret itself changes (refreshPolicy OnChange); it
 never passes through Helm. To change it:
   oc annotate externalsecret elasticsearch-user-<name> force-sync=$(date +%s) --overwrite
+The technical user platta-defaults is rendered the same way, named <fullname>-platta-defaults.
 */}}
-{{- range (include "elasticsearch.users" . | fromJsonArray) }}
-{{- $name := include "elasticsearch.userSecretName" .name }}
+{{- range (include "elasticsearch.realmUsers" . | fromJsonArray) }}
+{{- $name := .secretName }}
 ---
 apiVersion: generators.external-secrets.io/v1alpha1
 kind: Password
@@ -51,7 +52,7 @@ spec:
       data:
         username: {{ .name | quote }}
         password: {{ "{{ .password }}" | quote }}
-        roles: {{ include "elasticsearch.userRoleName" . | quote }}
+        roles: {{ .roleName | quote }}
   dataFrom:
     - sourceRef:
         generatorRef:
