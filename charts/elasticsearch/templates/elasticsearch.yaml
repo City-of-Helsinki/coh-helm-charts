@@ -49,6 +49,11 @@ spec:
           {{- end }}
           containers:
             - name: elasticsearch
+              # Java4Shell (CVE-2026-114938): turn off the vulnerable Base64 fast path of the
+              # bundled JDK (PLATTA-8673). Fixed, not a value.
+              env:
+                - name: ES_JAVA_OPTS
+                  value: "-XX:-UseBASE64Intrinsics"
               resources:
                 {{- toYaml .Values.resources | nindent 16 }}
           {{- with include "elasticsearch.scheduling" . }}
