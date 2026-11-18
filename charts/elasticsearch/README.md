@@ -1,12 +1,12 @@
 # Elasticsearch Helm Chart
 
-![Version: 0.3.0](https://img.shields.io/badge/version-0.3.0-blue)
+![Version: 0.3.1](https://img.shields.io/badge/version-0.3.1-blue)
 ![AppVersion: 9.5.5](https://img.shields.io/badge/appVersion-9.5.5-blue)
 
 Elasticsearch for **new instances on the Sweden OpenShift (ARO) clusters**, run by the ECK
 operator, with Platta managed Service TLS (OpenShift service CA). Basic licence only.
 
-> **Status 0.3.0:** Elasticsearch with Platta service TLS, application users and default index
+> **Status 0.3.1:** Elasticsearch with Platta service TLS, application users and default index
 > replicas. Not included yet (later releases): NetworkPolicy, Kibana, backups.
 
 ## Prerequisites
@@ -459,6 +459,17 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
 These checks are part of Platta's monthly upgrade/update evaluation (see the Elasticsearch support standard in Confluence).
 
 ## Changelog
+
+### 0.3.1
+
+Java4Shell fix (PLATTA-8673):
+
+* **JVM:** the `elasticsearch` container sets `ES_JAVA_OPTS="-XX:-UseBASE64Intrinsics"`, which
+  turns off the Base64 fast path of the JDK bundled with Elasticsearch (CVE-2026-114938, on
+  CPUs with AVX-512 VBMI, which the Sweden clusters have). It is fixed in the template, not a
+  value.
+* **Upgrade:** the pod template changes, so ECK restarts the Elasticsearch pods one at a time.
+  A 1-node instance is unavailable while its pod restarts.
 
 ### 0.3.0
 
