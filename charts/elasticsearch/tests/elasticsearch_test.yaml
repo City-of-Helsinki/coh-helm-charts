@@ -264,6 +264,14 @@ tests:
               cpu: "2"
               memory: 4Gi
 
+  - it: should disable the JVM's Base64 intrinsics (Java4Shell, CVE-2026-114938)
+    asserts:
+      - equal:
+          path: spec.nodeSets[0].podTemplate.spec.containers[0].env
+          value:
+            - name: ES_JAVA_OPTS
+              value: "-XX:-UseBASE64Intrinsics"
+
   - it: should not render scheduling by default (ECK default anti-affinity applies)
     asserts:
       - notExists:
