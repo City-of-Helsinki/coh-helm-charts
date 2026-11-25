@@ -75,8 +75,9 @@ spec:
                   --connect-timeout 60 --max-time 120 \
                   -X "$method" "$@" "https://$ES_HOST:9200/$path"
               }
-              # 200: done. 400: a wrong body, fail. Anything else is retried until the Job's
-              # deadline: Elasticsearch not up yet, the user or role not loaded yet, or (after
+              # 200: done. 400: a wrong body, fail. 403: the user lacks a privilege (wrong
+              # role), which retrying cannot fix, fail. Anything else is retried until the Job's
+              # deadline: Elasticsearch not up yet, the user not loaded yet (401), or (after
               # backups were just enabled) nodes still restarting without the Azure keystore
               # settings, which makes repository verification fail on them (HTTP 500).
               put() {
@@ -90,6 +91,10 @@ spec:
                       return 0 ;;
                     400)
                       echo "PUT $path: rejected by Elasticsearch (HTTP 400):"
+                      cat /tmp/response; echo
+                      return 1 ;;
+                    403)
+                      echo "PUT $path: platta-backup lacks a privilege (HTTP 403):"
                       cat /tmp/response; echo
                       return 1 ;;
                     *)

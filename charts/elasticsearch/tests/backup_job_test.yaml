@@ -101,7 +101,21 @@ tests:
     asserts:
       - matchRegex:
           path: spec.template.spec.containers[0].args[0]
-          pattern: '(?s)400\)\s+echo "PUT \$path: rejected by Elasticsearch \(HTTP 400\):"\s+cat /tmp/response; echo\s+return 1 ;;\s+\*\)\s+echo "PUT \$path: HTTP \$code, retrying in 15s"'
+          pattern: '(?s)400\)\s+echo "PUT \$path: rejected by Elasticsearch \(HTTP 400\):"\s+cat /tmp/response; echo\s+return 1 ;;\s+403\).*\*\)\s+echo "PUT \$path: HTTP \$code, retrying in 15s"'
+
+  - it: should fail at once on HTTP 403 (wrong role) and keep retrying 401 (user not loaded yet)
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(?s)403\)\s+echo "PUT \$path: platta-backup lacks a privilege \(HTTP 403\):"\s+cat /tmp/response; echo\s+return 1 ;;\s+\*\)'
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(?m)^\s+401\)'
 
   - it: should run restricted (non-root, no privilege escalation, no capabilities, no service account token)
     set:
