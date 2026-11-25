@@ -285,3 +285,60 @@ tests:
       - equal:
           path: spec.target.name
           value: search-elasticsearch-platta-defaults
+
+  # ===========================================================================
+  # TECHNICAL USER platta-backup (backup.enabled only)
+  # ===========================================================================
+  - it: should not render platta-backup without backups
+    asserts:
+      - hasDocuments:
+          count: 2
+      - notMatchRegex:
+          path: metadata.name
+          pattern: platta-backup
+
+  - it: should render platta-backup after platta-defaults with backups, named after the release
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - hasDocuments:
+          count: 4
+      - isKind:
+          of: Password
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-elasticsearch-platta-backup
+        documentIndex: 2
+      - equal:
+          path: spec.target.template.data
+          value:
+            username: platta-backup
+            password: "{{ .password }}"
+            roles: elasticsearch-user-platta-backup
+        documentIndex: 3
+      - equal:
+          path: spec.refreshPolicy
+          value: OnChange
+        documentIndex: 3
+
+  - it: should keep platta-defaults' ExternalSecret unchanged when backups are enabled (password kept)
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-elasticsearch-platta-defaults
+      - equal:
+          path: spec.target.template.data
+          value:
+            username: platta-defaults
+            password: "{{ .password }}"
+            roles: elasticsearch-user-platta-defaults

@@ -362,3 +362,16 @@ tests:
     asserts:
       - notExists:
           path: metadata.annotations["eck.k8s.elastic.co/file-based-secure-settings"]
+
+  - it: should add platta-backup to the file realm with backups, after platta-defaults
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - equal:
+          path: spec.auth.fileRealm
+          value:
+            - secretName: RELEASE-NAME-elasticsearch-platta-defaults
+            - secretName: RELEASE-NAME-elasticsearch-platta-backup
