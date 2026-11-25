@@ -1,0 +1,44 @@
+{{- /*
+Bodies of the two requests the backup Job sends (only with backup.enabled):
+  PUT _snapshot/platta-backup        Azure repository: container backup.container, client
+                                     default (account + sas_token from the keystore), base_path
+                                     <fullname>, so two instances never write to the same path
+  PUT _slm/policy/platta-nightly     nightly snapshot, fixed schedule and retention
+Schedule: SLM cron is always UTC (no time zone option): 00:00 UTC = 02:00 in Helsinki in winter
+(EET), 03:00 in summer (EEST).
+include_global_state false: restoring global state would bring back old persistent cluster
+settings (e.g. ECK's shard allocation excludes), old index templates and system feature states.
+Snapshots hold all indices and data streams; restores pick what they need.
+*/}}
+{{- if .Values.backup.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "elasticsearch.backupName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "elasticsearch.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+data:
+  repository.json: |
+    {{- dict
+          "type" "azure"
+          "settings" (dict
+            "container" .Values.backup.container
+            "base_path" (include "elasticsearch.fullname" .)
+            "client" "default")
+        | toPrettyJson | nindent 4 }}
+  slm-policy.json: |
+    {{- dict
+          "schedule" "0 0 0 * * ?"
+          "name" "<nightly-{now/d}>"
+          "repository" (include "elasticsearch.backupRepository" .)
+          "config" (dict
+            "include_global_state" false
+            "metadata" (dict "managed_by" "coh-helm-charts/elasticsearch"))
+          "retention" (dict
+            "expire_after" "30d"
+            "min_count" 5
+            "max_count" 40)
+        | toPrettyJson | nindent 4 }}
+{{- end }}

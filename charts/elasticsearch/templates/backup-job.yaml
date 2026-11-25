@@ -1,0 +1,146 @@
+{{- /*
+Registers the snapshot repository platta-backup and the SLM policy platta-nightly (bodies in the
+ConfigMap <fullname>-backup) after every install and upgrade, only with backup.enabled. PUT is
+idempotent, so each run also resets manual edits. Same pattern as the index-defaults Job.
+
+Credentials: the technical user platta-backup (Secret <fullname>-platta-backup, written by
+External Secrets). SLM takes the nightly snapshots with the privileges of the user who last
+updated the policy: this user, as long as nobody edits the policy by hand.
+Helm waits for this Job; enabling backups restarts the nodes (new keystore settings), which
+the retries and the deadline cover.
+
+TLS: trusts the OpenShift service CA from the ConfigMap platta-service-ca (no -k).
+*/}}
+{{- if .Values.backup.enabled }}
+{{- $v := .Values }}
+{{- $g := $v.global | default dict }}
+{{- $host := printf "%s.%s.svc" (include "elasticsearch.httpServiceName" .) .Release.Namespace }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "elasticsearch.backupName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "elasticsearch.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    # a failed Job stays for debugging until the next install/upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  # Elasticsearch start + user propagation on a fresh 3-node install (~5 min), with margin
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        {{- include "elasticsearch.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backup
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with include "elasticsearch.imagePullSecrets" . }}
+      {{- . | nindent 6 }}
+      {{- end }}
+      {{- with ($v.nodeSelector | default $g.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($v.tolerations | default $g.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: backup
+          # the Elasticsearch image the chart already runs (has curl and bash)
+          image: {{ include "elasticsearch.image" . }}
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              umask 077
+              # credentials in a netrc file, never on the command line
+              printf 'machine %s login %s password %s\n' "$ES_HOST" "$ES_USERNAME" "$ES_PASSWORD" > /tmp/netrc
+              # es METHOD PATH [curl args]: prints the HTTP status, body in /tmp/response
+              es() {
+                local method="$1" path="$2"; shift 2
+                curl -sS -o /tmp/response -w '%{http_code}' \
+                  --cacert /etc/platta-service-ca/service-ca.crt --netrc-file /tmp/netrc \
+                  --connect-timeout 60 --max-time 120 \
+                  -X "$method" "$@" "https://$ES_HOST:9200/$path"
+              }
+              # 200: done. 400: a wrong body, fail. Anything else is retried until the Job's
+              # deadline: Elasticsearch not up yet, the user or role not loaded yet, or (after
+              # backups were just enabled) nodes still restarting without the Azure keystore
+              # settings, which makes repository verification fail on them (HTTP 500).
+              put() {
+                local path="$1" body="$2" code
+                while true; do
+                  : > /tmp/response
+                  code=$(es PUT "$path" -H 'Content-Type: application/json' --data-binary "@$body") || code=000
+                  case "$code" in
+                    200)
+                      echo "PUT $path: OK"
+                      return 0 ;;
+                    400)
+                      echo "PUT $path: rejected by Elasticsearch (HTTP 400):"
+                      cat /tmp/response; echo
+                      return 1 ;;
+                    *)
+                      echo "PUT $path: HTTP $code, retrying in 15s"
+                      [ -s /tmp/response ] && { cat /tmp/response; echo; }
+                      sleep 15 ;;
+                  esac
+                done
+              }
+              # the repository first (verified on every node), then the policy that uses it
+              put _snapshot/{{ include "elasticsearch.backupRepository" . }} /etc/backup/repository.json
+              put _slm/policy/{{ include "elasticsearch.backupPolicy" . }} /etc/backup/slm-policy.json
+          env:
+            - name: ES_HOST
+              value: {{ $host }}
+            - name: ES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "elasticsearch.backupUserSecretName" . }}
+                  key: username
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "elasticsearch.backupUserSecretName" . }}
+                  key: password
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: service-ca
+              mountPath: /etc/platta-service-ca
+              readOnly: true
+            - name: bodies
+              mountPath: /etc/backup
+              readOnly: true
+      volumes:
+        - name: service-ca
+          configMap:
+            name: platta-service-ca
+            items:
+              - key: service-ca.crt
+                path: service-ca.crt
+        - name: bodies
+          configMap:
+            name: {{ include "elasticsearch.backupName" . }}
+{{- end }}

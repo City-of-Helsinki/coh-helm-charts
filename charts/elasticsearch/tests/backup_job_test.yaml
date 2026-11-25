@@ -1,0 +1,123 @@
+suite: backups (Job)
+templates:
+  - backup-job.yaml
+
+tests:
+  - it: should render nothing without backups
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should run as a post-install and post-upgrade hook Job <fullname>-backup
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Job
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-elasticsearch-backup
+      - equal:
+          path: metadata.annotations
+          value:
+            helm.sh/hook: post-install,post-upgrade
+            helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+      - equal:
+          path: spec.backoffLimit
+          value: 2
+      - equal:
+          path: spec.activeDeadlineSeconds
+          value: 900
+
+  - it: should log in as platta-backup from its Secret, never as elastic
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: ES_HOST
+              value: RELEASE-NAME-elasticsearch-es-http.NAMESPACE.svc
+            - name: ES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: RELEASE-NAME-elasticsearch-platta-backup
+                  key: username
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: RELEASE-NAME-elasticsearch-platta-backup
+                  key: password
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: 'elastic-user|ES_PASSWORD"? ?@|-u '
+
+  - it: should trust platta-service-ca, never skip TLS verification, and keep the password in a netrc file
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '--cacert /etc/platta-service-ca/service-ca.crt --netrc-file /tmp/netrc'
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(\s-k\s|--insecure)'
+
+  - it: should PUT the repository first, then the SLM policy, from the ConfigMap
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: 'put _snapshot/platta-backup /etc/backup/repository.json\s+put _slm/policy/platta-nightly /etc/backup/slm-policy.json'
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: bodies
+            configMap:
+              name: RELEASE-NAME-elasticsearch-backup
+
+  - it: should fail on HTTP 400 and retry anything else (restarting nodes fail repository verification)
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: '(?s)400\)\s+echo "PUT \$path: rejected by Elasticsearch \(HTTP 400\):"\s+cat /tmp/response; echo\s+return 1 ;;\s+\*\)\s+echo "PUT \$path: HTTP \$code, retrying in 15s"'
+
+  - it: should run restricted (non-root, no privilege escalation, no capabilities, no service account token)
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
