@@ -41,6 +41,12 @@ upgrade. On a first install the Job can only finish once Elasticsearch has start
 running instance usually take seconds. **Turning on backups** restarts the nodes (new keystore
 settings) while Helm waits for the [backup Job](#backups); 15 minutes cover that too.
 
+**Total time with backups:** Helm applies `--timeout` to **each hook separately**, one after the
+other: first the index-defaults Job, then the backup Job, each with its own 15-minute deadline.
+In the worst case a run with backups takes **about 30 minutes** before Helm reports a failure,
+so give the pipeline step a timeout of at least 35 minutes. If the index-defaults Job fails,
+Helm stops there and the backup Job does not run.
+
 Example values for a 1-node dev instance: [values-dev-1node.yaml](values-dev-1node.yaml).
 
 The release name becomes the Elasticsearch name (`elasticsearch` for the command above;
@@ -362,6 +368,14 @@ backup:
 | Repository `platta-backup` | `type: azure`, `container: <backup.container>`, `base_path: <namespace>/<fullname>` (two instances never share a path, even in different namespaces sharing a container), client `default`. Verified on every node when registered: a wrong token or container fails the Job. |
 | SLM policy `platta-nightly` | Schedule `0 0 0 * * ?`: **00:00 UTC**, i.e. 02:00 in Helsinki in winter and 03:00 in summer (SLM cron is always UTC and has no time zone option). Snapshot names `nightly-<date>-<id>`. Retention: deleted after **30 days**, but at least **5** and at most **40** are kept. |
 
+**Enabling backups before the admins' Secret exists:** ECK skips the missing Secret (a warning
+event `Secure settings secret not found` on the Elasticsearch resource), so the nodes have no
+Azure credentials and do not restart. The index-defaults Job still runs, but the backup Job cannot
+register the repository: it fails at once or at its 15-minute deadline, depending on the error
+Elasticsearch returns, and the Helm release is marked failed. **To recover:** create the
+Secret. ECK watches for it and restarts the nodes one by one with the new keystore. Then run the
+pipeline (`helm upgrade`) again, and the Job registers the repository and the policy.
+
 **`include_global_state: false`.** The snapshots hold indices and data streams only. Restoring
 global state would bring back old persistent cluster settings (for example ECK's shard
 allocation excludes from a downscale), old index templates and system feature states over a
@@ -472,7 +486,8 @@ instances write to the same path.
 `backup.enabled: false` removes the Job, `platta-backup` and the secure settings (the nodes
 restart once). It **does not delete** the policy, the repository or the snapshots. Without
 its user the policy's snapshots fail, so an admin deletes the policy; deleting the repository
-registration keeps the snapshots in the container:
+registration keeps the snapshots in the container. The same applies after a `helm rollback` or
+a downgrade to a chart before 0.4.0:
 
 ```bash
 es DELETE _slm/policy/platta-nightly
@@ -634,7 +649,9 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
      the next snapshot succeeds with the new token;
    * **full restore** with the [runbook](#restore-runbook): beside the live data and in place,
      including `/tmp` being writable in the Elasticsearch pod;
-   * turning backups off leaves the policy and snapshots, as documented.
+   * turning backups off leaves the policy and snapshots, as documented;
+   * enabling backups before the Secret exists: the Job's error (fails at once or at the
+     deadline) and the recovery (create the Secret, run `helm upgrade` again).
 
 ## Maintenance
 
@@ -665,6 +682,11 @@ Optional backups (PLATTA-7743):
 * **Restarts:** enabling or disabling backups, and every SAS token renewal, restart the
   Elasticsearch nodes one by one (ECK 3.1). Without backups nothing changes for existing
   instances.
+* **Turning backups off, `helm rollback` or a downgrade below 0.4.0 does not delete the SLM
+  policy:** without `platta-backup` its snapshots fail every night until an admin deletes it by
+  hand ([Turning backups off](#turning-backups-off)).
+* **Helm timeout:** each hook gets the full `--timeout`, so with backups a failing run can take
+  about 30 minutes (two 15-minute Jobs); the index-defaults Job now runs first.
 * README: [Backups](#backups) with the admins' prerequisites, status requests and a restore
   runbook.
 * Not yet tested on the clusters (waits for the container and SAS token), see
