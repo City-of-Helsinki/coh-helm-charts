@@ -251,3 +251,21 @@ platta-default-replicas
 {{- define "elasticsearch.indexDefaultsName" -}}
 {{- include "elasticsearch.fullname" . }}-index-defaults
 {{- end }}
+
+{{/*
+Backups (backup.enabled). Names in Elasticsearch are fixed, so the README runbook and later
+monitoring (PLATTA-7446) can rely on them.
+  repository platta-backup   Azure container backup.container, base_path <fullname>
+  SLM policy platta-nightly
+*/}}
+{{- define "elasticsearch.backupRepository" -}}
+platta-backup
+{{- end }}
+
+{{- define "elasticsearch.backupPolicy" -}}
+platta-nightly
+{{- end }}
+
+{{- define "elasticsearch.backupName" -}}
+{{- include "elasticsearch.fullname" . }}-backup
+{{- end }}
