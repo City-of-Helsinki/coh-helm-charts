@@ -286,7 +286,7 @@ platta-default-replicas
 {{/*
 Backups (backup.enabled). Names in Elasticsearch are fixed, so the README runbook and later
 monitoring (PLATTA-7446) can rely on them.
-  repository platta-backup   Azure container backup.container, base_path <fullname>
+  repository platta-backup   Azure container backup.container, base_path <namespace>/<fullname>
   SLM policy platta-nightly
 */}}
 {{- define "elasticsearch.backupRepository" -}}

@@ -23,7 +23,7 @@ tests:
           path: metadata.name
           value: RELEASE-NAME-elasticsearch-backup
 
-  - it: should register an Azure repository on the container, default client, base_path <fullname>
+  - it: should register an Azure repository on the container, default client, base_path <namespace>/<fullname>
     set:
       backup:
         enabled: true
@@ -35,14 +35,14 @@ tests:
           value: |
             {
               "settings": {
-                "base_path": "RELEASE-NAME-elasticsearch",
+                "base_path": "NAMESPACE/RELEASE-NAME-elasticsearch",
                 "client": "default",
                 "container": "elastic-smoketest-test-snapshots"
               },
               "type": "azure"
             }
 
-  - it: should give two instances in one container different base paths
+  - it: should give two instances in one namespace different base paths
     release:
       name: search
     set:
@@ -53,7 +53,20 @@ tests:
     asserts:
       - matchRegex:
           path: data["repository.json"]
-          pattern: '"base_path": "search-elasticsearch"'
+          pattern: '"base_path": "NAMESPACE/search-elasticsearch"'
+
+  - it: should give same-named instances in two namespaces sharing a container different base paths
+    release:
+      namespace: team-b
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - matchRegex:
+          path: data["repository.json"]
+          pattern: '"base_path": "team-b/RELEASE-NAME-elasticsearch"'
 
   - it: "should snapshot nightly at 00:00 UTC without global state, retention 30d / min 5 / max 40"
     set:

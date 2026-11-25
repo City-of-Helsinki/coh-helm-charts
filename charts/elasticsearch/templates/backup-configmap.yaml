@@ -2,7 +2,8 @@
 Bodies of the two requests the backup Job sends (only with backup.enabled):
   PUT _snapshot/platta-backup        Azure repository: container backup.container, client
                                      default (account + sas_token from the keystore), base_path
-                                     <fullname>, so two instances never write to the same path
+                                     <namespace>/<fullname>, so two instances (also in different
+                                     namespaces sharing a container) never write to the same path
   PUT _slm/policy/platta-nightly     nightly snapshot, fixed schedule and retention
 Schedule: SLM cron is always UTC (no time zone option): 00:00 UTC = 02:00 in Helsinki in winter
 (EET), 03:00 in summer (EEST).
@@ -25,7 +26,7 @@ data:
           "type" "azure"
           "settings" (dict
             "container" .Values.backup.container
-            "base_path" (include "elasticsearch.fullname" .)
+            "base_path" (printf "%s/%s" .Release.Namespace (include "elasticsearch.fullname" .))
             "client" "default")
         | toPrettyJson | nindent 4 }}
   slm-policy.json: |

@@ -359,7 +359,7 @@ backup:
 | Elasticsearch keystore | ECK `spec.secureSettings` maps `account` and `sas_token` to `azure.client.default.account` and `azure.client.default.sas_token`. **Enabling backups restarts the nodes one by one** (new keystore). |
 | Technical user `platta-backup` | Created like `platta-defaults` (Secret `<fullname>-platta-backup`). Role, least privilege: `manage_slm` (create the policy), `create_snapshot` (what SLM runs as), `cluster:admin/repository/put` (register the repository; the only named privilege covering it is `manage`, which is far too broad). No index privileges. |
 | Job `<fullname>-backup` | Helm hook after every install and upgrade, like the index-defaults Job. Logs in as `platta-backup` and PUTs the repository and the policy (bodies in the ConfigMap `<fullname>-backup`). A 400 (wrong body) or 403 (a privilege missing from the role) fails it at once; anything else (Elasticsearch restarting, the user not loaded yet (401), repository verification failing on a node that has not restarted yet) is retried for up to 15 minutes. |
-| Repository `platta-backup` | `type: azure`, `container: <backup.container>`, `base_path: <fullname>` (two instances in one container never share a path), client `default`. Verified on every node when registered: a wrong token or container fails the Job. |
+| Repository `platta-backup` | `type: azure`, `container: <backup.container>`, `base_path: <namespace>/<fullname>` (two instances never share a path, even in different namespaces sharing a container), client `default`. Verified on every node when registered: a wrong token or container fails the Job. |
 | SLM policy `platta-nightly` | Schedule `0 0 0 * * ?`: **00:00 UTC**, i.e. 02:00 in Helsinki in winter and 03:00 in summer (SLM cron is always UTC and has no time zone option). Snapshot names `nightly-<date>-<id>`. Retention: deleted after **30 days**, but at least **5** and at most **40** are kept. |
 
 **`include_global_state: false`.** The snapshots hold indices and data streams only. Restoring
@@ -460,11 +460,12 @@ never typed**, and go into the pod through stdin, never onto a command line.
 
    Then start the application again.
 
-**Into a new instance** (the old one is lost): install it with the same release name and
-`backup` values; the Job registers the same repository (same `base_path`) and the snapshots
-appear in step 2. Never let two running instances write to the same repository: if the old one
-still runs, register the repository in the new one by hand with another name and
-`"readonly": true`.
+**Into a new instance** (the old one is lost): install it in the same namespace with the same
+release name and `backup` values; the Job registers the same repository (same `base_path`)
+and the snapshots appear in step 2. In another namespace, or if the old instance still runs,
+register the old path in the new instance by hand with another name,
+`"base_path": "<old namespace>/<fullname>"` and `"readonly": true`: never let two running
+instances write to the same path.
 
 ### Turning backups off
 
@@ -659,7 +660,7 @@ Optional backups (PLATTA-7743):
 * **Technical user `platta-backup`** (only with backups), generated like `platta-defaults`;
   role `manage_slm`, `create_snapshot` and `cluster:admin/repository/put`, no index privileges.
 * **Job `<fullname>-backup`** (Helm hook) registers the Azure repository `platta-backup`
-  (`base_path: <fullname>`) and the SLM policy `platta-nightly`: 00:00 UTC, without global
+  (`base_path: <namespace>/<fullname>`) and the SLM policy `platta-nightly`: 00:00 UTC, without global
   state, deleted after 30 days, 5 to 40 kept.
 * **Restarts:** enabling or disabling backups, and every SAS token renewal, restart the
   Elasticsearch nodes one by one (ECK 3.1). Without backups nothing changes for existing
