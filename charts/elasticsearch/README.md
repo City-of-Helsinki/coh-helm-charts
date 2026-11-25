@@ -1,13 +1,13 @@
 # Elasticsearch Helm Chart
 
-![Version: 0.3.1](https://img.shields.io/badge/version-0.3.1-blue)
+![Version: 0.4.0](https://img.shields.io/badge/version-0.4.0-blue)
 ![AppVersion: 9.5.5](https://img.shields.io/badge/appVersion-9.5.5-blue)
 
 Elasticsearch for **new instances on the Sweden OpenShift (ARO) clusters**, run by the ECK
 operator, with Platta managed Service TLS (OpenShift service CA). Basic licence only.
 
-> **Status 0.3.1:** Elasticsearch with Platta service TLS, application users and default index
-> replicas. Not included yet (later releases): NetworkPolicy, Kibana, backups.
+> **Status 0.4.0:** Elasticsearch with Platta service TLS, application users and default index
+> replicas, optional backups. Not included yet (later releases): NetworkPolicy, Kibana.
 
 ## Prerequisites
 
@@ -17,6 +17,9 @@ Created in the namespace by platform admins via GitOps, **never by this chart**:
 |---|---|
 | ECK operator 3.x | OperatorGroup + Subscription `elasticsearch-eck-operator-certified` (OLM), one operator per namespace. The chart contains no operator and no CRDs. |
 | ConfigMap `platta-service-ca` | Annotation `service.beta.openshift.io/inject-cabundle: "true"` (OpenShift fills in `service-ca.crt`). Elasticsearch itself does not need it. The chart's [index-defaults Job](#default-index-replicas) mounts it, and **application clients mount it themselves** to trust the Elasticsearch certificate (see [TLS for clients](#tls-for-clients)). The chart never creates or deletes it. Without it, the Job cannot start and the install fails. |
+
+**With backups** (optional): an Azure blob container, a SAS token for it and a Secret with
+the keys `account` and `sas_token`, see [Backups](#backups).
 
 The **External Secrets Operator** (cluster-wide, installed by the platform; on dev-se "External
 Secrets Operator for Red Hat OpenShift" 1.2.1). It generates the user passwords, including the
@@ -35,7 +38,14 @@ helm upgrade --install elasticsearch <chart> -n <namespace> -f elasticsearch-val
 upgrade. On a first install the Job can only finish once Elasticsearch has started (about
 5 minutes for 3 nodes), so Helm's default `--timeout` of 5 minutes is too short: use
 `--timeout 15m`, and make sure the pipeline step's own timeout allows it too. Upgrades of a
-running instance usually take seconds.
+running instance usually take seconds. **Turning on backups** restarts the nodes (new keystore
+settings) while Helm waits for the [backup Job](#backups); 15 minutes cover that too.
+
+**Total time with backups:** Helm applies `--timeout` to **each hook separately**, one after the
+other: first the index-defaults Job, then the backup Job, each with its own 15-minute deadline.
+In the worst case a run with backups takes **about 30 minutes** before Helm reports a failure,
+so give the pipeline step a timeout of at least 35 minutes. If the index-defaults Job fails,
+Helm stops there and the backup Job does not run.
 
 Example values for a 1-node dev instance: [values-dev-1node.yaml](values-dev-1node.yaml).
 
@@ -50,6 +60,7 @@ other names get the suffix `-elasticsearch`, max 36 characters). ECK then create
 | `elastic` superuser secret (admins only, never for apps) | `elasticsearch-es-elastic-user` |
 | Application user secrets (see [Application users](#application-users)) | `elasticsearch-user-<name>` |
 | Technical user secret (index-defaults Job only, see [Default index replicas](#default-index-replicas)) | `elasticsearch-platta-defaults` |
+| Technical user secret (backup Job only, with `backup.enabled`, see [Backups](#backups)) | `elasticsearch-platta-backup` |
 
 ## Values
 
@@ -66,6 +77,9 @@ Every value is validated by [values.schema.json](values.schema.json). Unknown ke
 | `global.imageRegistry` | `image-registry.int.platta.hel.fi` | Registry for images that do not set their own `image.registry` (same as the other coh charts) |
 | `global.imagePullSecrets` | `[]` | Pull secrets for the Elasticsearch pods, `{name: x}` or plain names |
 | `users` | `[]` | Application users, see [Application users](#application-users) |
+| `backup.enabled` | `false` | Nightly snapshots to Azure, see [Backups](#backups). Schedule and retention are fixed. |
+| `backup.secretName` | `""` | Required with backups: the admins' Secret with the keys `account` and `sas_token` |
+| `backup.container` | `""` | Required with backups: the Azure blob container, e.g. `elastic-smoketest-test-snapshots` |
 | `nodeSelector`, `tolerations`, `affinity` | empty | Same as every coh chart (fall back to `global.*`). Without `affinity`, ECK spreads the nodes over workers. |
 
 **Fixed by the chart (not overridable):** storage class `platta-azure-ssd-lrs`, HTTP TLS
@@ -311,6 +325,175 @@ The upgrade adds the technical user `platta-defaults` to `spec.auth` (its Secret
 `fileRealm`, its role to the roles Secret, which is now always rendered). ECK applies this to
 the running nodes. Existing application users and their passwords are unchanged.
 
+## Backups
+
+Optional (`backup.enabled: true`): nightly snapshots of all indices and data streams to an Azure
+blob container. The schedule and retention are fixed; teams cannot change them.
+
+### What the admins provide
+
+Before `backup.enabled` is set, in this order:
+
+1. **A blob container** per project and environment, e.g. `elastic-smoketest-test-snapshots`, in
+   the private ops storage account. It must be reachable from the cluster (storage firewall /
+   private endpoint).
+2. **A SAS token** for that container (service SAS, HTTPS only) with the permissions
+   **read, add, create, write, delete, list** (`racwdl`), and an expiry date (e.g. one year),
+   without a leading `?`.
+3. **A Secret in the namespace, created by an ExternalSecret** (never by the chart), with two keys:
+
+   | Key | Value |
+   |---|---|
+   | `account` | storage account name |
+   | `sas_token` | the SAS token |
+
+   Its name goes into `backup.secretName`.
+
+### Values
+
+```yaml
+backup:
+  enabled: true
+  secretName: elastic-smoketest-snapshots          # the admins' Secret
+  container: elastic-smoketest-test-snapshots      # the admins' container
+```
+
+### What happens
+
+| Where | What |
+|---|---|
+| Elasticsearch keystore | ECK `spec.secureSettings` maps `account` and `sas_token` to `azure.client.default.account` and `azure.client.default.sas_token`. **Enabling backups restarts the nodes one by one** (new keystore). |
+| Technical user `platta-backup` | Created like `platta-defaults` (Secret `<fullname>-platta-backup`). Role, least privilege: `manage_slm` (create the policy), `create_snapshot` (what SLM runs as), `cluster:admin/repository/put` (register the repository; the only named privilege covering it is `manage`, which is far too broad). No index privileges. |
+| Job `<fullname>-backup` | Helm hook after every install and upgrade, like the index-defaults Job. Logs in as `platta-backup` and PUTs the repository and the policy (bodies in the ConfigMap `<fullname>-backup`). A 400 (wrong body) or 403 (a privilege missing from the role) fails it at once; anything else (Elasticsearch restarting, the user not loaded yet (401), repository verification failing on a node that has not restarted yet) is retried for up to 15 minutes. |
+| Repository `platta-backup` | `type: azure`, `container: <backup.container>`, `base_path: <namespace>/<fullname>` (two instances never share a path, even in different namespaces sharing a container), client `default`. Verified on every node when registered: a wrong token or container fails the Job. |
+| SLM policy `platta-nightly` | Schedule `0 0 0 * * ?`: **00:00 UTC**, i.e. 02:00 in Helsinki in winter and 03:00 in summer (SLM cron is always UTC and has no time zone option). Snapshot names `nightly-<date>-<id>`. Retention: deleted after **30 days**, but at least **5** and at most **40** are kept. |
+
+**Enabling backups before the admins' Secret exists:** ECK skips the missing Secret (a warning
+event `Secure settings secret not found` on the Elasticsearch resource), so the nodes have no
+Azure credentials and do not restart. The index-defaults Job still runs, but the backup Job cannot
+register the repository: it fails at once or at its 15-minute deadline, depending on the error
+Elasticsearch returns, and the Helm release is marked failed. **To recover:** create the
+Secret. ECK watches for it and restarts the nodes one by one with the new keystore. Then run the
+pipeline (`helm upgrade`) again, and the Job registers the repository and the policy.
+
+**`include_global_state: false`.** The snapshots hold indices and data streams only. Restoring
+global state would bring back old persistent cluster settings (for example ECK's shard
+allocation excludes from a downscale), old index templates and system feature states over a
+running cluster. The Platta templates are recreated by the index-defaults Job; **team index
+templates are not in the snapshots**, so teams keep them in their application (as they should
+anyway).
+
+**SLM runs with the privileges of the user who last updated the policy.** That is
+`platta-backup` after every Helm run. If an admin edits the policy by hand as `elastic`, the
+snapshots run as `elastic` until the next `helm upgrade` resets it.
+
+### Token renewal
+
+When the SAS token expires, snapshots fail. Renew it before then: put the new token where the
+ExternalSecret reads it; External Secrets updates the Secret. With **ECK 3.1** (the clusters'
+version) **every change to the Secret restarts the Elasticsearch nodes one by one**, so plan
+the renewal (yearly) in an announced window: a 1-node instance is unavailable for a minute or
+two, a 3-node instance stays available. No `helm upgrade` is needed.
+
+*Later, after ECK 3.5:* the annotation `eck.k8s.elastic.co/file-based-secure-settings: "true"`
+on the Elasticsearch resource applies changed secure settings without a restart (Elasticsearch
+9.5 and later; both Azure settings are reloadable). Turning it on restarts the nodes once.
+
+### Status (for monitoring, PLATTA-7446)
+
+Nothing is monitored yet. SLM's status can be read with the `elastic` user or a user with
+`read_slm` (and `monitor_snapshot` for the snapshot list):
+
+| Request | Shows |
+|---|---|
+| `GET _slm/policy/platta-nightly?human` | `last_success`, `last_failure` (with the error), `next_execution`, counts of taken, failed and deleted snapshots |
+| `GET _slm/stats` | totals for all policies, including retention runs and failures |
+| `GET _slm/status` | `operation_mode`: `RUNNING` (SLM stopped otherwise) |
+| `GET _cat/snapshots/platta-backup?v&s=end_epoch` | every snapshot with its state (`SUCCESS`, `PARTIAL`, `FAILED`) |
+
+### Restore runbook
+
+Run by an administrator with `oc` access to the namespace. **Credentials are read from Secrets,
+never typed**, and go into the pod through stdin, never onto a command line.
+
+1. Variables and access (on your workstation):
+
+   ```bash
+   NS=<namespace>; ES=<fullname>                 # e.g. elasticsearch (= release name, see above)
+   POD=$ES-es-default-0
+   ELASTIC_PASSWORD=$(oc get secret "$ES-es-elastic-user" -n "$NS" -o jsonpath='{.data.elastic}' | base64 -d)
+   # netrc and the service CA into the pod (stdin; nothing on a command line)
+   printf 'machine %s login elastic password %s\n' "$ES-es-http.$NS.svc" "$ELASTIC_PASSWORD" \
+     | oc exec -i -n "$NS" "$POD" -c elasticsearch -- sh -c 'umask 077; cat > /tmp/restore.netrc'
+   unset ELASTIC_PASSWORD
+   oc get configmap platta-service-ca -n "$NS" -o jsonpath='{.data.service-ca\.crt}' \
+     | oc exec -i -n "$NS" "$POD" -c elasticsearch -- sh -c 'cat > /tmp/service-ca.crt'
+   oc exec -it -n "$NS" "$POD" -c elasticsearch -- env ES_URL="https://$ES-es-http.$NS.svc:9200" bash
+   ```
+
+2. In the pod, a helper and the list of snapshots:
+
+   ```bash
+   es() { local m="$1" p="$2"; shift 2
+          curl -sS --cacert /tmp/service-ca.crt --netrc-file /tmp/restore.netrc \
+            -H 'Content-Type: application/json' -X "$m" "$ES_URL/$p" "$@"; echo; }
+   es GET '_cat/snapshots/platta-backup?v&s=end_epoch'
+   SNAP=<snapshot name from the list>
+   es GET "_snapshot/platta-backup/$SNAP?filter_path=snapshots.indices,snapshots.data_streams&pretty"
+   ```
+
+3. **Restore beside the live data first** (safe; nothing is overwritten). The `-restored` suffix
+   keeps the names inside the app's patterns (`myapp-*`), so its users can read them:
+
+   ```bash
+   es POST "_snapshot/platta-backup/$SNAP/_restore?wait_for_completion=true" -d '{
+     "indices": "myapp-*",
+     "rename_pattern": "(.+)", "rename_replacement": "$1-restored",
+     "include_global_state": false, "include_aliases": false }'
+   es GET '_cat/indices/*-restored?v&h=health,index,docs.count'
+   ```
+
+4. **Or replace the live indices.** Stop the application's writes first (scale it to 0). Delete
+   the indices by their exact names (wildcards are refused for deletes), then restore:
+
+   ```bash
+   es DELETE 'myapp-2026.11,myapp-users'                 # exact names from step 2
+   es POST "_snapshot/platta-backup/$SNAP/_restore?wait_for_completion=true" -d '{
+     "indices": "myapp-2026.11,myapp-users", "include_global_state": false }'
+   ```
+
+   A data stream is deleted with `es DELETE _data_stream/<name>` and restored by its name.
+   Aliases come back with their indices (`include_aliases` defaults to true).
+
+5. Check and clean up:
+
+   ```bash
+   es GET '_cluster/health?pretty'                       # green (1 node: auto_expand_replicas)
+   rm -f /tmp/restore.netrc /tmp/service-ca.crt; exit
+   ```
+
+   Then start the application again.
+
+**Into a new instance** (the old one is lost): install it in the same namespace with the same
+release name and `backup` values; the Job registers the same repository (same `base_path`)
+and the snapshots appear in step 2. In another namespace, or if the old instance still runs,
+register the old path in the new instance by hand with another name,
+`"base_path": "<old namespace>/<fullname>"` and `"readonly": true`: never let two running
+instances write to the same path.
+
+### Turning backups off
+
+`backup.enabled: false` removes the Job, `platta-backup` and the secure settings (the nodes
+restart once). It **does not delete** the policy, the repository or the snapshots. Without
+its user the policy's snapshots fail, so an admin deletes the policy; deleting the repository
+registration keeps the snapshots in the container. The same applies after a `helm rollback` or
+a downgrade to a chart before 0.4.0:
+
+```bash
+es DELETE _slm/policy/platta-nightly
+es DELETE _snapshot/platta-backup        # registration only; the blobs stay in Azure
+```
+
 ## Objects the chart creates
 
 Needed for the rights of the application team's pipeline service account in its namespace:
@@ -320,18 +503,24 @@ Needed for the rights of the application team's pipeline service account in its 
 | `Elasticsearch` | `elasticsearch.k8s.elastic.co/v1` |
 | `Secret` (`<fullname>-roles`, and the Helm release records `sh.helm.release.v1.*`) | core |
 | `ConfigMap` (`<fullname>-index-defaults`) | core |
-| `Job` (`<fullname>-index-defaults`, Helm hook) | `batch/v1` |
-| `ExternalSecret` (one per user, plus the technical user) | `external-secrets.io/v1` |
-| `Password` (one per user, plus the technical user) | `generators.external-secrets.io/v1alpha1` |
+| `ConfigMap` (`<fullname>-backup`, with backups) | core |
+| `Job` (`<fullname>-index-defaults` and, with backups, `<fullname>-backup`; Helm hooks) | `batch/v1` |
+| `ExternalSecret` (one per user, plus the technical users) | `external-secrets.io/v1` |
+| `Password` (one per user, plus the technical users) | `generators.external-secrets.io/v1alpha1` |
 
 On dev-se, the namespace roles `admin` and `edit` include the Elasticsearch and External
 Secrets kinds (checked Nov 2026); `Job` and `ConfigMap` are in them by default in Kubernetes.
 
 Everything else (StatefulSet, Services, Secrets, PVCs, PDB) is created by the ECK operator, and
-the user Secrets (`elasticsearch-user-<name>`, `<fullname>-platta-defaults`) by External
-Secrets.
+the user Secrets (`elasticsearch-user-<name>`, `<fullname>-platta-defaults`,
+`<fullname>-platta-backup`) by External Secrets. The backup credentials Secret
+(`backup.secretName`) is the admins'.
 
 ## Known limitations
+
+* **Renewing the backup SAS token restarts the Elasticsearch nodes** (ECK 3.1 rebuilds the
+  keystore on every change of a secure settings Secret). Plan it in an announced window; see
+  [Token renewal](#token-renewal).
 
 * **A 1-node instance turns yellow if an index asks for replicas.** Since 0.3.0 new indices
   get 0 replicas on one node (see [Default index replicas](#default-index-replicas)), but not
@@ -446,6 +635,23 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
    * the technical user can manage templates only (403 on reading or writing an index).
 4. *Optional performance optimization, not a blocker:* `vm.max_map_count` on the nodes: could
    `node.store.allow_mmap` be turned back on?
+5. Backups (0.4.0), once the container and SAS token exist (on the smoke-test app):
+   * **repository registration:** enabling backups restarts the nodes and the Job registers
+     `platta-backup` within the Helm timeout (1 and 3 nodes); a wrong token or container fails it;
+   * **least privilege:** `platta-backup` can register the repository and the policy with only
+     `manage_slm`, `create_snapshot` and `cluster:admin/repository/put` (the policy API docs
+     also mention index `manage`), and gets 403 on index data;
+   * **a nightly snapshot:** taken at 00:00 UTC as `platta-backup`, state `SUCCESS`;
+   * **retention:** runs without delete privileges for `platta-backup` (SLM's internal user),
+     keeps 5–40 snapshots and deletes those older than 30 days (shorten `expire_after` by hand
+     on a test instance to see it, the Job resets it);
+   * **token renewal:** a changed `sas_token` in the Secret restarts the nodes one by one and
+     the next snapshot succeeds with the new token;
+   * **full restore** with the [runbook](#restore-runbook): beside the live data and in place,
+     including `/tmp` being writable in the Elasticsearch pod;
+   * turning backups off leaves the policy and snapshots, as documented;
+   * enabling backups before the Secret exists: the Job's error (fails at once or at the
+     deadline) and the recovery (create the Secret, run `helm upgrade` again).
 
 ## Maintenance
 
@@ -459,6 +665,32 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
 These checks are part of Platta's monthly upgrade/update evaluation (see the Elasticsearch support standard in Confluence).
 
 ## Changelog
+
+### 0.4.0
+
+Optional backups (PLATTA-7743):
+
+* **Values:** `backup.enabled` (default `false`), `backup.secretName` and `backup.container`;
+  both names are required when enabled. Schedule and retention are fixed.
+* **Credentials:** the admins' Secret (keys `account` and `sas_token`, created via ExternalSecret)
+  goes into the keystore as `azure.client.default.*` with ECK `spec.secureSettings`.
+* **Technical user `platta-backup`** (only with backups), generated like `platta-defaults`;
+  role `manage_slm`, `create_snapshot` and `cluster:admin/repository/put`, no index privileges.
+* **Job `<fullname>-backup`** (Helm hook) registers the Azure repository `platta-backup`
+  (`base_path: <namespace>/<fullname>`) and the SLM policy `platta-nightly`: 00:00 UTC, without global
+  state, deleted after 30 days, 5 to 40 kept.
+* **Restarts:** enabling or disabling backups, and every SAS token renewal, restart the
+  Elasticsearch nodes one by one (ECK 3.1). Without backups nothing changes for existing
+  instances.
+* **Turning backups off, `helm rollback` or a downgrade below 0.4.0 does not delete the SLM
+  policy:** without `platta-backup` its snapshots fail every night until an admin deletes it by
+  hand ([Turning backups off](#turning-backups-off)).
+* **Helm timeout:** each hook gets the full `--timeout`, so with backups a failing run can take
+  about 30 minutes (two 15-minute Jobs); the index-defaults Job now runs first.
+* README: [Backups](#backups) with the admins' prerequisites, status requests and a restore
+  runbook.
+* Not yet tested on the clusters (waits for the container and SAS token), see
+  [Still to test](#still-to-test).
 
 ### 0.3.1
 

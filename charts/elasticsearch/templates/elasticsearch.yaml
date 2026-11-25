@@ -31,6 +31,19 @@ spec:
       {{- range (include "elasticsearch.realmUsers" . | fromJsonArray) }}
       - secretName: {{ .secretName }}
       {{- end }}
+  {{- if .Values.backup.enabled }}
+  # Azure credentials of the snapshot repository, from the admins' Secret (keys account and
+  # sas_token) into the Elasticsearch keystore. ECK 3.1: any change of this Secret (token
+  # renewal) restarts the nodes one by one. From ECK 3.5 with Elasticsearch 9.5, the annotation
+  # eck.k8s.elastic.co/file-based-secure-settings: "true" would reload it without a restart.
+  secureSettings:
+    - secretName: {{ .Values.backup.secretName }}
+      entries:
+        - key: account
+          path: azure.client.default.account
+        - key: sas_token
+          path: azure.client.default.sas_token
+  {{- end }}
   # Transport (node-to-node) TLS: ECK's own self-signed certificates (default, unchanged).
   nodeSets:
     - name: default

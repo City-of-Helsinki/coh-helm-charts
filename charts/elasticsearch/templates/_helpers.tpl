@@ -177,13 +177,6 @@ platta-defaults
 {{- include "elasticsearch.fullname" . }}-platta-defaults
 {{- end }}
 
-{{/*
-Every file realm user, team users first, then the technical user, as a JSON list of
-  name        username in Elasticsearch
-  secretName  Password, ExternalSecret and Secret name
-  roleName    Elasticsearch role (elasticsearch-user-<name>)
-  role        roles.yml entry (cluster + indices)
-*/}}
 {{- /*
 Index patterns of the default index template platta-default-replicas: the union of all users'
 indices, deduplicated and sorted (stable JSON). Apps can only create indices inside these, and
@@ -197,6 +190,33 @@ templates. The technical user platta-defaults has no indices. Empty with no user
 {{- end -}}
 {{- toJson ($patterns | uniq | sortAlpha) -}}
 {{- end }}
+{{/*
+Technical user platta-backup (only with backup.enabled): registers the snapshot repository and
+the SLM policy (backup Job). SLM takes the nightly snapshots with the privileges stored in the
+policy, i.e. this user's, as the last one who updated it. Least privilege:
+  manage_slm                     put the SLM policy (nothing narrower exists)
+  create_snapshot                what SLM runs as: create snapshots, read repositories/snapshots
+  cluster:admin/repository/put   register the repository; the only named privilege that
+                                 covers it is manage, far too broad
+No index privileges: a snapshot is a cluster action. SLM retention and history run as
+Elasticsearch's internal SLM user, so no delete privilege is needed.
+*/}}
+{{- define "elasticsearch.backupUserName" -}}
+platta-backup
+{{- end }}
+
+{{- define "elasticsearch.backupUserSecretName" -}}
+{{- include "elasticsearch.fullname" . }}-platta-backup
+{{- end }}
+
+{{/*
+Every file realm user, team users first, then the technical users (platta-defaults always,
+platta-backup with backup.enabled), as a JSON list of
+  name        username in Elasticsearch
+  secretName  Password, ExternalSecret and Secret name
+  roleName    Elasticsearch role (elasticsearch-user-<name>)
+  role        roles.yml entry (cluster + indices)
+*/}}
 {{- define "elasticsearch.realmUsers" -}}
 {{- $out := list -}}
 {{- range (include "elasticsearch.users" . | fromJsonArray) -}}
@@ -210,12 +230,23 @@ templates. The technical user platta-defaults has no indices. Empty with no user
           "names" .indices
           "privileges" (include "elasticsearch.indexPrivileges" .role | fromJsonArray))))) -}}
 {{- end -}}
-{{- $tech := include "elasticsearch.defaultsUserName" . -}}
-{{- $out = append $out (dict
-      "name" $tech
+{{- $tech := list (dict
+      "name" (include "elasticsearch.defaultsUserName" .)
       "secretName" (include "elasticsearch.defaultsUserSecretName" .)
-      "roleName" (include "elasticsearch.userRoleName" (dict "name" $tech))
-      "role" (dict "cluster" (list "manage_index_templates"))) -}}
+      "cluster" (list "manage_index_templates")) -}}
+{{- if .Values.backup.enabled -}}
+{{- $tech = append $tech (dict
+      "name" (include "elasticsearch.backupUserName" .)
+      "secretName" (include "elasticsearch.backupUserSecretName" .)
+      "cluster" (list "manage_slm" "create_snapshot" "cluster:admin/repository/put")) -}}
+{{- end -}}
+{{- range $tech -}}
+{{- $out = append $out (dict
+      "name" .name
+      "secretName" .secretName
+      "roleName" (include "elasticsearch.userRoleName" .)
+      "role" (dict "cluster" .cluster)) -}}
+{{- end -}}
 {{- toJson $out -}}
 {{- end }}
 
@@ -250,4 +281,22 @@ platta-default-replicas
 
 {{- define "elasticsearch.indexDefaultsName" -}}
 {{- include "elasticsearch.fullname" . }}-index-defaults
+{{- end }}
+
+{{/*
+Backups (backup.enabled). Names in Elasticsearch are fixed, so the README runbook and later
+monitoring (PLATTA-7446) can rely on them.
+  repository platta-backup   Azure container backup.container, base_path <namespace>/<fullname>
+  SLM policy platta-nightly
+*/}}
+{{- define "elasticsearch.backupRepository" -}}
+platta-backup
+{{- end }}
+
+{{- define "elasticsearch.backupPolicy" -}}
+platta-nightly
+{{- end }}
+
+{{- define "elasticsearch.backupName" -}}
+{{- include "elasticsearch.fullname" . }}-backup
 {{- end }}

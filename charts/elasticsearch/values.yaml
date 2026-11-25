@@ -64,3 +64,15 @@ affinity: {}
 #       role: write
 #       indices: ["myapp-*"]
 users: []
+
+# Snapshots to an Azure blob container (off by default). When enabled, the chart registers the
+# snapshot repository platta-backup and the SLM policy platta-nightly; schedule and retention are
+# fixed. The admins provide the container and a Secret with the keys account and sas_token
+# (created via ExternalSecret, never by the chart). Changing that Secret (token renewal)
+# restarts the Elasticsearch nodes one by one (ECK 3.1). README: Backups.
+backup:
+  enabled: false
+  # Secret in this namespace with the keys account (storage account name) and sas_token
+  secretName: ""
+  # Blob container, e.g. elastic-smoketest-test-snapshots
+  container: ""

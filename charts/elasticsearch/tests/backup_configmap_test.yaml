@@ -1,0 +1,108 @@
+suite: backups (repository and SLM policy bodies)
+templates:
+  - backup-configmap.yaml
+
+tests:
+  - it: should render nothing without backups
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render the ConfigMap <fullname>-backup with backups
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-elasticsearch-backup
+
+  - it: should register an Azure repository on the container, default client, base_path <namespace>/<fullname>
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - equal:
+          path: data["repository.json"]
+          value: |
+            {
+              "settings": {
+                "base_path": "NAMESPACE/RELEASE-NAME-elasticsearch",
+                "client": "default",
+                "container": "elastic-smoketest-test-snapshots"
+              },
+              "type": "azure"
+            }
+
+  - it: should give two instances in one namespace different base paths
+    release:
+      name: search
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - matchRegex:
+          path: data["repository.json"]
+          pattern: '"base_path": "NAMESPACE/search-elasticsearch"'
+
+  - it: should give same-named instances in two namespaces sharing a container different base paths
+    release:
+      namespace: team-b
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - matchRegex:
+          path: data["repository.json"]
+          pattern: '"base_path": "team-b/RELEASE-NAME-elasticsearch"'
+
+  - it: "should snapshot nightly at 00:00 UTC without global state, retention 30d / min 5 / max 40"
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - equal:
+          path: data["slm-policy.json"]
+          value: |
+            {
+              "config": {
+                "include_global_state": false,
+                "metadata": {
+                  "managed_by": "coh-helm-charts/elasticsearch"
+                }
+              },
+              "name": "\u003cnightly-{now/d}\u003e",
+              "repository": "platta-backup",
+              "retention": {
+                "expire_after": "30d",
+                "max_count": 40,
+                "min_count": 5
+              },
+              "schedule": "0 0 0 * * ?"
+            }
+
+  - it: should not let values change the schedule or retention (fixed behaviour)
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+      nodeCount: 3
+    asserts:
+      - matchRegex:
+          path: data["slm-policy.json"]
+          pattern: '"schedule": "0 0 0 \* \* \?"'

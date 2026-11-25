@@ -114,3 +114,33 @@ tests:
             elasticsearch-user-platta-defaults:
               cluster:
               - manage_index_templates
+
+  - it: should give platta-backup only manage_slm, create_snapshot and repository put (no index privileges)
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - equal:
+          path: stringData["roles.yml"]
+          value: |
+            elasticsearch-user-platta-backup:
+              cluster:
+              - manage_slm
+              - create_snapshot
+              - cluster:admin/repository/put
+            elasticsearch-user-platta-defaults:
+              cluster:
+              - manage_index_templates
+
+  - it: should not grant manage or index privileges to any technical user
+    set:
+      backup:
+        enabled: true
+        secretName: elastic-smoketest-snapshots
+        container: elastic-smoketest-test-snapshots
+    asserts:
+      - notMatchRegex:
+          path: stringData["roles.yml"]
+          pattern: '(?m)^\s*- (manage|all)$|indices'
