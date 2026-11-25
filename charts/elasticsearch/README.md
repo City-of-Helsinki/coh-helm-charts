@@ -1,12 +1,12 @@
 # Elasticsearch Helm Chart
 
-![Version: 0.3.1](https://img.shields.io/badge/version-0.3.1-blue)
+![Version: 0.4.0](https://img.shields.io/badge/version-0.4.0-blue)
 ![AppVersion: 9.5.5](https://img.shields.io/badge/appVersion-9.5.5-blue)
 
 Elasticsearch for **new instances on the Sweden OpenShift (ARO) clusters**, run by the ECK
 operator, with Platta managed Service TLS (OpenShift service CA). Basic licence only.
 
-> **Status 0.3.1:** Elasticsearch with Platta service TLS, application users and default index
+> **Status 0.4.0:** Elasticsearch with Platta service TLS, application users and default index
 > replicas, optional backups. Not included yet (later releases): NetworkPolicy, Kibana.
 
 ## Prerequisites
@@ -647,6 +647,27 @@ user: health and searches pass; admin paths, writes and deletes are blocked by t
 These checks are part of Platta's monthly upgrade/update evaluation (see the Elasticsearch support standard in Confluence).
 
 ## Changelog
+
+### 0.4.0
+
+Optional backups (PLATTA-7743):
+
+* **Values:** `backup.enabled` (default `false`), `backup.secretName` and `backup.container`;
+  both names are required when enabled. Schedule and retention are fixed.
+* **Credentials:** the admins' Secret (keys `account` and `sas_token`, created via ExternalSecret)
+  goes into the keystore as `azure.client.default.*` with ECK `spec.secureSettings`.
+* **Technical user `platta-backup`** (only with backups), generated like `platta-defaults`;
+  role `manage_slm`, `create_snapshot` and `cluster:admin/repository/put`, no index privileges.
+* **Job `<fullname>-backup`** (Helm hook) registers the Azure repository `platta-backup`
+  (`base_path: <fullname>`) and the SLM policy `platta-nightly`: 00:00 UTC, without global
+  state, deleted after 30 days, 5 to 40 kept.
+* **Restarts:** enabling or disabling backups, and every SAS token renewal, restart the
+  Elasticsearch nodes one by one (ECK 3.1). Without backups nothing changes for existing
+  instances.
+* README: [Backups](#backups) with the admins' prerequisites, status requests and a restore
+  runbook.
+* Not yet tested on the clusters (waits for the container and SAS token), see
+  [Still to test](#still-to-test).
 
 ### 0.3.1
 
