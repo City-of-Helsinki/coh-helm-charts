@@ -25,6 +25,8 @@ metadata:
     app.kubernetes.io/component: backup
   annotations:
     helm.sh/hook: post-install,post-upgrade
+    # after the index-defaults Job (weight 0): Helm stops at the first failed hook
+    helm.sh/hook-weight: "5"
     # a failed Job stays for debugging until the next install/upgrade
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:

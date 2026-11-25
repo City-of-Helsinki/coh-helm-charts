@@ -26,6 +26,7 @@ tests:
           path: metadata.annotations
           value:
             helm.sh/hook: post-install,post-upgrade
+            helm.sh/hook-weight: "5"
             helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
       - equal:
           path: spec.backoffLimit
