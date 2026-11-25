@@ -88,6 +88,20 @@ jobs:
           reject "reserved prefix platta-"     --set-json "$(u platta-backup search '["myapp-*"]')"
           reject "user name not a DNS label"   --set-json "$(u MyApp write '["myapp-*"]')"
           reject "user name over 44 characters" --set-json "$(u a234567890123456789012345678901234567890-xyzw write '["myapp-*"]')"
+          # backup: b <secretName> <container> enables backups
+          b() { echo "backup={\"enabled\":true,\"secretName\":\"$1\",\"container\":\"$2\"}"; }
+          reject "backup without secretName and container" --set backup.enabled=true
+          reject "backup without container"    --set-json "$(b es-snapshots '')"
+          reject "backup without secretName"   --set-json "$(b '' myapp-test-snapshots)"
+          reject "backup container too short"  --set-json "$(b es-snapshots ab)"
+          reject "backup container over 63 characters" --set-json "$(b es-snapshots a234567890123456789012345678901234567890123456789012345678901234)"
+          reject "backup container uppercase"  --set-json "$(b es-snapshots MyApp-snapshots)"
+          reject "backup container with --"    --set-json "$(b es-snapshots myapp--snapshots)"
+          reject "backup container starting with -" --set-json "$(b es-snapshots -myapp-snapshots)"
+          reject "backup container ending with -" --set-json "$(b es-snapshots myapp-snapshots-)"
+          reject "backup secretName not a DNS name" --set-json "$(b Es_Snapshots myapp-test-snapshots)"
+          reject "backup schedule override"    --set backup.schedule="0 0 1 * * ?"
+          reject "backup retention override"   --set backup.retention.expireAfter=90d
           # Valid neighbours of the cases above must still pass (the schema is not just rejecting everything)
           accept() {
             local desc="$1"; shift
@@ -99,5 +113,9 @@ jobs:
             --set-json 'users=[{"name":"elastic-app","role":"search","indices":["a-*"]},{"name":"kibana-reader","role":"search","indices":["b?c*"]}]'
           accept "names that only resemble the reserved prefix" \
             --set-json 'users=[{"name":"plattaapp","role":"search","indices":["a-*"]},{"name":"myapp-platta-defaults","role":"search","indices":["b-*"]}]'
+          accept "backup enabled"              --set-json "$(b elastic-smoketest-snapshots elastic-smoketest-test-snapshots)"
+          accept "backup container of 3 characters" --set-json "$(b es-snapshots abc)"
+          accept "backup container of 63 characters" --set-json "$(b es-snapshots a23456789012345678901234567890123456789012345678901234567890123)"
+          accept "backup disabled with empty names (the defaults)" --set backup.enabled=false
           accept "user name of 44 characters"  --set-json "$(u a234567890123456789012345678901234567890-xyz write '["myapp-*"]')"
           exit $rc
